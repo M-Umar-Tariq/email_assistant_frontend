@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useRef } from "react"
+import { useState, useEffect, useRef, useMemo } from "react"
 import {
   Send,
   Paperclip,
@@ -11,48 +11,43 @@ import {
   List,
   Link2,
   Sparkles,
-  CheckCircle2,
+  PenLine,
   ChevronDown,
   Loader2,
   Save,
-  CalendarPlus,
-  XCircle,
-  MessageSquare,
-  PenLine,
-  ArrowRight,
+  FileText,
+  RotateCcw,
+  Check,
+  Mail,
+  Clock,
 } from "lucide-react"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Separator } from "@/components/ui/separator"
 import { ScrollArea } from "@/components/ui/scroll-area"
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import { Badge } from "@/components/ui/badge"
 import { compose as composeApi, emails as emailsApi, mailboxes as mailboxesApi } from "@/lib/api"
 import type { MailboxApi } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import { toast } from "sonner"
 
-const toneOptions = [
-  { id: "formal", label: "Formal", emoji: "\uD83D\uDC54" },
-  { id: "concise", label: "Concise", emoji: "\u26A1" },
-  { id: "friendly", label: "Friendly", emoji: "\uD83D\uDE0A" },
-  { id: "firm", label: "Firm", emoji: "\uD83D\uDCAA" },
-]
-
-const quickTemplates = [
-  { id: "acknowledge", label: "Acknowledge & follow up", icon: CheckCircle2, preview: "Thank you for your email. I'll review the details and get back to you by...", prompt: "Write an acknowledgement email that says I'll review the details and get back to them soon." },
-  { id: "request_info", label: "Request more info", icon: MessageSquare, preview: "To better assist you, could you please provide...", prompt: "Write a polite email requesting additional information to better assist them." },
-  { id: "schedule", label: "Schedule meeting", icon: CalendarPlus, preview: "I'd like to schedule a meeting to discuss this further...", prompt: "Write an email proposing to schedule a meeting to discuss further, offering a few time slots." },
-  { id: "decline", label: "Decline politely", icon: XCircle, preview: "After careful consideration, we've decided to...", prompt: "Write a polite and professional decline email, thanking them for the proposal." },
-]
-
 const DRAFT_KEY = "compose_draft"
 
-export function ComposeView() {
+export function ComposeView({
+  initialTo,
+  initialToName,
+  onInitialComposeConsumed,
+}: {
+  initialTo?: string | null
+  initialToName?: string | null
+  onInitialComposeConsumed?: () => void
+} = {}) {
   const { user } = useAuth()
-  const [to, setTo] = useState("")
+  const [to, setTo] = useState(initialTo?.trim() ?? "")
   const [cc, setCc] = useState("")
   const [subject, setSubject] = useState("")
   const [body, setBody] = useState("")
-  const [selectedTone, setSelectedTone] = useState("formal")
   const [customEmailType, setCustomEmailType] = useState("")
   const [showCc, setShowCc] = useState(false)
   const [showAiPanel, setShowAiPanel] = useState(true)
@@ -61,7 +56,17 @@ export function ComposeView() {
   const [mailboxList, setMailboxList] = useState<MailboxApi[]>([])
   const [selectedMailbox, setSelectedMailbox] = useState<MailboxApi | null>(null)
   const [showMailboxMenu, setShowMailboxMenu] = useState(false)
+  const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null)
+  const [focusedField, setFocusedField] = useState<string | null>(null)
   const bodyRef = useRef<HTMLTextAreaElement>(null)
+  const mailboxRef = useRef<HTMLDivElement>(null)
+
+  const wordCount = useMemo(() => {
+    const words = body.trim().split(/\s+/).filter(Boolean)
+    return words.length
+  }, [body])
+
+  const charCount = useMemo(() => body.length, [body])
 
   useEffect(() => {
     mailboxesApi.list().then((list) => {
@@ -79,8 +84,26 @@ export function ComposeView() {
         if (draft.cc) { setCc(draft.cc); setShowCc(true) }
         if (draft.subject) setSubject(draft.subject)
         if (draft.body) setBody(draft.body)
+        if (draft.savedAt) setDraftSavedAt(draft.savedAt)
       }
     } catch {}
+  }, [])
+
+  useEffect(() => {
+    if (initialTo?.trim()) {
+      setTo(initialTo.trim())
+      onInitialComposeConsumed?.()
+    }
+  }, [initialTo, onInitialComposeConsumed])
+
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (mailboxRef.current && !mailboxRef.current.contains(e.target as Node)) {
+        setShowMailboxMenu(false)
+      }
+    }
+    document.addEventListener("mousedown", handleClickOutside)
+    return () => document.removeEventListener("mousedown", handleClickOutside)
   }, [])
 
   const handleSend = async () => {
@@ -96,7 +119,7 @@ export function ComposeView() {
       await emailsApi.send({ mailbox_id: selectedMailbox.id, to: toList, cc: ccList.length > 0 ? ccList : undefined, subject: subject.trim(), body: body.trim() })
       toast.success("Email sent successfully!")
       localStorage.removeItem(DRAFT_KEY)
-      setTo(""); setCc(""); setSubject(""); setBody(""); setShowCc(false)
+      setTo(""); setCc(""); setSubject(""); setBody(""); setShowCc(false); setDraftSavedAt(null)
     } catch (err) {
       toast.error((err as Error).message || "Failed to send email")
     } finally { setIsSending(false) }
@@ -104,16 +127,18 @@ export function ComposeView() {
 
   const handleSaveDraft = () => {
     if (!to && !subject && !body) { toast.error("Nothing to save"); return }
-    localStorage.setItem(DRAFT_KEY, JSON.stringify({ to, cc, subject, body, savedAt: new Date().toISOString() }))
+    const now = new Date().toISOString()
+    localStorage.setItem(DRAFT_KEY, JSON.stringify({ to, cc, subject, body, savedAt: now }))
+    setDraftSavedAt(now)
     toast.success("Draft saved")
   }
 
-  const handleGenerate = async (templatePrompt?: string) => {
+  const handleGenerate = async (contextPrompt?: string) => {
     setIsGenerating(true)
     try {
-      const res = await composeApi.generate({ to: to || undefined, subject: subject || undefined, context: templatePrompt || body || undefined, tone: selectedTone, sender_name: user?.name || undefined })
+      const res = await composeApi.generate({ to: to || undefined, subject: subject || undefined, context: contextPrompt ?? (customEmailType.trim() || body || undefined), tone: "formal", sender_name: user?.name || undefined })
       setBody(res.draft ?? "")
-      toast.success(templatePrompt ? "Template applied" : "Draft generated")
+      toast.success("Draft generated")
     } catch { toast.error("Failed to generate draft") } finally { setIsGenerating(false) }
   }
 
@@ -130,248 +155,346 @@ export function ComposeView() {
   const handleList = () => {
     const ta = bodyRef.current; if (!ta) return
     const start = ta.selectionStart; const lineStart = body.lastIndexOf("\n", start - 1) + 1
-    setBody(body.substring(0, lineStart) + "\u2022 " + body.substring(lineStart))
+    setBody(body.substring(0, lineStart) + "• " + body.substring(lineStart))
     setTimeout(() => { ta.focus() }, 0)
   }
   const handleLink = () => { const url = prompt("Enter URL:"); if (url) insertFormatting("[", `](${url})`, "link text") }
 
-  return (
-    <div className="flex h-full flex-col">
-      {/* Header */}
-      <header className="flex items-center justify-between border-b border-border px-6 py-3">
-        <div className="flex items-center gap-3">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-            <PenLine className="h-4 w-4 text-primary" />
-          </div>
-          <div>
-            <h1 className="text-base font-semibold text-foreground">Compose</h1>
-            <p className="text-[11px] text-muted-foreground">AI-powered email drafting</p>
-          </div>
-        </div>
-        <button
-          onClick={() => setShowAiPanel(!showAiPanel)}
-          className={`flex items-center gap-1.5 text-xs px-3 h-8 rounded-md border transition-colors ${
-            showAiPanel
-              ? "bg-primary/10 border-primary/20 text-primary"
-              : "border-border text-muted-foreground hover:text-foreground"
-          }`}
-        >
-            <Wand2 className="h-3.5 w-3.5" />
-            {showAiPanel ? "Hide Assistant" : "Show Assistant"}
-        </button>
-      </header>
+  const handleClear = () => {
+    setTo(""); setCc(""); setSubject(""); setBody(""); setShowCc(false)
+    setDraftSavedAt(null); setCustomEmailType("")
+    localStorage.removeItem(DRAFT_KEY)
+    toast.success("Compose cleared")
+  }
 
-      <div className="flex flex-1 overflow-hidden">
-        {/* Compose Area */}
-        <div className="flex flex-1 flex-col">
-          <div className="flex flex-col border-b border-border">
-            {/* From */}
-            <div className="flex items-center gap-3 px-5 py-2.5 border-b border-border/50">
-              <span className="text-xs font-medium text-muted-foreground w-14 shrink-0">From</span>
-              <div className="relative flex-1">
+  const recipientCount = useMemo(() => {
+    const toCount = to.split(/[,;\s]+/).filter((s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim())).length
+    const ccCount = cc.split(/[,;\s]+/).filter((s) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(s.trim())).length
+    return toCount + ccCount
+  }, [to, cc])
+
+  return (
+    <TooltipProvider delayDuration={300}>
+      <div className="flex h-full flex-col bg-background">
+        {/* ─── Header ──────────────────────────────────── */}
+        <header className="relative flex items-center justify-between border-b border-border px-6 py-3.5">
+          <div className="absolute inset-0 bg-gradient-to-r from-primary/[0.03] via-transparent to-primary/[0.02]" />
+          <div className="relative flex items-center gap-3">
+            <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 ring-1 ring-primary/10">
+              <PenLine className="h-4 w-4 text-primary" />
+            </div>
+            <div>
+              <h1 className="text-base font-semibold text-foreground tracking-tight">Compose</h1>
+              <p className="text-[11px] text-muted-foreground">AI-powered email drafting</p>
+            </div>
+          </div>
+
+          <div className="relative flex items-center gap-2">
+            {draftSavedAt && (
+              <span className="hidden sm:flex items-center gap-1 text-[10px] text-muted-foreground/70 mr-1">
+                <Clock className="h-3 w-3" />
+                Saved {new Date(draftSavedAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </span>
+            )}
+            <Tooltip>
+              <TooltipTrigger asChild>
                 <button
-                  onClick={() => setShowMailboxMenu(!showMailboxMenu)}
-                  className="flex items-center gap-2 text-sm text-foreground hover:text-primary transition-colors"
+                  onClick={handleClear}
+                  className="flex items-center justify-center h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all"
                 >
-                  {selectedMailbox ? (
-                    <span className="truncate">{selectedMailbox.email}</span>
-                  ) : (
-                    <span className="text-muted-foreground">Select mailbox...</span>
-                  )}
-                  <ChevronDown className="h-3 w-3 text-muted-foreground shrink-0" />
+                  <RotateCcw className="h-3.5 w-3.5" />
                 </button>
-                {showMailboxMenu && (
-                  <div className="absolute top-full left-0 mt-1 z-50 bg-popover border border-border rounded-xl shadow-xl py-1.5 min-w-[280px]">
-                    {mailboxList.map((mb) => (
-                      <button
-                        key={mb.id}
-                        onClick={() => { setSelectedMailbox(mb); setShowMailboxMenu(false) }}
-                        className={`w-full text-left px-3 py-2 text-sm hover:bg-muted/50 transition-colors flex items-center gap-2 ${
-                          selectedMailbox?.id === mb.id ? "bg-primary/10 text-primary" : "text-foreground"
-                        }`}
-                      >
-                        <span className="truncate">{mb.email}</span>
-                        <span className="text-muted-foreground text-xs ml-auto shrink-0">{mb.name}</span>
-                      </button>
-                    ))}
-                    {mailboxList.length === 0 && (
-                      <p className="px-3 py-2 text-sm text-muted-foreground">No mailboxes — add one in Settings</p>
+              </TooltipTrigger>
+              <TooltipContent side="bottom"><p className="text-xs">Clear all</p></TooltipContent>
+            </Tooltip>
+            <button
+              onClick={() => setShowAiPanel(!showAiPanel)}
+              className={`flex items-center gap-1.5 text-xs font-medium px-3.5 h-8 rounded-lg border transition-all duration-200 ${
+                showAiPanel
+                  ? "bg-primary/10 border-primary/20 text-primary shadow-sm shadow-primary/5"
+                  : "border-border text-muted-foreground hover:text-foreground hover:border-border/80 hover:bg-muted/30"
+              }`}
+            >
+              <Sparkles className="h-3.5 w-3.5" />
+              <span className="hidden sm:inline">{showAiPanel ? "Hide" : "Show"} Assistant</span>
+            </button>
+          </div>
+        </header>
+
+        <div className="flex flex-1 overflow-hidden">
+          {/* ─── Compose Area ──────────────────────────── */}
+          <div className="flex flex-1 flex-col min-w-0">
+            <div className="flex flex-col border-b border-border">
+              {/* From */}
+              <div
+                ref={mailboxRef}
+                className={`flex items-center gap-3 px-5 py-2.5 border-b transition-colors duration-150 ${
+                  focusedField === "from" ? "bg-primary/[0.02] border-primary/15" : "border-border/50"
+                }`}
+              >
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-16 shrink-0">From</span>
+                <div className="relative flex-1">
+                  <button
+                    onClick={() => { setShowMailboxMenu(!showMailboxMenu); setFocusedField("from") }}
+                    onBlur={() => !showMailboxMenu && setFocusedField(null)}
+                    className="flex items-center gap-2 text-sm text-foreground hover:text-primary transition-colors group"
+                  >
+                    <Mail className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
+                    {selectedMailbox ? (
+                      <span className="truncate">{selectedMailbox.email}</span>
+                    ) : (
+                      <span className="text-muted-foreground">Select mailbox...</span>
                     )}
-                  </div>
-                )}
+                    <ChevronDown className={`h-3 w-3 text-muted-foreground shrink-0 transition-transform duration-200 ${showMailboxMenu ? "rotate-180" : ""}`} />
+                  </button>
+                  {showMailboxMenu && (
+                    <div className="absolute top-full left-0 mt-1.5 z-50 bg-popover border border-border rounded-xl shadow-xl shadow-black/5 py-1 min-w-[300px] animate-fade-in-up">
+                      <p className="px-3 py-1.5 text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Select Mailbox</p>
+                      {mailboxList.map((mb) => (
+                        <button
+                          key={mb.id}
+                          onClick={() => { setSelectedMailbox(mb); setShowMailboxMenu(false); setFocusedField(null) }}
+                          className={`w-full text-left px-3 py-2.5 text-sm transition-all flex items-center gap-2.5 ${
+                            selectedMailbox?.id === mb.id
+                              ? "bg-primary/10 text-primary"
+                              : "text-foreground hover:bg-muted/50"
+                          }`}
+                        >
+                          <div className={`h-7 w-7 rounded-lg flex items-center justify-center shrink-0 ${
+                            selectedMailbox?.id === mb.id ? "bg-primary/20" : "bg-muted/60"
+                          }`}>
+                            <Mail className={`h-3.5 w-3.5 ${selectedMailbox?.id === mb.id ? "text-primary" : "text-muted-foreground"}`} />
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <p className="truncate font-medium text-sm">{mb.email}</p>
+                            <p className="text-[11px] text-muted-foreground">{mb.name}</p>
+                          </div>
+                          {selectedMailbox?.id === mb.id && (
+                            <Check className="h-4 w-4 text-primary shrink-0" />
+                          )}
+                        </button>
+                      ))}
+                      {mailboxList.length === 0 && (
+                        <p className="px-3 py-4 text-sm text-muted-foreground text-center">No mailboxes — add one in Settings</p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* To */}
+              <div className={`flex items-center gap-3 px-5 py-2.5 border-b transition-colors duration-150 ${
+                focusedField === "to" ? "bg-primary/[0.02] border-primary/15" : "border-border/50"
+              }`}>
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-16 shrink-0">To</span>
+                <Input
+                  value={to}
+                  onChange={(e) => setTo(e.target.value)}
+                  onFocus={() => setFocusedField("to")}
+                  onBlur={() => setFocusedField(null)}
+                  placeholder="recipients@email.com"
+                  className="border-0 bg-transparent text-foreground placeholder:text-muted-foreground/40 shadow-none focus-visible:ring-0 px-0 h-8 text-sm"
+                />
+                <div className="flex items-center gap-1.5 shrink-0">
+                  {recipientCount > 0 && (
+                    <Badge variant="secondary" className="text-[10px] h-5 px-1.5 bg-primary/10 text-primary border-0">
+                      {recipientCount}
+                    </Badge>
+                  )}
+                  {!showCc && (
+                    <button onClick={() => setShowCc(true)} className="text-[11px] text-muted-foreground hover:text-primary font-medium transition-colors">
+                      +Cc
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {showCc && (
+                <div className={`flex items-center gap-3 px-5 py-2.5 border-b transition-colors duration-150 animate-fade-in-up ${
+                  focusedField === "cc" ? "bg-primary/[0.02] border-primary/15" : "border-border/50"
+                }`}>
+                  <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-16 shrink-0">Cc</span>
+                  <Input
+                    value={cc}
+                    onChange={(e) => setCc(e.target.value)}
+                    onFocus={() => setFocusedField("cc")}
+                    onBlur={() => setFocusedField(null)}
+                    placeholder="cc@email.com"
+                    className="border-0 bg-transparent text-foreground placeholder:text-muted-foreground/40 shadow-none focus-visible:ring-0 px-0 h-8 text-sm"
+                  />
+                  <button onClick={() => { setShowCc(false); setCc("") }} className="text-muted-foreground hover:text-foreground shrink-0 p-1 rounded-md hover:bg-muted/50 transition-colors">
+                    <X className="h-3 w-3" />
+                  </button>
+                </div>
+              )}
+
+              {/* Subject */}
+              <div className={`flex items-center gap-3 px-5 py-2.5 transition-colors duration-150 ${
+                focusedField === "subject" ? "bg-primary/[0.02]" : ""
+              }`}>
+                <span className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider w-16 shrink-0">Subject</span>
+                <Input
+                  value={subject}
+                  onChange={(e) => setSubject(e.target.value)}
+                  onFocus={() => setFocusedField("subject")}
+                  onBlur={() => setFocusedField(null)}
+                  placeholder="Email subject"
+                  className="border-0 bg-transparent text-foreground placeholder:text-muted-foreground/40 shadow-none focus-visible:ring-0 px-0 h-8 text-sm font-medium"
+                />
               </div>
             </div>
 
-            {/* To */}
-            <div className="flex items-center gap-3 px-5 py-2.5 border-b border-border/50">
-              <span className="text-xs font-medium text-muted-foreground w-14 shrink-0">To</span>
-              <Input
-                value={to}
-                onChange={(e) => setTo(e.target.value)}
-                placeholder="recipients@email.com"
-                className="border-0 bg-transparent text-foreground placeholder:text-muted-foreground/50 shadow-none focus-visible:ring-0 px-0 h-8 text-sm"
+            {/* Body */}
+            <div className="flex-1 overflow-auto relative">
+              <textarea
+                ref={bodyRef}
+                value={body}
+                onChange={(e) => setBody(e.target.value)}
+                onFocus={() => setFocusedField("body")}
+                onBlur={() => setFocusedField(null)}
+                placeholder="Write your email here, or let AI draft it for you..."
+                className="h-full w-full min-h-[300px] resize-none bg-transparent text-foreground placeholder:text-muted-foreground/30 focus:outline-none text-sm leading-[1.8] px-5 py-5"
               />
-              {!showCc && (
-                <button onClick={() => setShowCc(true)} className="text-[11px] text-muted-foreground hover:text-foreground shrink-0">
-                  +Cc
-                </button>
+              {!body && (
+                <div className="absolute bottom-6 left-5 right-5 pointer-events-none">
+                  <div className="flex items-center gap-2 text-muted-foreground/30">
+                    <Sparkles className="h-3.5 w-3.5" />
+                    <span className="text-[11px]">Tip: Use the AI assistant to generate a draft instantly</span>
+                  </div>
+                </div>
               )}
             </div>
 
-            {showCc && (
-              <div className="flex items-center gap-3 px-5 py-2.5 border-b border-border/50">
-                <span className="text-xs font-medium text-muted-foreground w-14 shrink-0">Cc</span>
-                <Input value={cc} onChange={(e) => setCc(e.target.value)} placeholder="cc@email.com" className="border-0 bg-transparent text-foreground placeholder:text-muted-foreground/50 shadow-none focus-visible:ring-0 px-0 h-8 text-sm" />
-                <button onClick={() => { setShowCc(false); setCc("") }} className="text-muted-foreground hover:text-foreground shrink-0">
-                  <X className="h-3 w-3" />
-                </button>
+            {/* ─── Bottom Toolbar ──────────────────────── */}
+            <div className="flex items-center justify-between border-t border-border px-4 py-2">
+              <div className="flex items-center gap-0.5">
+                {[
+                  { icon: Bold, handler: handleBold, tip: "Bold (Ctrl+B)" },
+                  { icon: Italic, handler: handleItalic, tip: "Italic (Ctrl+I)" },
+                  { icon: List, handler: handleList, tip: "Bullet list" },
+                  { icon: Link2, handler: handleLink, tip: "Insert link" },
+                ].map(({ icon: Icon, handler, tip }) => (
+                  <Tooltip key={tip}>
+                    <TooltipTrigger asChild>
+                      <button onClick={handler} className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all">
+                        <Icon className="h-4 w-4" />
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent side="top"><p className="text-xs">{tip}</p></TooltipContent>
+                  </Tooltip>
+                ))}
+                <Separator orientation="vertical" className="mx-1.5 h-4" />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button disabled className="h-8 w-8 flex items-center justify-center rounded-lg text-muted-foreground/30 cursor-not-allowed">
+                      <Paperclip className="h-4 w-4" />
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top"><p className="text-xs">Attachments (coming soon)</p></TooltipContent>
+                </Tooltip>
+
+                {body && (
+                  <>
+                    <Separator orientation="vertical" className="mx-1.5 h-4" />
+                    <span className="text-[10px] text-muted-foreground/50 tabular-nums ml-1">
+                      {wordCount} {wordCount === 1 ? "word" : "words"} · {charCount} chars
+                    </span>
+                  </>
+                )}
               </div>
-            )}
 
-            {/* Subject */}
-            <div className="flex items-center gap-3 px-5 py-2.5">
-              <span className="text-xs font-medium text-muted-foreground w-14 shrink-0">Subject</span>
-              <Input value={subject} onChange={(e) => setSubject(e.target.value)} placeholder="Email subject" className="border-0 bg-transparent text-foreground placeholder:text-muted-foreground/50 shadow-none focus-visible:ring-0 px-0 h-8 text-sm font-medium" />
-            </div>
-          </div>
-
-          {/* Body */}
-          <div className="flex-1 px-5 py-4 overflow-auto">
-            <textarea
-              ref={bodyRef}
-              value={body}
-              onChange={(e) => setBody(e.target.value)}
-              placeholder="Write your email here, or let AI draft it for you..."
-              className="h-full w-full min-h-[300px] resize-none bg-transparent text-foreground placeholder:text-muted-foreground/40 focus:outline-none text-sm leading-relaxed"
-            />
-          </div>
-
-          {/* Toolbar */}
-          <div className="flex items-center justify-between border-t border-border px-5 py-2.5">
-            <div className="flex items-center gap-0.5">
-              {[
-                { icon: Bold, handler: handleBold, tip: "Bold" },
-                { icon: Italic, handler: handleItalic, tip: "Italic" },
-                { icon: List, handler: handleList, tip: "Bullet list" },
-                { icon: Link2, handler: handleLink, tip: "Insert link" },
-              ].map(({ icon: Icon, handler, tip }) => (
-                <button key={tip} onClick={handler} title={tip} className="h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
-                  <Icon className="h-4 w-4" />
-                </button>
-              ))}
-              <Separator orientation="vertical" className="mx-2 h-4" />
-              <button title="Attachments (coming soon)" disabled className="h-8 w-8 flex items-center justify-center rounded-md text-muted-foreground/40 cursor-not-allowed">
-                <Paperclip className="h-4 w-4" />
-              </button>
-            </div>
-            <div className="flex items-center gap-2">
-              <button onClick={handleSaveDraft} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-md hover:bg-muted/50 transition-colors">
-                <Save className="h-3.5 w-3.5" />
-                Save draft
-              </button>
-              <Button
-                size="sm"
-                className="bg-primary text-primary-foreground hover:bg-primary/90 gap-1.5 h-8 px-4 rounded-lg"
-                onClick={handleSend}
-                disabled={isSending}
-              >
-                {isSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
-                {isSending ? "Sending..." : "Send"}
-              </Button>
-            </div>
-          </div>
-        </div>
-
-        {/* ── AI Copilot Panel ──────────────────────────────────── */}
-        {showAiPanel && (
-          <div className="hidden lg:flex w-[300px] flex-col border-l border-border bg-background">
-            {/* Panel header */}
-            <div className="flex items-center justify-between border-b border-border px-4 py-2.5">
               <div className="flex items-center gap-2">
-                <Sparkles className="h-3.5 w-3.5 text-primary" />
-                <span className="text-xs font-semibold text-foreground">Writing Assistant</span>
-              </div>
-              <button onClick={() => setShowAiPanel(false)} className="text-muted-foreground hover:text-foreground p-1 rounded">
-                <X className="h-3.5 w-3.5" />
-              </button>
-            </div>
-
-            <ScrollArea className="flex-1">
-              <div className="p-4 space-y-5">
-                {/* Tone */}
-                <div>
-                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2.5">Tone</p>
-                  <div className="flex flex-wrap gap-1.5">
-                    {toneOptions.map((tone) => (
-                      <button
-                        key={tone.id}
-                        onClick={() => setSelectedTone(tone.id)}
-                        className={`flex items-center gap-1.5 rounded-full px-3 py-1.5 text-xs font-medium transition-all ${
-                          selectedTone === tone.id
-                            ? "bg-primary text-primary-foreground shadow-sm shadow-primary/25"
-                            : "bg-muted/50 text-muted-foreground hover:text-foreground hover:bg-muted"
-                        }`}
-                      >
-                        <span className="text-[10px]">{tone.emoji}</span>
-                        {tone.label}
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Custom email type */}
-                <div>
-                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2.5">Apna email type</p>
-                  <textarea
-                    value={customEmailType}
-                    onChange={(e) => setCustomEmailType(e.target.value)}
-                    placeholder="e.g. shukriya email, meeting request, apology..."
-                    rows={2}
-                    className="w-full rounded-xl border border-border/50 bg-muted/30 px-3 py-2.5 text-xs text-foreground placeholder:text-muted-foreground/70 focus:outline-none focus:ring-2 focus:ring-primary/30 focus:border-primary/50 resize-none"
-                  />
-                </div>
-
-                {/* Templates */}
-                <div>
-                  <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-2.5">Quick Templates</p>
-                  <div className="flex flex-col gap-1.5">
-                    {quickTemplates.map((t) => (
-                      <button
-                        key={t.id}
-                        onClick={() => handleGenerate(t.prompt)}
-                        disabled={isGenerating}
-                        className="group flex items-start gap-2.5 rounded-xl px-3 py-2.5 text-left transition-all border border-transparent hover:border-primary/15 hover:bg-primary/[0.03] disabled:opacity-50"
-                      >
-                        <div className="h-7 w-7 rounded-lg bg-muted/60 group-hover:bg-primary/10 flex items-center justify-center shrink-0 transition-colors">
-                          <t.icon className="h-3.5 w-3.5 text-muted-foreground group-hover:text-primary transition-colors" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-xs font-medium text-foreground">{t.label}</p>
-                          <p className="text-[11px] text-muted-foreground mt-0.5 line-clamp-1">{t.preview}</p>
-                        </div>
-                        <ArrowRight className="h-3 w-3 text-muted-foreground/0 group-hover:text-primary/60 mt-1 shrink-0 transition-colors" />
-                      </button>
-                    ))}
-                  </div>
-                </div>
-
-                {/* Generate */}
-                <button
-                  onClick={() => handleGenerate(customEmailType.trim() || undefined)}
-                  disabled={isGenerating}
-                  className="w-full flex items-center justify-center gap-2 h-9 rounded-xl bg-gradient-to-r from-primary to-primary/80 text-primary-foreground text-xs font-semibold shadow-sm shadow-primary/20 hover:shadow-md hover:shadow-primary/30 transition-all disabled:opacity-60"
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <button onClick={handleSaveDraft} className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-3 py-1.5 rounded-lg hover:bg-muted/50 transition-all">
+                      <Save className="h-3.5 w-3.5" />
+                      <span className="hidden sm:inline">Save draft</span>
+                    </button>
+                  </TooltipTrigger>
+                  <TooltipContent side="top"><p className="text-xs">Save as draft</p></TooltipContent>
+                </Tooltip>
+                <Button
+                  size="sm"
+                  className="bg-gradient-to-r from-primary to-primary/90 text-primary-foreground hover:from-primary/95 hover:to-primary/85 gap-1.5 h-9 px-5 rounded-xl shadow-sm shadow-primary/20 hover:shadow-md hover:shadow-primary/25 transition-all font-medium"
+                  onClick={handleSend}
+                  disabled={isSending}
                 >
-                  {isGenerating ? (
-                    <><Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating...</>
-                  ) : (
-                    <><Wand2 className="h-3.5 w-3.5" /> Generate Draft</>
-                  )}
+                  {isSending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
+                  {isSending ? "Sending..." : "Send"}
+                </Button>
+              </div>
+            </div>
+          </div>
+
+          {/* ─── AI Copilot Panel ──────────────────────── */}
+          {showAiPanel && (
+            <div className="hidden lg:flex w-[320px] flex-col border-l border-border bg-gradient-to-b from-muted/20 to-background">
+              {/* Panel header */}
+              <div className="flex items-center justify-between border-b border-border px-4 py-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="h-6 w-6 rounded-lg bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center">
+                    <Sparkles className="h-3 w-3 text-primary" />
+                  </div>
+                  <span className="text-xs font-semibold text-foreground">Writing Assistant</span>
+                </div>
+                <button onClick={() => setShowAiPanel(false)} className="text-muted-foreground hover:text-foreground p-1 rounded-lg hover:bg-muted/50 transition-colors">
+                  <X className="h-3.5 w-3.5" />
                 </button>
               </div>
-            </ScrollArea>
-          </div>
-        )}
+
+              <ScrollArea className="flex-1">
+                <div className="p-4 space-y-6">
+                  {/* Custom email type */}
+                  <div>
+                    <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-1.5">
+                      <FileText className="h-3 w-3" />
+                      Email Type
+                    </p>
+                    <div className="relative">
+                      <textarea
+                        value={customEmailType}
+                        onChange={(e) => setCustomEmailType(e.target.value)}
+                        placeholder="e.g. thank you email, meeting request, apology..."
+                        rows={2}
+                        className="w-full rounded-xl border border-border/50 bg-background px-3 py-2.5 text-xs text-foreground placeholder:text-muted-foreground/50 focus:outline-none focus:ring-2 focus:ring-primary/20 focus:border-primary/40 resize-none transition-all"
+                      />
+                      {customEmailType && (
+                        <button
+                          onClick={() => setCustomEmailType("")}
+                          className="absolute top-2 right-2 text-muted-foreground/50 hover:text-muted-foreground transition-colors"
+                        >
+                          <X className="h-3 w-3" />
+                        </button>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Generate Button */}
+                  <div className="space-y-2.5">
+                    <button
+                      onClick={() => handleGenerate()}
+                      disabled={isGenerating}
+                      className="w-full flex items-center justify-center gap-2 h-10 rounded-xl bg-gradient-to-r from-primary to-primary/80 text-primary-foreground text-xs font-semibold shadow-md shadow-primary/15 hover:shadow-lg hover:shadow-primary/25 hover:from-primary/95 hover:to-primary/75 transition-all duration-200 disabled:opacity-60 disabled:cursor-not-allowed active:scale-[0.98]"
+                    >
+                      {isGenerating ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          <span>Generating...</span>
+                        </>
+                      ) : (
+                        <>
+                          <Wand2 className="h-4 w-4" />
+                          <span>Generate Draft</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
+                </div>
+              </ScrollArea>
+            </div>
+          )}
+        </div>
       </div>
-    </div>
+    </TooltipProvider>
   )
 }

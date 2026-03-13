@@ -53,6 +53,20 @@ const PROVIDER_OPTIONS: { id: "gmail" | "outlook" | "yahoo" | "other"; label: st
   { id: "other", label: "Other", short: "?" },
 ]
 
+/**
+ * Display name tabhi set hota hai jab @ ke baad kam-az-kam ek dot (.) ho.
+ * TLD (last dot ke baad wala hissa) hata kar bacha hua part return karta hai.
+ * Koi bhi TLD chalega: .com, .org, .net, .edu, .in, .co.uk, .com.pk, etc.
+ */
+function getDisplayNameFromEmail(email: string): string {
+  const trimmed = email.trim()
+  if (!trimmed || !trimmed.includes("@")) return ""
+  const afterAt = trimmed.split("@")[1] ?? ""
+  if (!afterAt || !afterAt.includes(".")) return ""
+  const lastDot = afterAt.lastIndexOf(".")
+  return lastDot > 0 ? afterAt.slice(0, lastDot) : ""
+}
+
 export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
   const [name, setName] = useState("")
   const [email, setEmail] = useState("")
@@ -216,23 +230,17 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
               <p className="text-xs font-medium text-foreground mb-2">Account details</p>
               <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
                 <div className="space-y-1">
-                  <Label htmlFor="mb-name" className="text-xs text-muted-foreground">Display name</Label>
-                  <Input
-                    id="mb-name"
-                    placeholder="e.g. Work"
-                    value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    className="bg-background border-border text-foreground h-8 text-sm"
-                  />
-                </div>
-                <div className="space-y-1">
                   <Label htmlFor="mb-email" className="text-xs text-muted-foreground">Email address</Label>
                   <Input
                     id="mb-email"
                     type="email"
                     placeholder="you@example.com"
                     value={email}
-                    onChange={(e) => setEmail(e.target.value)}
+                    onChange={(e) => {
+                      const v = e.target.value
+                      setEmail(v)
+                      setName(getDisplayNameFromEmail(v))
+                    }}
                     className="bg-background border-border text-foreground h-8 text-sm"
                   />
                   <p className="text-[10px] text-muted-foreground">Username for IMAP/SMTP</p>
@@ -246,6 +254,16 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
                     placeholder="App password or mailbox password"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
+                    className="bg-background border-border text-foreground h-8 text-sm"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label htmlFor="mb-name" className="text-xs text-muted-foreground">Display name</Label>
+                  <Input
+                    id="mb-name"
+                    placeholder="e.g. Work"
+                    value={name}
+                    onChange={(e) => setName(e.target.value)}
                     className="bg-background border-border text-foreground h-8 text-sm"
                   />
                 </div>

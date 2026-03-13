@@ -19,6 +19,7 @@ import {
   Sparkles,
   Sun,
   Moon,
+  Users,
 } from "lucide-react"
 import { useTheme } from "next-themes"
 import {
@@ -106,7 +107,7 @@ function EditMailboxDialog({
       if (mailbox.syncStatus === "syncing") {
         await mailboxesApi.stopSync(mailbox.id).catch(() => { })
       }
-      const res = await mailboxesApi.sync(mailbox.id, { initial_sync: "last_n", limit: 50 })
+      const res = await mailboxesApi.sync(mailbox.id)
       toast.success(`Sync completed! ${res.synced} emails fetched.`, { id: toastId, duration: 4000 })
       onSaved()
       window.dispatchEvent(new CustomEvent("mailbox:sync-complete"))
@@ -218,11 +219,12 @@ function EditMailboxDialog({
 
 const navItems = [
   { id: "dashboard", label: "Daily Briefing", icon: LayoutDashboard },
-  { id: "inbox", label: "Inbox", icon: Inbox },
-  { id: "followups", label: "Follow-ups", icon: Clock },
-  { id: "agent", label: "Voice Agent", icon: Mic },
-  { id: "assistant", label: "AI Assistant", icon: Sparkles },
   { id: "compose", label: "Compose", icon: PenSquare },
+  { id: "inbox", label: "Inbox", icon: Inbox },
+  { id: "contacts", label: "Contacts", icon: Users },
+  { id: "assistant", label: "AI Assistant", icon: Sparkles },
+  { id: "agent", label: "Voice Agent", icon: Mic },
+  { id: "followups", label: "Follow-ups", icon: Clock },
   { id: "analytics", label: "Analytics", icon: BarChart3 },
   { id: "settings", label: "Settings", icon: Settings },
 ]
@@ -293,7 +295,21 @@ export function AppSidebar({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
-  // Poll mailboxes if any is syncing
+  // Poll mailboxes + briefing every 1 minute (keeps list, sync status, unread counts up to date)
+  const POLL_INTERVAL_MS = 60_000
+  useEffect(() => {
+    const interval = setInterval(() => {
+      refreshMailboxes()
+      briefing.get().then((b) => setBadges((prev) => ({
+        ...prev,
+        unread: b.stats.unread_total,
+        followUps: b.stats.overdue_follow_ups + b.stats.pending_follow_ups,
+      }))).catch(() => {})
+    }, POLL_INTERVAL_MS)
+    return () => clearInterval(interval)
+  }, [refreshMailboxes])
+
+  // When any mailbox is syncing, also poll every 5s so status updates quickly
   useEffect(() => {
     const hasSyncing = mailboxes.some(mb => mb.syncStatus === "syncing")
     if (!hasSyncing) return
@@ -306,7 +322,7 @@ export function AppSidebar({
   return (
     <Sidebar className="border-r border-border">
       <SidebarHeader className="p-4">
-        <Link href="/" className="flex items-center gap-3">
+        <Link href="/app" className="flex items-center gap-3">
           <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary">
             <Mail className="h-5 w-5 text-primary-foreground" />
           </div>

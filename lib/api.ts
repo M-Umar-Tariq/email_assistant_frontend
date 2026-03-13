@@ -140,6 +140,7 @@ export type MailboxApi = {
   sync_status: string;
   created_at?: string;
   total_emails?: number;
+  unread?: number;
 };
 
 export const mailboxes = {
@@ -239,13 +240,23 @@ export type EmailStatsApi = {
   today_replies_sent: number;
 };
 
+export type UniqueSenderApi = { from_email: string; from_name: string; count: number; last_date?: string | null };
+export type UniqueSendersApi = { unique_senders_count: number; senders: UniqueSenderApi[] };
+
 export const emails = {
   stats: () => request<EmailStatsApi>("GET", "/emails/stats/"),
-  list: (params?: { mailbox_id?: string; category?: string; unread_only?: boolean; limit?: number; offset?: number }) => {
+  uniqueSenders: (params?: { mailbox_id?: string }) => {
+    const sp = new URLSearchParams();
+    if (params?.mailbox_id) sp.set("mailbox_id", params.mailbox_id);
+    const q = sp.toString();
+    return request<UniqueSendersApi>("GET", `/emails/unique-senders/${q ? `?${q}` : ""}`);
+  },
+  list: (params?: { mailbox_id?: string; category?: string; unread_only?: boolean; from_email?: string; limit?: number; offset?: number }) => {
     const sp = new URLSearchParams();
     if (params?.mailbox_id) sp.set("mailbox_id", params.mailbox_id);
     if (params?.category) sp.set("category", params.category);
     if (params?.unread_only) sp.set("unread_only", "true");
+    if (params?.from_email) sp.set("from_email", params.from_email);
     if (params?.limit != null) sp.set("limit", String(params.limit));
     if (params?.offset != null) sp.set("offset", String(params.offset));
     const q = sp.toString();
@@ -283,7 +294,6 @@ export type FollowUpApi = {
   due_date: string;
   status: string;
   auto_reminder_sent: boolean;
-  suggested_action: string;
   days_waiting: number;
   created_at?: string;
   email_subject?: string;
@@ -294,9 +304,9 @@ export type FollowUpApi = {
 export const followUps = {
   list: (status?: string) =>
     request<FollowUpApi[]>("GET", status ? `/follow-ups/?status=${status}` : "/follow-ups/"),
-  create: (data: { email_id: string; due_date: string; suggested_action?: string }) =>
+  create: (data: { email_id: string; due_date: string }) =>
     request<FollowUpApi>("POST", "/follow-ups/", data),
-  update: (id: string, data: { status?: string; due_date?: string; suggested_action?: string }) =>
+  update: (id: string, data: { status?: string; due_date?: string }) =>
     request<FollowUpApi>("PATCH", `/follow-ups/${id}/`, data),
   complete: (id: string) => request<FollowUpApi>("POST", `/follow-ups/${id}/complete/`),
   autoToday: () => request<{ scanned: number; created: number; skipped_existing: number }>("POST", "/follow-ups/auto/today/"),
@@ -359,7 +369,7 @@ export const analytics = {
 
 export const ai = {
   ask: (query: string, mailboxId?: string, history?: { role: string; content: string }[]) =>
-    request<{ answer: string; sources: { email_id: string; subject: string }[] }>(
+    request<{ answer: string; sources: { email_id: string; subject: string }[]; actions: AgentActionApi[] }>(
       "POST", "/ai/ask/", {
         query,
         ...(mailboxId ? { mailbox_id: mailboxId } : {}),

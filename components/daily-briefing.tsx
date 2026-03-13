@@ -33,6 +33,10 @@ import {
   Hash,
   Zap,
   ChevronDown,
+  TrendingUp,
+  Sun,
+  Moon,
+  Sunset,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -49,6 +53,7 @@ import {
 import { useAuth } from "@/lib/auth-context"
 import { mapBriefingItem, mapEmailListApi } from "@/lib/mappers"
 import type { Mailbox, BriefingItem, Email } from "@/lib/mock-data"
+import { cn } from "@/lib/utils"
 
 export type InboxFilter =
   | "today"
@@ -61,14 +66,14 @@ export type InboxFilter =
 
 const typeConfig: Record<
   string,
-  { icon: React.ElementType; color: string; bg: string; label: string; groupLabel: string; groupOrder: number }
+  { icon: React.ElementType; color: string; bg: string; accent: string; label: string; groupLabel: string; groupOrder: number }
 > = {
-  urgent: { icon: AlertTriangle, color: "text-red-400", bg: "bg-red-400/10", label: "Urgent", groupLabel: "Needs Immediate Attention", groupOrder: 0 },
-  followup: { icon: Clock, color: "text-amber-400", bg: "bg-amber-400/10", label: "Follow-up", groupLabel: "Follow-ups Due", groupOrder: 1 },
-  deadline: { icon: Calendar, color: "text-orange-400", bg: "bg-orange-400/10", label: "Deadline", groupLabel: "Deadlines", groupOrder: 2 },
-  vip: { icon: Star, color: "text-primary", bg: "bg-primary/10", label: "VIP", groupLabel: "VIP", groupOrder: 3 },
-  risk: { icon: ShieldAlert, color: "text-red-400", bg: "bg-red-400/10", label: "Risk", groupLabel: "Risks", groupOrder: 4 },
-  info: { icon: Info, color: "text-muted-foreground", bg: "bg-muted", label: "Info", groupLabel: "Recent Updates", groupOrder: 5 },
+  urgent: { icon: AlertTriangle, color: "text-red-400", bg: "bg-red-400/10", accent: "border-l-red-500", label: "Urgent", groupLabel: "Needs Immediate Attention", groupOrder: 0 },
+  followup: { icon: Clock, color: "text-amber-400", bg: "bg-amber-400/10", accent: "border-l-amber-500", label: "Follow-up", groupLabel: "Follow-ups Due", groupOrder: 1 },
+  deadline: { icon: Calendar, color: "text-orange-400", bg: "bg-orange-400/10", accent: "border-l-orange-500", label: "Deadline", groupLabel: "Upcoming Deadlines", groupOrder: 2 },
+  vip: { icon: Star, color: "text-primary", bg: "bg-primary/10", accent: "border-l-primary", label: "VIP", groupLabel: "VIP Messages", groupOrder: 3 },
+  risk: { icon: ShieldAlert, color: "text-red-400", bg: "bg-red-400/10", accent: "border-l-red-500", label: "Risk", groupLabel: "Potential Risks", groupOrder: 4 },
+  info: { icon: Info, color: "text-blue-400", bg: "bg-blue-400/10", accent: "border-l-blue-500", label: "Info", groupLabel: "Recent Updates", groupOrder: 5 },
 }
 
 /* ─── Helpers ───────────────────────────────────────────────────────── */
@@ -84,10 +89,10 @@ function timeAgo(dateStr: string): string {
   return `${days}d ago`
 }
 
-function isToday(dateStr: string): boolean {
-  const d = new Date(dateStr)
-  const now = new Date()
-  return d.getFullYear() === now.getFullYear() && d.getMonth() === now.getMonth() && d.getDate() === now.getDate()
+function getGreetingIcon(hour: number) {
+  if (hour < 12) return Sun
+  if (hour < 17) return Sunset
+  return Moon
 }
 
 /* ─── Sub-components ────────────────────────────────────────────────── */
@@ -97,37 +102,43 @@ function StatCard({
   value,
   totalValue,
   icon: Icon,
-  iconColor,
+  gradientFrom,
+  gradientTo,
   onClick,
 }: {
   label: string
   value: string | number
   totalValue?: string | number
   icon: React.ElementType
-  iconColor: string
+  gradientFrom: string
+  gradientTo: string
   onClick?: () => void
 }) {
   return (
     <Card
-      className={`bg-card border-border transition-all ${onClick ? "cursor-pointer hover:border-primary/30 hover:shadow-md hover:shadow-primary/5 active:scale-[0.98]" : ""}`}
+      className={cn(
+        "relative overflow-hidden border-border/50 transition-all duration-300",
+        onClick && "cursor-pointer hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-0.5 active:translate-y-0 active:shadow-md"
+      )}
       onClick={onClick}
     >
-      <CardContent className="p-4">
+      <div className={cn("absolute inset-0 opacity-[0.03]", `bg-gradient-to-br ${gradientFrom} ${gradientTo}`)} />
+      <CardContent className="relative p-4">
         <div className="flex items-center justify-between mb-3">
-        <p className="text-xs font-medium text-muted-foreground uppercase tracking-wider">{label}</p>
-          <div className={`flex h-8 w-8 items-center justify-center rounded-lg ${iconColor}`}>
-            <Icon className="h-4 w-4" />
+          <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">{label}</p>
+          <div className={cn("flex h-9 w-9 items-center justify-center rounded-xl", `bg-gradient-to-br ${gradientFrom} ${gradientTo}`)}>
+            <Icon className="h-4 w-4 text-white" />
           </div>
         </div>
         <div className="flex items-end justify-between">
-          <div>
-          <span className="text-2xl font-bold text-foreground">{value}</span>
-            <span className="text-xs text-muted-foreground ml-1.5">today</span>
+          <div className="flex items-baseline gap-1.5">
+            <span className="text-3xl font-bold tracking-tight text-foreground">{value}</span>
+            <span className="text-[10px] font-medium text-muted-foreground/70 uppercase">today</span>
           </div>
           {totalValue !== undefined && (
-            <div className="text-right">
-              <span className="text-sm font-semibold text-muted-foreground">{totalValue}</span>
-              <span className="text-[10px] text-muted-foreground/70 ml-1">total</span>
+            <div className="text-right flex items-baseline gap-1">
+              <span className="text-base font-semibold text-muted-foreground/80">{totalValue}</span>
+              <span className="text-[9px] font-medium text-muted-foreground/50 uppercase">total</span>
             </div>
           )}
         </div>
@@ -139,37 +150,42 @@ function StatCard({
 function MailboxStatus({ mailboxes }: { mailboxes: Mailbox[] }) {
   if (mailboxes.length === 0) return null
   return (
-    <Card className="bg-card border-border">
-      <CardHeader className="pb-3">
-        <CardTitle className="text-sm font-semibold text-foreground">Mailbox Status</CardTitle>
+    <Card className="border-border/50 overflow-hidden">
+      <CardHeader className="pb-3 pt-4">
+        <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
+          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-primary/10">
+            <Inbox className="h-3.5 w-3.5 text-primary" />
+          </div>
+          Mailbox Status
+        </CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-3">
+      <CardContent className="flex flex-col gap-3 pb-4">
         {mailboxes.map((mb) => (
-          <div key={mb.id} className="flex items-start justify-between gap-4">
-            <div className="flex items-start gap-3 min-w-0">
-              <div className="h-2 w-2 rounded-full shrink-0 mt-1.5" style={{ backgroundColor: mb.color }} />
+          <div key={mb.id} className="flex items-start justify-between gap-4 rounded-lg bg-muted/30 px-3 py-2.5 transition-colors hover:bg-muted/50">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <div className="h-2.5 w-2.5 rounded-full shrink-0 ring-2 ring-offset-1 ring-offset-background" style={{ backgroundColor: mb.color, boxShadow: `0 0 8px ${mb.color}40` }} />
               <div className="min-w-0">
-                <p className="text-sm font-medium text-foreground">{mb.name}</p>
-                <p className="text-xs text-muted-foreground break-all">{mb.email}</p>
+                <p className="text-sm font-medium text-foreground leading-tight">{mb.name}</p>
+                <p className="text-[11px] text-muted-foreground break-all">{mb.email}</p>
               </div>
             </div>
-            <div className="flex flex-col items-end gap-1 shrink-0">
+            <div className="flex flex-col items-end gap-1.5 shrink-0">
               {mb.unread > 0 && (
-                <Badge variant="secondary" className="bg-secondary text-secondary-foreground text-xs">
+                <Badge variant="secondary" className="bg-primary/10 text-primary text-[10px] font-semibold px-2 py-0.5">
                   {mb.unread} unread
                 </Badge>
               )}
               <div className="flex items-center gap-1.5">
                 {mb.syncStatus === "syncing" ? (
-                  <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
+                  <Loader2 className="h-3 w-3 animate-spin text-primary" />
                 ) : mb.syncStatus === "error" ? (
-                  <XCircle className="h-3.5 w-3.5 text-red-400" />
+                  <XCircle className="h-3 w-3 text-red-400" />
                 ) : mb.synced ? (
-                  <CheckCircle2 className="h-3.5 w-3.5 text-emerald-400" />
+                  <CheckCircle2 className="h-3 w-3 text-emerald-400" />
                 ) : (
-                  <Clock className="h-3.5 w-3.5 text-amber-400" />
+                  <Clock className="h-3 w-3 text-amber-400" />
                 )}
-                <span className="text-xs text-muted-foreground whitespace-nowrap">
+                <span className="text-[10px] text-muted-foreground whitespace-nowrap">
                   {mb.syncStatus === "syncing" ? "Syncing..." : mb.syncStatus === "pending" ? "Not synced yet" : mb.lastSync}
                 </span>
               </div>
@@ -203,21 +219,21 @@ function renderSummaryLines(summary: string | string[]) {
       const heading = text.slice(0, colonIdx)
       const rest = text.slice(colonIdx + 1).trim()
       return (
-        <div key={i} className="flex items-start gap-2">
-          <span className="text-primary mt-0.5">•</span>
-          <p><span className="font-medium text-foreground">{heading}:</span> {rest}</p>
+        <div key={i} className="flex items-start gap-2 py-0.5">
+          <span className="text-primary/70 mt-0.5 text-[10px]">&#9679;</span>
+          <p className="text-[13px] leading-relaxed"><span className="font-medium text-foreground">{heading}:</span> <span className="text-muted-foreground">{rest}</span></p>
         </div>
       )
     }
     if (isBullet) {
       return (
-        <div key={i} className="flex items-start gap-2">
-          <span className="text-primary mt-0.5">•</span>
-          <p>{text}</p>
+        <div key={i} className="flex items-start gap-2 py-0.5">
+          <span className="text-primary/70 mt-0.5 text-[10px]">&#9679;</span>
+          <p className="text-[13px] leading-relaxed text-muted-foreground">{text}</p>
         </div>
       )
     }
-    return <p key={i}>{cleaned}</p>
+    return <p key={i} className="text-[13px] leading-relaxed text-muted-foreground py-0.5">{cleaned}</p>
   })
 }
 
@@ -236,79 +252,85 @@ function AiSummaryBanner() {
 
   if (!snapshots && !loading) {
     return (
-      <Card className="bg-gradient-to-r from-primary/5 via-primary/[0.03] to-transparent border-primary/20 mb-6 relative overflow-hidden">
-        <CardContent className="p-4">
-          <div className="flex items-center justify-between">
+      <div className="relative mb-6 rounded-xl border border-primary/20 bg-gradient-to-r from-primary/[0.06] via-primary/[0.02] to-transparent p-[1px] overflow-hidden">
+        <div className="rounded-[11px] bg-background/80 backdrop-blur-sm">
+          <div className="flex items-center justify-between px-5 py-4">
             <div className="flex items-center gap-3">
-              <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                <Sparkles className="h-4 w-4 text-primary" />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5">
+                <Sparkles className="h-5 w-5 text-primary" />
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-foreground">Today&apos;s Snapshot</h3>
-                <p className="text-xs text-muted-foreground">AI-powered summary of today&apos;s emails per mailbox</p>
+                <h3 className="text-sm font-semibold text-foreground">AI Snapshot</h3>
+                <p className="text-xs text-muted-foreground">Get a smart summary of today&apos;s emails</p>
               </div>
             </div>
             <Button
               size="sm"
-              className="gap-1.5"
+              className="gap-1.5 rounded-lg shadow-md shadow-primary/20 hover:shadow-lg hover:shadow-primary/30 transition-all"
               onClick={fetchSummary}
             >
               <Sparkles className="h-3.5 w-3.5" />
               Generate
             </Button>
           </div>
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     )
   }
 
   return (
-    <Card className="bg-gradient-to-r from-primary/5 via-primary/[0.03] to-transparent border-primary/20 mb-6 relative overflow-hidden">
-      <div className="absolute top-0 right-0 w-32 h-32 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2" />
-      <CardContent className="p-4 relative">
-        <div className="flex items-center justify-between mb-4">
+    <div className="relative mb-6 rounded-xl border border-primary/20 overflow-hidden">
+      <div className="absolute top-0 right-0 w-40 h-40 bg-primary/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-2xl" />
+      <div className="absolute bottom-0 left-0 w-24 h-24 bg-primary/5 rounded-full translate-y-1/2 -translate-x-1/2 blur-xl" />
+      <div className="relative bg-gradient-to-r from-primary/[0.04] to-transparent">
+        <div className="flex items-center justify-between px-5 py-3.5 border-b border-border/50">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5">
               <Sparkles className="h-4 w-4 text-primary" />
             </div>
-            <h3 className="text-sm font-semibold text-foreground">Today&apos;s Snapshot</h3>
+            <h3 className="text-sm font-semibold text-foreground">AI Snapshot</h3>
           </div>
           <Button
             variant="ghost"
             size="icon"
-            className="h-6 w-6 text-muted-foreground hover:text-foreground"
+            className="h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50"
             onClick={() => setSnapshots(null)}
           >
             <X className="h-3.5 w-3.5" />
           </Button>
         </div>
 
-        {loading ? (
-          <div className="flex items-center gap-2 py-3 pl-12">
-            <Loader2 className="h-3.5 w-3.5 animate-spin text-primary" />
-            <span className="text-sm text-muted-foreground">Analyzing today&apos;s emails...</span>
-          </div>
-        ) : (
-          <div className="flex flex-col gap-4">
-            {snapshots!.map((mb, idx) => (
-              <div key={idx} className="rounded-lg border border-border/50 bg-card/50 p-3">
-                <div className="flex items-center gap-2.5 mb-2">
-                  <div className="h-2.5 w-2.5 rounded-full shrink-0" style={{ backgroundColor: mb.color }} />
-                  <span className="text-sm font-medium text-foreground">{mb.mailbox_name}</span>
-                  <span className="text-xs text-muted-foreground">({mb.mailbox_email})</span>
-                  <Badge variant="secondary" className="ml-auto text-[10px] px-1.5 py-0 bg-secondary/50">
-                    {mb.today_count} {mb.today_count === 1 ? "email" : "emails"}
-                  </Badge>
-                </div>
-                <div className="text-sm text-muted-foreground leading-relaxed space-y-1 pl-5">
-                  {renderSummaryLines(mb.summary)}
-                </div>
+        <div className="px-5 py-4">
+          {loading ? (
+            <div className="flex items-center gap-3 py-6 justify-center">
+              <div className="relative">
+                <div className="h-8 w-8 rounded-full border-2 border-primary/20" />
+                <div className="absolute inset-0 h-8 w-8 rounded-full border-2 border-primary border-t-transparent animate-spin" />
               </div>
-            ))}
-          </div>
-        )}
-      </CardContent>
-    </Card>
+              <span className="text-sm text-muted-foreground">Analyzing today&apos;s emails...</span>
+            </div>
+          ) : (
+            <div className="flex flex-col gap-3">
+              {snapshots!.map((mb, idx) => (
+                <div key={idx} className="rounded-xl border border-border/50 bg-card/60 backdrop-blur-sm overflow-hidden transition-all hover:border-border">
+                  <div className="flex items-center gap-2.5 px-4 py-2.5 bg-muted/20 border-b border-border/30">
+                    <div className="h-2.5 w-2.5 rounded-full shrink-0 ring-1 ring-offset-1 ring-offset-background" style={{ backgroundColor: mb.color, boxShadow: `0 0 6px ${mb.color}30` }} />
+                    <span className="text-sm font-medium text-foreground">{mb.mailbox_name}</span>
+                    <span className="text-[11px] text-muted-foreground">({mb.mailbox_email})</span>
+                    <Badge variant="secondary" className="ml-auto text-[10px] px-2 py-0.5 bg-primary/10 text-primary font-semibold">
+                      {mb.today_count} {mb.today_count === 1 ? "email" : "emails"}
+                    </Badge>
+                  </div>
+                  <div className="px-4 py-3 space-y-0.5">
+                    {renderSummaryLines(mb.summary)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -322,38 +344,53 @@ function EmailTrendsChart({ refreshKey }: { refreshKey: number }) {
   }, [refreshKey])
 
   const maxVal = Math.max(...volumeData.map((d) => d.received), 1)
+  const totalEmails = volumeData.reduce((a, d) => a + d.received, 0)
+  const avgPerDay = Math.round(totalEmails / Math.max(volumeData.length, 1))
 
   if (volumeData.length === 0) return null
 
   return (
-    <Card className="bg-card border-border">
-      <CardHeader className="pb-2">
+    <Card className="border-border/50 overflow-hidden">
+      <CardHeader className="pb-2 pt-4">
         <div className="flex items-center justify-between">
           <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
-            <BarChart3 className="h-4 w-4 text-primary" />
+            <div className="flex h-6 w-6 items-center justify-center rounded-md bg-blue-500/10">
+              <BarChart3 className="h-3.5 w-3.5 text-blue-400" />
+            </div>
             Email Volume
           </CardTitle>
-          <span className="text-[10px] text-muted-foreground">Last 7 days</span>
+          <Badge variant="outline" className="text-[10px] px-2 py-0 border-border/60 text-muted-foreground font-medium">
+            7 days
+          </Badge>
         </div>
       </CardHeader>
-      <CardContent className="pt-2 pb-4">
+      <CardContent className="pt-3 pb-4">
         {(() => {
           const todayAbbr = new Date().toLocaleDateString("en", { weekday: "short" })
           return (
-            <div className="flex items-end justify-between gap-1.5" style={{ height: 96 }}>
+            <div className="flex items-end justify-between gap-2" style={{ height: 100 }}>
               {volumeData.map((d, i) => {
                 const barH = Math.max(Math.round((d.received / maxVal) * 80), 4)
                 const isCurrent = d.date === todayAbbr
                 return (
                   <div key={i} className="flex-1 flex flex-col items-center justify-end h-full group">
-                    <span className="text-[10px] text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity font-medium mb-1">
+                    <span className="text-[10px] text-foreground font-semibold opacity-0 group-hover:opacity-100 transition-all duration-200 mb-1.5 bg-popover border border-border rounded px-1.5 py-0.5 shadow-sm">
                       {d.received}
                     </span>
-                    <div
-                      className={`w-full rounded-t-md transition-all ${isCurrent ? "bg-primary" : "bg-primary/30 group-hover:bg-primary/50"}`}
-                      style={{ height: barH }}
-                    />
-                    <span className={`text-[10px] mt-1 ${isCurrent ? "text-primary font-semibold" : "text-muted-foreground"}`}>
+                    <div className="relative w-full rounded-md overflow-hidden" style={{ height: barH }}>
+                      <div
+                        className={cn(
+                          "absolute inset-0 transition-all duration-300 rounded-md",
+                          isCurrent
+                            ? "bg-gradient-to-t from-primary to-primary/70"
+                            : "bg-gradient-to-t from-primary/25 to-primary/10 group-hover:from-primary/40 group-hover:to-primary/20"
+                        )}
+                      />
+                    </div>
+                    <span className={cn(
+                      "text-[10px] mt-1.5 font-medium",
+                      isCurrent ? "text-primary font-bold" : "text-muted-foreground"
+                    )}>
                       {d.date}
                     </span>
                   </div>
@@ -362,9 +399,12 @@ function EmailTrendsChart({ refreshKey }: { refreshKey: number }) {
             </div>
           )
         })()}
-        <div className="mt-3 flex items-center justify-between text-xs text-muted-foreground">
-          <span>Total: {volumeData.reduce((a, d) => a + d.received, 0)} emails</span>
-          <span>Avg: {Math.round(volumeData.reduce((a, d) => a + d.received, 0) / Math.max(volumeData.length, 1))}/day</span>
+        <div className="mt-4 flex items-center justify-between text-[11px] text-muted-foreground border-t border-border/50 pt-3">
+          <span className="flex items-center gap-1.5">
+            <TrendingUp className="h-3 w-3 text-primary" />
+            <span className="font-medium text-foreground">{totalEmails}</span> total
+          </span>
+          <span><span className="font-medium text-foreground">{avgPerDay}</span> avg/day</span>
         </div>
       </CardContent>
     </Card>
@@ -372,6 +412,14 @@ function EmailTrendsChart({ refreshKey }: { refreshKey: number }) {
 }
 
 /* ─── Top Senders ────────────────────────────────────────────────────── */
+
+const senderColors = [
+  "from-primary to-blue-600",
+  "from-purple-500 to-violet-600",
+  "from-emerald-500 to-teal-600",
+  "from-amber-500 to-orange-600",
+  "from-rose-500 to-pink-600",
+]
 
 function TopSenders({ refreshKey }: { refreshKey: number }) {
   const [senders, setSenders] = useState<{ email: string; name: string; count: number }[]>([])
@@ -385,28 +433,30 @@ function TopSenders({ refreshKey }: { refreshKey: number }) {
   const maxCount = Math.max(...senders.map((s) => s.count), 1)
 
   return (
-    <Card className="bg-card border-border">
-      <CardHeader className="pb-2">
+    <Card className="border-border/50 overflow-hidden">
+      <CardHeader className="pb-2 pt-4">
         <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
-          <Users className="h-4 w-4 text-primary" />
+          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-purple-500/10">
+            <Users className="h-3.5 w-3.5 text-purple-400" />
+          </div>
           Top Senders
         </CardTitle>
       </CardHeader>
-      <CardContent className="flex flex-col gap-2.5 pb-4">
+      <CardContent className="flex flex-col gap-2 pb-4">
         {senders.map((s, i) => (
-          <div key={s.email} className="flex items-center gap-3">
-            <div className="flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-primary/10 text-[10px] font-bold text-primary">
+          <div key={s.email} className="flex items-center gap-3 rounded-lg px-2 py-1.5 transition-colors hover:bg-muted/30">
+            <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-[11px] font-bold text-white bg-gradient-to-br", senderColors[i % senderColors.length])}>
               {s.name ? s.name.charAt(0).toUpperCase() : s.email.charAt(0).toUpperCase()}
             </div>
             <div className="flex-1 min-w-0">
-              <div className="flex items-center justify-between mb-0.5">
+              <div className="flex items-center justify-between mb-1">
                 <p className="text-xs font-medium text-foreground truncate">{s.name || s.email}</p>
-                <span className="text-[10px] text-muted-foreground ml-2 shrink-0">{s.count} emails</span>
+                <span className="text-[10px] text-muted-foreground ml-2 shrink-0 font-medium">{s.count}</span>
               </div>
-              <div className="h-1 rounded-full bg-muted overflow-hidden">
+              <div className="h-1.5 rounded-full bg-muted overflow-hidden">
                 <div
-                  className="h-full rounded-full bg-primary/50 transition-all"
-                  style={{ width: `${(s.count / maxCount) * 100}%` }}
+                  className={cn("h-full rounded-full transition-all duration-500 bg-gradient-to-r", senderColors[i % senderColors.length])}
+                  style={{ width: `${(s.count / maxCount) * 100}%`, opacity: 0.7 }}
                 />
               </div>
             </div>
@@ -425,31 +475,37 @@ function RecentActivityFeed({ emails }: { emails: Email[] }) {
     return sorted.map((e) => {
       let action: string
       let icon: React.ElementType
+      let iconBg: string
       let iconColor: string
       if (e.repliedAt) {
-        action = "Replied to"
+        action = "Replied"
         icon = Send
+        iconBg = "bg-emerald-500/10"
         iconColor = "text-emerald-400"
       } else if (e.read) {
         action = "Read"
         icon = Eye
+        iconBg = "bg-blue-500/10"
         iconColor = "text-blue-400"
       } else {
         action = "Received"
         icon = Mail
+        iconBg = "bg-primary/10"
         iconColor = "text-primary"
       }
-      return { id: e.id, action, subject: e.subject, from: e.from.name || e.from.email, date: e.date, icon, iconColor }
+      return { id: e.id, action, subject: e.subject, from: e.from.name || e.from.email, date: e.date, icon, iconBg, iconColor }
     })
   }, [emails])
 
   if (activities.length === 0) return null
 
   return (
-    <Card className="bg-card border-border">
-      <CardHeader className="pb-2">
+    <Card className="border-border/50 overflow-hidden">
+      <CardHeader className="pb-2 pt-4">
         <CardTitle className="text-sm font-semibold text-foreground flex items-center gap-2">
-          <Activity className="h-4 w-4 text-primary" />
+          <div className="flex h-6 w-6 items-center justify-center rounded-md bg-emerald-500/10">
+            <Activity className="h-3.5 w-3.5 text-emerald-400" />
+          </div>
           Recent Activity
         </CardTitle>
       </CardHeader>
@@ -458,19 +514,21 @@ function RecentActivityFeed({ emails }: { emails: Email[] }) {
           {activities.map((a, i) => {
             const Icon = a.icon
             return (
-              <div key={a.id} className="flex items-start gap-3 py-2 group">
-                <div className="flex flex-col items-center">
-                  <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-muted">
-                    <Icon className={`h-3 w-3 ${a.iconColor}`} />
+              <div key={a.id} className="flex items-start gap-3 py-2 group relative">
+                <div className="flex flex-col items-center z-10">
+                  <div className={cn("flex h-7 w-7 shrink-0 items-center justify-center rounded-lg transition-colors", a.iconBg)}>
+                    <Icon className={cn("h-3.5 w-3.5", a.iconColor)} />
                   </div>
-                  {i < activities.length - 1 && <div className="w-px h-full bg-border mt-1" />}
                 </div>
-                <div className="flex-1 min-w-0 -mt-0.5">
-                  <p className="text-xs text-foreground">
-                    <span className="font-medium">{a.action}</span>{" "}
-                    <span className="text-muted-foreground truncate">{a.subject}</span>
+                {i < activities.length - 1 && (
+                  <div className="absolute left-[13px] top-9 w-px h-[calc(100%-20px)] bg-border/60" />
+                )}
+                <div className="flex-1 min-w-0 pt-0.5">
+                  <p className="text-xs text-foreground leading-relaxed">
+                    <span className="font-semibold">{a.action}</span>{" "}
+                    <span className="text-muted-foreground">{a.subject}</span>
                   </p>
-                  <p className="text-[10px] text-muted-foreground mt-0.5">
+                  <p className="text-[10px] text-muted-foreground/70 mt-0.5 font-medium">
                     {a.from} &middot; {timeAgo(a.date)}
                   </p>
                 </div>
@@ -518,28 +576,34 @@ function GroupedBriefingItems({
 
   if (visibleItems.length === 0) {
     return (
-      <div className="flex flex-col items-center justify-center py-12 text-center">
-        <CheckCircle2 className="h-10 w-10 text-emerald-400/50 mb-3" />
-        <p className="text-sm font-medium text-foreground">All caught up!</p>
-        <p className="text-xs text-muted-foreground mt-1">No pending briefing items</p>
+      <div className="flex flex-col items-center justify-center py-16 text-center">
+        <div className="relative mb-4">
+          <div className="absolute inset-0 bg-emerald-400/20 rounded-full blur-xl" />
+          <div className="relative flex h-16 w-16 items-center justify-center rounded-full bg-gradient-to-br from-emerald-400/20 to-emerald-400/5 ring-1 ring-emerald-400/20">
+            <CheckCircle2 className="h-8 w-8 text-emerald-400" />
+          </div>
+        </div>
+        <p className="text-base font-semibold text-foreground">All caught up!</p>
+        <p className="text-sm text-muted-foreground mt-1.5 max-w-[240px]">No pending briefing items. Enjoy your day!</p>
       </div>
     )
   }
 
   return (
-    <div className="flex flex-col gap-5">
+    <div className="flex flex-col gap-6">
       {groups.map((group) => {
         const GroupIcon = group.config.icon
         return (
           <div key={group.type}>
-            <div className="flex items-center gap-2 mb-2.5">
-              <div className={`flex h-5 w-5 items-center justify-center rounded ${group.config.bg}`}>
-                <GroupIcon className={`h-3 w-3 ${group.config.color}`} />
+            <div className="flex items-center gap-2.5 mb-3">
+              <div className={cn("flex h-6 w-6 items-center justify-center rounded-md", group.config.bg)}>
+                <GroupIcon className={cn("h-3.5 w-3.5", group.config.color)} />
               </div>
-              <h3 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+              <h3 className="text-xs font-bold uppercase tracking-wider text-muted-foreground">
                 {group.config.groupLabel}
               </h3>
-              <Badge variant="secondary" className="text-[10px] px-1.5 py-0 bg-secondary/50">
+              <div className="flex-1 h-px bg-border/50" />
+              <Badge variant="secondary" className="text-[10px] px-2 py-0 bg-muted/80 font-semibold">
                 {group.items.length}
               </Badge>
             </div>
@@ -549,61 +613,69 @@ function GroupedBriefingItems({
                 return (
                   <Card
                     key={item.id}
-                    className="bg-card border-border hover:border-primary/20 transition-all cursor-pointer group"
+                    className={cn(
+                      "border-border/50 transition-all duration-200 cursor-pointer group overflow-hidden",
+                      "hover:shadow-md hover:shadow-primary/5 hover:border-border"
+                    )}
                     onClick={() => onItemClick(item)}
                   >
-                    <CardContent className="p-3.5">
-                      <div className="flex gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-start justify-between gap-2">
-                            <div className="flex items-center gap-2 min-w-0">
-                              <h4 className="text-sm font-medium text-foreground truncate">{item.title}</h4>
-                              <Badge
-                                variant="outline"
-                                className={`text-[10px] px-1.5 py-0 shrink-0 ${
-                                  item.priority === "high"
-                                    ? "border-red-400/30 text-red-400"
-                                    : item.priority === "medium"
-                                      ? "border-amber-400/30 text-amber-400"
-                                      : "border-border text-muted-foreground"
-                                }`}
-                              >
-                                {item.priority}
-                              </Badge>
+                    <div className="flex">
+                      <div className={cn("w-1 shrink-0", config.accent)} />
+                      <CardContent className="flex-1 p-3.5">
+                        <div className="flex gap-3">
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-start justify-between gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
+                                <h4 className="text-sm font-semibold text-foreground truncate">{item.title}</h4>
+                                <Badge
+                                  variant="outline"
+                                  className={cn(
+                                    "text-[10px] px-1.5 py-0 shrink-0 font-semibold",
+                                    item.priority === "high"
+                                      ? "border-red-400/40 text-red-400 bg-red-400/5"
+                                      : item.priority === "medium"
+                                        ? "border-amber-400/40 text-amber-400 bg-amber-400/5"
+                                        : "border-border text-muted-foreground"
+                                  )}
+                                >
+                                  {item.priority}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-all duration-200">
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 rounded-lg text-emerald-400 hover:text-emerald-300 hover:bg-emerald-400/10"
+                                  onClick={(e) => { e.stopPropagation(); onMarkDone(item.id) }}
+                                  title="Mark as done"
+                                >
+                                  <Check className="h-3.5 w-3.5" />
+                                </Button>
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80"
+                                  onClick={(e) => { e.stopPropagation(); onDismiss(item.id) }}
+                                  title="Dismiss"
+                                >
+                                  <X className="h-3.5 w-3.5" />
+                                </Button>
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1 shrink-0 opacity-0 group-hover:opacity-100 transition-opacity">
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 text-emerald-400 hover:text-emerald-300 hover:bg-emerald-400/10"
-                                onClick={(e) => { e.stopPropagation(); onMarkDone(item.id) }}
-                                title="Mark as done"
-                              >
-                                <Check className="h-3.5 w-3.5" />
-                              </Button>
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-6 w-6 text-muted-foreground hover:text-foreground hover:bg-muted"
-                                onClick={(e) => { e.stopPropagation(); onDismiss(item.id) }}
-                                title="Dismiss"
-                              >
-                                <X className="h-3.5 w-3.5" />
-                              </Button>
+                            <p className="mt-1.5 text-xs text-muted-foreground leading-relaxed line-clamp-2">
+                              {item.description}
+                            </p>
+                            <div className="mt-2.5 flex items-center gap-3">
+                              <span className="text-[10px] font-medium text-muted-foreground/70 flex items-center gap-1">
+                                <Mail className="h-3 w-3" />
+                                {item.emails.length} email{item.emails.length !== 1 ? "s" : ""}
+                              </span>
+                              <ArrowRight className="h-3 w-3 text-primary opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all duration-200" />
                             </div>
-                          </div>
-                          <p className="mt-1 text-xs text-muted-foreground leading-relaxed line-clamp-2">
-                            {item.description}
-                          </p>
-                          <div className="mt-2 flex items-center gap-3">
-                            <span className="text-[10px] text-muted-foreground">
-                              {item.emails.length} email{item.emails.length !== 1 ? "s" : ""}
-                            </span>
-                            <ArrowRight className="h-3 w-3 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
                           </div>
                         </div>
-                      </div>
-                    </CardContent>
+                      </CardContent>
+                    </div>
                   </Card>
                 )
               })}
@@ -650,21 +722,22 @@ function AiProfileWidget() {
 
   if (!profile && !loading) {
     return (
-      <Card className="bg-gradient-to-br from-purple-500/5 via-primary/5 to-transparent border-purple-500/20 overflow-hidden relative">
-        <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/5 rounded-full -translate-y-1/2 translate-x-1/2" />
+      <Card className="border-purple-500/20 overflow-hidden relative">
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-500/[0.04] via-primary/[0.02] to-transparent" />
+        <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-xl" />
         <CardContent className="p-4 relative">
           <div className="flex items-center gap-3 mb-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-purple-500/10">
-              <Brain className="h-4 w-4 text-purple-400" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500/20 to-purple-500/5">
+              <Brain className="h-5 w-5 text-purple-400" />
             </div>
             <div className="flex-1 min-w-0">
               <h3 className="text-sm font-semibold text-foreground">AI Personality Profile</h3>
-              <p className="text-[11px] text-muted-foreground">Your email-based personality insights</p>
+              <p className="text-[11px] text-muted-foreground">Email-based personality insights</p>
             </div>
           </div>
           <Button
             size="sm"
-            className="w-full gap-1.5 bg-purple-600 hover:bg-purple-700 text-white"
+            className="w-full gap-1.5 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white rounded-lg shadow-md shadow-purple-500/20"
             onClick={loadProfile}
           >
             <Brain className="h-3.5 w-3.5" />
@@ -677,16 +750,20 @@ function AiProfileWidget() {
 
   if (loading) {
     return (
-      <Card className="bg-gradient-to-br from-purple-500/5 via-primary/5 to-transparent border-purple-500/20">
-        <CardContent className="p-4">
+      <Card className="border-purple-500/20 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-500/[0.04] to-transparent" />
+        <CardContent className="p-4 relative">
           <div className="flex items-center gap-3 mb-4">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-purple-500/10">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500/20 to-purple-500/5">
               <Brain className="h-4 w-4 text-purple-400" />
             </div>
-            <h3 className="text-sm font-semibold text-foreground">AI Personality Profile</h3>
+            <h3 className="text-sm font-semibold text-foreground">AI Profile</h3>
           </div>
           <div className="flex items-center justify-center gap-2 py-4">
-            <div className="h-5 w-5 animate-spin rounded-full border-2 border-purple-400 border-t-transparent" />
+            <div className="relative">
+              <div className="h-6 w-6 rounded-full border-2 border-purple-400/20" />
+              <div className="absolute inset-0 h-6 w-6 rounded-full border-2 border-purple-400 border-t-transparent animate-spin" />
+            </div>
             <span className="text-xs text-muted-foreground">Loading profile...</span>
           </div>
         </CardContent>
@@ -696,19 +773,20 @@ function AiProfileWidget() {
 
   if (profile && profile.email_count_analyzed === 0) {
     return (
-      <Card className="bg-gradient-to-br from-purple-500/5 via-primary/5 to-transparent border-purple-500/20">
-        <CardContent className="p-4">
+      <Card className="border-purple-500/20 overflow-hidden">
+        <div className="absolute inset-0 bg-gradient-to-br from-purple-500/[0.04] to-transparent" />
+        <CardContent className="p-4 relative">
           <div className="flex items-center gap-3 mb-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-purple-500/10">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500/20 to-purple-500/5">
               <Brain className="h-4 w-4 text-purple-400" />
             </div>
-            <h3 className="text-sm font-semibold text-foreground">AI Personality Profile</h3>
+            <h3 className="text-sm font-semibold text-foreground">AI Profile</h3>
           </div>
           <p className="text-xs text-muted-foreground text-center py-3">
             No emails analyzed yet. Sync a mailbox first.
           </p>
-          <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs" disabled={building} onClick={rebuildProfile}>
-            <RefreshCw className={`h-3 w-3 ${building ? "animate-spin" : ""}`} />
+          <Button size="sm" variant="outline" className="w-full gap-1.5 text-xs rounded-lg border-purple-500/20 hover:bg-purple-500/5" disabled={building} onClick={rebuildProfile}>
+            <RefreshCw className={cn("h-3 w-3", building && "animate-spin")} />
             Build Profile
           </Button>
         </CardContent>
@@ -719,43 +797,42 @@ function AiProfileWidget() {
   if (!profile) return null
 
   return (
-    <Card className="bg-gradient-to-br from-purple-500/5 via-primary/5 to-transparent border-purple-500/20 overflow-hidden relative">
-      <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/5 rounded-full -translate-y-1/2 translate-x-1/2" />
+    <Card className="border-purple-500/20 overflow-hidden relative">
+      <div className="absolute inset-0 bg-gradient-to-br from-purple-500/[0.04] via-primary/[0.02] to-transparent" />
+      <div className="absolute top-0 right-0 w-24 h-24 bg-purple-500/5 rounded-full -translate-y-1/2 translate-x-1/2 blur-xl" />
       <CardContent className="p-4 relative">
-        {/* Header */}
         <div className="flex items-center justify-between mb-3">
           <div className="flex items-center gap-3">
-            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-purple-500/10">
+            <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-purple-500/20 to-purple-500/5">
               <Brain className="h-4 w-4 text-purple-400" />
             </div>
             <div>
               <h3 className="text-sm font-semibold text-foreground">AI Profile</h3>
-              <p className="text-[10px] text-muted-foreground">{profile.email_count_analyzed} emails analyzed</p>
+              <p className="text-[10px] text-muted-foreground font-medium">{profile.email_count_analyzed} emails analyzed</p>
             </div>
           </div>
           <Button
             variant="ghost"
             size="icon"
-            className="h-7 w-7 text-muted-foreground hover:text-foreground"
+            className="h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-purple-500/10"
             disabled={building}
             onClick={rebuildProfile}
             title="Rebuild profile"
           >
-            <RefreshCw className={`h-3.5 w-3.5 ${building ? "animate-spin" : ""}`} />
+            <RefreshCw className={cn("h-3.5 w-3.5", building && "animate-spin")} />
           </Button>
         </div>
 
-        {/* Personality Traits */}
         {profile.personality_traits.length > 0 && (
           <div className="mb-3">
             <div className="flex flex-wrap gap-1.5">
               {profile.personality_traits.slice(0, expanded ? undefined : 4).map((t) => (
-                <Badge key={t} className="text-[10px] bg-purple-500/10 text-purple-300 border-purple-500/20 hover:bg-purple-500/20">
+                <Badge key={t} className="text-[10px] bg-purple-500/10 text-purple-300 border-purple-500/20 hover:bg-purple-500/15 transition-colors">
                   {t}
                 </Badge>
               ))}
               {!expanded && profile.personality_traits.length > 4 && (
-                <Badge variant="outline" className="text-[10px] text-muted-foreground border-border cursor-pointer hover:border-purple-500/30" onClick={() => setExpanded(true)}>
+                <Badge variant="outline" className="text-[10px] text-muted-foreground border-border cursor-pointer hover:border-purple-500/30 transition-colors" onClick={() => setExpanded(true)}>
                   +{profile.personality_traits.length - 4}
                 </Badge>
               )}
@@ -763,32 +840,37 @@ function AiProfileWidget() {
           </div>
         )}
 
-        {/* Compact Info Grid */}
         <div className="space-y-2">
-          <div className="flex items-center gap-2 rounded-md bg-card/80 border border-border/50 px-3 py-2">
-            <MessageSquare className="h-3.5 w-3.5 text-blue-400 shrink-0" />
+          <div className="flex items-center gap-2.5 rounded-lg bg-card/80 border border-border/40 px-3 py-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-blue-500/10 shrink-0">
+              <MessageSquare className="h-3.5 w-3.5 text-blue-400" />
+            </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[10px] text-muted-foreground">Communication</p>
+              <p className="text-[10px] text-muted-foreground font-medium">Communication</p>
               <p className="text-[11px] text-foreground font-medium truncate">
                 {profile.communication_style.tone} &middot; {profile.communication_style.formality}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 rounded-md bg-card/80 border border-border/50 px-3 py-2">
-            <Briefcase className="h-3.5 w-3.5 text-amber-400 shrink-0" />
+          <div className="flex items-center gap-2.5 rounded-lg bg-card/80 border border-border/40 px-3 py-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-amber-500/10 shrink-0">
+              <Briefcase className="h-3.5 w-3.5 text-amber-400" />
+            </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[10px] text-muted-foreground">Work Style</p>
+              <p className="text-[10px] text-muted-foreground font-medium">Work Style</p>
               <p className="text-[11px] text-foreground font-medium truncate">
                 {profile.work_patterns.peak_hours}
               </p>
             </div>
           </div>
 
-          <div className="flex items-center gap-2 rounded-md bg-card/80 border border-border/50 px-3 py-2">
-            <Zap className="h-3.5 w-3.5 text-emerald-400 shrink-0" />
+          <div className="flex items-center gap-2.5 rounded-lg bg-card/80 border border-border/40 px-3 py-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-500/10 shrink-0">
+              <Zap className="h-3.5 w-3.5 text-emerald-400" />
+            </div>
             <div className="flex-1 min-w-0">
-              <p className="text-[10px] text-muted-foreground">Response Style</p>
+              <p className="text-[10px] text-muted-foreground font-medium">Response Style</p>
               <p className="text-[11px] text-foreground font-medium truncate">
                 {profile.response_preferences.urgency_handling}
               </p>
@@ -796,74 +878,69 @@ function AiProfileWidget() {
           </div>
         </div>
 
-        {/* Expanded Details */}
         {expanded && (
-          <div className="mt-3 space-y-3 pt-3 border-t border-border/50">
-            {/* Key Contacts */}
+          <div className="mt-3 space-y-3 pt-3 border-t border-border/40">
             {profile.key_contacts.length > 0 && (
               <div>
                 <div className="flex items-center gap-1.5 mb-2">
                   <UserCheck className="h-3 w-3 text-primary" />
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Key Contacts</p>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Key Contacts</p>
                 </div>
                 <div className="space-y-1.5">
                   {profile.key_contacts.slice(0, 4).map((c) => (
-                    <div key={c.email} className="flex items-center gap-2">
-                      <div className="h-5 w-5 rounded-full bg-primary/10 flex items-center justify-center shrink-0">
+                    <div key={c.email} className="flex items-center gap-2 rounded-md px-1.5 py-1 hover:bg-muted/30 transition-colors">
+                      <div className="h-5 w-5 rounded-md bg-gradient-to-br from-primary/20 to-primary/5 flex items-center justify-center shrink-0">
                         <span className="text-[8px] font-bold text-primary">{(c.name || c.email).slice(0, 2).toUpperCase()}</span>
                       </div>
                       <span className="text-[11px] text-foreground font-medium truncate">{c.name || c.email}</span>
-                      <span className="text-[10px] text-muted-foreground shrink-0">{c.relationship}</span>
+                      <span className="text-[10px] text-muted-foreground shrink-0 ml-auto">{c.relationship}</span>
                     </div>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* Topics */}
             {profile.topics_and_interests.length > 0 && (
               <div>
                 <div className="flex items-center gap-1.5 mb-2">
                   <Hash className="h-3 w-3 text-primary" />
-                  <p className="text-[10px] font-semibold text-muted-foreground uppercase tracking-wider">Topics & Interests</p>
+                  <p className="text-[10px] font-bold text-muted-foreground uppercase tracking-wider">Topics & Interests</p>
                 </div>
                 <div className="flex flex-wrap gap-1">
                   {profile.topics_and_interests.map((t) => (
-                    <Badge key={t} variant="outline" className="text-[10px] border-border/60">{t}</Badge>
+                    <Badge key={t} variant="outline" className="text-[10px] border-border/60 hover:border-primary/30 transition-colors">{t}</Badge>
                   ))}
                 </div>
               </div>
             )}
 
-            {/* More Details */}
             <div className="grid grid-cols-2 gap-2">
-              <div className="rounded-md bg-card/80 border border-border/50 p-2">
-                <p className="text-[10px] text-muted-foreground mb-0.5">Greeting</p>
+              <div className="rounded-lg bg-card/80 border border-border/40 p-2.5">
+                <p className="text-[10px] text-muted-foreground mb-0.5 font-medium">Greeting</p>
                 <p className="text-[11px] text-foreground font-medium truncate">{profile.communication_style.greeting_pattern || "—"}</p>
               </div>
-              <div className="rounded-md bg-card/80 border border-border/50 p-2">
-                <p className="text-[10px] text-muted-foreground mb-0.5">Sign-off</p>
+              <div className="rounded-lg bg-card/80 border border-border/40 p-2.5">
+                <p className="text-[10px] text-muted-foreground mb-0.5 font-medium">Sign-off</p>
                 <p className="text-[11px] text-foreground font-medium truncate">{profile.communication_style.sign_off_pattern || "—"}</p>
               </div>
-              <div className="rounded-md bg-card/80 border border-border/50 p-2">
-                <p className="text-[10px] text-muted-foreground mb-0.5">Delegation</p>
+              <div className="rounded-lg bg-card/80 border border-border/40 p-2.5">
+                <p className="text-[10px] text-muted-foreground mb-0.5 font-medium">Delegation</p>
                 <p className="text-[11px] text-foreground font-medium truncate">{profile.response_preferences.delegation_style}</p>
               </div>
-              <div className="rounded-md bg-card/80 border border-border/50 p-2">
-                <p className="text-[10px] text-muted-foreground mb-0.5">Follow-up</p>
+              <div className="rounded-lg bg-card/80 border border-border/40 p-2.5">
+                <p className="text-[10px] text-muted-foreground mb-0.5 font-medium">Follow-up</p>
                 <p className="text-[11px] text-foreground font-medium truncate">{profile.response_preferences.follow_up_pattern}</p>
               </div>
             </div>
           </div>
         )}
 
-        {/* Toggle expand/collapse */}
         <button
-          className="mt-3 w-full flex items-center justify-center gap-1 text-[11px] text-purple-400 hover:text-purple-300 transition-colors py-1"
+          className="mt-3 w-full flex items-center justify-center gap-1 text-[11px] text-purple-400 hover:text-purple-300 transition-colors py-1.5 rounded-lg hover:bg-purple-500/5"
           onClick={() => setExpanded(!expanded)}
         >
           {expanded ? "Show less" : "View full profile"}
-          <ChevronDown className={`h-3 w-3 transition-transform ${expanded ? "rotate-180" : ""}`} />
+          <ChevronDown className={cn("h-3 w-3 transition-transform duration-200", expanded && "rotate-180")} />
         </button>
       </CardContent>
     </Card>
@@ -985,14 +1062,12 @@ export function DailyBriefing({
 
   const todayTotal = emailStats.todayTotal
   const todayUnread = emailStats.todayUnread
-  const todayReplied = emailStats.todayReplied
   const todayUnreplied = emailStats.todayUnreplied
   const todayRepliesSent = emailStats.todayRepliesSent
   const totalRepliesSent = emailStats.totalRepliesSent
 
   const grandTotal = emailStats.grandTotal
   const totalUnread = emailStats.totalUnread
-  const totalReplied = emailStats.totalReplied
   const totalUnreplied = emailStats.totalUnreplied
 
   const handleCardClick = (filter: InboxFilter) => {
@@ -1024,6 +1099,7 @@ export function DailyBriefing({
   const today = new Date()
   const hour = today.getHours()
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"
+  const GreetingIcon = getGreetingIcon(hour)
   const formattedDate = today.toLocaleDateString("en-US", {
     weekday: "long",
     month: "long",
@@ -1033,39 +1109,62 @@ export function DailyBriefing({
 
   if (loading) {
     return (
-      <div className="flex h-full items-center justify-center">
-        <div className="h-8 w-8 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+      <div className="flex h-full flex-col items-center justify-center gap-3">
+        <div className="relative">
+          <div className="h-10 w-10 rounded-full border-2 border-primary/20" />
+          <div className="absolute inset-0 h-10 w-10 rounded-full border-2 border-primary border-t-transparent animate-spin" />
+        </div>
+        <p className="text-sm text-muted-foreground">Loading your briefing...</p>
       </div>
     )
   }
 
   return (
     <div className="flex h-full flex-col">
-      <header className="flex items-center justify-between border-b border-border px-6 py-4">
-        <div>
-          <h1 className="text-xl font-bold text-foreground">
-            {greeting}, {user?.name || "there"}
-          </h1>
-          <p className="text-sm text-muted-foreground">{formattedDate}</p>
-        </div>
-        <div className="flex items-center gap-2">
-          <Badge variant="outline" className="border-primary/30 text-primary">
-            <Mail className="mr-1 h-3 w-3" />
-            {stats.unreadTotal} unread
-          </Badge>
+      {/* Hero Header */}
+      <header className="relative overflow-hidden border-b border-border/50">
+        <div className="absolute inset-0 bg-gradient-to-r from-primary/[0.04] via-primary/[0.02] to-transparent" />
+        <div className="absolute top-0 right-0 w-64 h-64 bg-primary/[0.03] rounded-full -translate-y-1/2 translate-x-1/3 blur-3xl" />
+        <div className="relative px-6 py-5">
+          <div className="flex items-center justify-between">
+            <div className="flex items-center gap-4">
+              <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/10">
+                <GreetingIcon className="h-6 w-6 text-primary" />
+              </div>
+              <div>
+                <h1 className="text-xl font-bold text-foreground tracking-tight">
+                  {greeting}, <span className="bg-gradient-to-r from-primary to-primary/70 bg-clip-text text-transparent">{user?.name || "there"}</span>
+                </h1>
+                <p className="text-sm text-muted-foreground mt-0.5">{formattedDate}</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2.5">
+              {stats.highPriority > 0 && (
+                <Badge variant="outline" className="border-red-400/30 text-red-400 bg-red-400/5 gap-1 font-semibold">
+                  <AlertTriangle className="h-3 w-3" />
+                  {stats.highPriority} urgent
+                </Badge>
+              )}
+              <Badge variant="outline" className="border-primary/30 text-primary bg-primary/5 gap-1 font-semibold">
+                <Mail className="h-3 w-3" />
+                {stats.unreadTotal} unread
+              </Badge>
+            </div>
+          </div>
         </div>
       </header>
 
       <ScrollArea className="flex-1">
-        <div className="p-6">
+        <div className="p-6 space-y-6">
           {/* Stats Row */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4 mb-6">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
             <StatCard
               label="Emails"
               value={todayTotal}
               totalValue={grandTotal}
               icon={Inbox}
-              iconColor="bg-primary/10 text-primary"
+              gradientFrom="from-blue-500"
+              gradientTo="to-blue-600"
               onClick={() => handleCardClick("today")}
             />
             <StatCard
@@ -1073,7 +1172,8 @@ export function DailyBriefing({
               value={todayUnread}
               totalValue={totalUnread}
               icon={MailOpen}
-              iconColor="bg-amber-400/10 text-amber-400"
+              gradientFrom="from-amber-500"
+              gradientTo="to-orange-500"
               onClick={() => handleCardClick("today_unread")}
             />
             <StatCard
@@ -1081,7 +1181,8 @@ export function DailyBriefing({
               value={todayRepliesSent}
               totalValue={totalRepliesSent}
               icon={Reply}
-              iconColor="bg-emerald-400/10 text-emerald-400"
+              gradientFrom="from-emerald-500"
+              gradientTo="to-teal-600"
               onClick={() => handleCardClick("today_replied")}
             />
             <StatCard
@@ -1089,7 +1190,8 @@ export function DailyBriefing({
               value={todayUnreplied}
               totalValue={totalUnreplied}
               icon={MailX}
-              iconColor="bg-red-400/10 text-red-400"
+              gradientFrom="from-rose-500"
+              gradientTo="to-red-600"
               onClick={() => handleCardClick("today_unreplied")}
             />
           </div>
@@ -1102,10 +1204,13 @@ export function DailyBriefing({
             {/* Left: Grouped Briefing Items (2 cols) */}
             <div className="lg:col-span-2 flex flex-col gap-4">
               <div className="flex items-center justify-between">
-                <h2 className="text-base font-semibold text-foreground">Today&apos;s Briefing</h2>
-                <span className="text-xs text-muted-foreground">
+                <h2 className="text-base font-bold text-foreground flex items-center gap-2">
+                  <Sparkles className="h-4 w-4 text-primary" />
+                  Today&apos;s Briefing
+                </h2>
+                <span className="text-xs text-muted-foreground font-medium">
                   {briefingItems.filter((i) => !dismissedIds.has(i.id)).length} items
-                              </span>
+                </span>
               </div>
               <GroupedBriefingItems
                 items={briefingItems}
@@ -1122,6 +1227,7 @@ export function DailyBriefing({
               <MailboxStatus mailboxes={mailboxes} />
               <EmailTrendsChart refreshKey={widgetRefreshKey} />
               <TopSenders refreshKey={widgetRefreshKey} />
+              <RecentActivityFeed emails={allEmails} />
             </div>
           </div>
         </div>

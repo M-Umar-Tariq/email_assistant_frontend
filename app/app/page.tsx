@@ -11,6 +11,7 @@ import { ComposeView } from "@/components/compose-view"
 import { AnalyticsView } from "@/components/analytics-view"
 import { SettingsView } from "@/components/settings-view"
 import { FollowupTracker } from "@/components/followup-tracker"
+import { ContactsView } from "@/components/contacts-view"
 import { AiAgent } from "@/components/ai-agent"
 import { AddMailboxDialog } from "@/components/add-mailbox-dialog"
 import { mailboxes as mailboxesApi } from "@/lib/api"
@@ -49,26 +50,30 @@ export default function AppDashboard() {
   const [inboxFilter, setInboxFilter] = useState<InboxFilter | null>(null)
   const [initialEmailId, setInitialEmailId] = useState<string | null>(null)
   const [initialComposeMode, setInitialComposeMode] = useState<"reply" | null>(null)
+  const [initialSenderEmail, setInitialSenderEmail] = useState<string | null>(null)
+  const [initialSenderName, setInitialSenderName] = useState<string | null>(null)
+  const [initialComposeTo, setInitialComposeTo] = useState<string | null>(null)
+  const [initialComposeToName, setInitialComposeToName] = useState<string | null>(null)
   const syncingRef = useRef(false)
 
-  // Sync on mount + every 1 minute (single effect so interval is reliable)
+  // Sync on mount + every 1 minute
   useEffect(() => {
-    let cancelled = false
+    let active = true
     const run = async () => {
       if (syncingRef.current) return
       syncingRef.current = true
       try {
         await runSyncAll()
       } catch {
-        if (!cancelled) window.dispatchEvent(new CustomEvent("mailbox:sync-complete"))
+        if (active) window.dispatchEvent(new CustomEvent("mailbox:sync-complete"))
       } finally {
-        if (!cancelled) syncingRef.current = false
+        syncingRef.current = false
       }
     }
-    run() // run once as soon as user lands on app
-    const interval = setInterval(run, AUTO_SYNC_INTERVAL) // then every 1 min
+    run()
+    const interval = setInterval(run, AUTO_SYNC_INTERVAL)
     return () => {
-      cancelled = true
+      active = false
       clearInterval(interval)
     }
   }, [])
@@ -90,6 +95,42 @@ export default function AppDashboard() {
   const handleEmailConsumed = useCallback(() => {
     setInitialEmailId(null)
     setInitialComposeMode(null)
+  }, [])
+
+  const handleSenderConsumed = useCallback(() => {
+    setInitialSenderEmail(null)
+    setInitialSenderName(null)
+  }, [])
+
+  useEffect(() => {
+    const onShowEmailsFromSender = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { from_email?: string; from_name?: string }
+      if (detail?.from_email) {
+        setInitialSenderEmail(detail.from_email)
+        setInitialSenderName(detail.from_name ?? null)
+        setActiveView("inbox")
+      }
+    }
+    window.addEventListener("contacts:showEmailsFrom", onShowEmailsFromSender as EventListener)
+    return () => window.removeEventListener("contacts:showEmailsFrom", onShowEmailsFromSender as EventListener)
+  }, [])
+
+  useEffect(() => {
+    const onComposeOpenWith = (e: Event) => {
+      const detail = (e as CustomEvent).detail as { to?: string; toName?: string }
+      if (detail?.to) {
+        setInitialComposeTo(detail.to)
+        setInitialComposeToName(detail.toName ?? null)
+        setActiveView("compose")
+      }
+    }
+    window.addEventListener("compose:openWith", onComposeOpenWith as EventListener)
+    return () => window.removeEventListener("compose:openWith", onComposeOpenWith as EventListener)
+  }, [])
+
+  const handleComposeConsumed = useCallback(() => {
+    setInitialComposeTo(null)
+    setInitialComposeToName(null)
   }, [])
 
   useEffect(() => {
@@ -152,12 +193,24 @@ export default function AppDashboard() {
                 initialEmailId={initialEmailId}
                 initialComposeMode={initialComposeMode}
                 onInitialEmailConsumed={handleEmailConsumed}
+                initialSenderEmail={initialSenderEmail}
+                initialSenderName={initialSenderName}
+                onInitialSenderConsumed={handleSenderConsumed}
               />
             )}
             {activeView === "followups" && <FollowupTracker />}
+            {activeView === "contacts" && (
+              <ContactsView onAddMailboxClick={() => setShowAddMailbox(true)} />
+            )}
             {activeView === "agent" && <AiAgent />}
             {activeView === "assistant" && <AiAssistant />}
-            {activeView === "compose" && <ComposeView />}
+            {activeView === "compose" && (
+              <ComposeView
+                initialTo={initialComposeTo}
+                initialToName={initialComposeToName}
+                onInitialComposeConsumed={handleComposeConsumed}
+              />
+            )}
             {activeView === "analytics" && <AnalyticsView />}
             {activeView === "settings" && (
               <SettingsView

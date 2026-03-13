@@ -24,6 +24,10 @@ export type Email = {
   schedulingInfo?: SchedulingInfo | null
   sentimentScore?: number // -1 to 1
   repliedAt?: string | null
+  /** Present when email is loaded with full detail (e.g. mapEmailDetailApi). */
+  sentReplies?: { date: string; from_email: string; to: string[]; subject: string; body: string }[]
+  /** Present when email is loaded with full detail (e.g. mapEmailDetailApi). */
+  threadReplies?: { date: string; from_name: string; from_email: string; to: { name: string; email: string }[]; subject: string; body: string; body_html: string }[]
 }
 
 export type EmailCategory = "important" | "updates" | "promotions" | "social" | "newsletters" | "finance"
@@ -113,6 +117,7 @@ export type ChatMessage = {
   role: "user" | "assistant"
   content: string
   sources?: { emailId: string; subject: string }[]
+  actions?: { id: string; type: string; label: string; description: string; status: string; to?: string | string[]; subject?: string; body?: string; mailbox_id?: string; email_id?: string; instructions?: string; requires_approval: boolean; timestamp: string; execution_details?: string }[]
   timestamp: string
 }
 

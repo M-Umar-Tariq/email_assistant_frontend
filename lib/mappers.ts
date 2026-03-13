@@ -8,7 +8,6 @@ export type FollowUpItem = {
   from: { name: string; email: string }
   dueDate: string
   status: string
-  suggestedAction: string
   daysWaiting: number
   autoReminderSent: boolean
 }
@@ -83,7 +82,6 @@ export function mapFollowUpApi(f: FollowUpApi): FollowUpItem {
     from: { name: f.from_name ?? "", email: f.from_email ?? "" },
     dueDate: f.due_date,
     status: f.status,
-    suggestedAction: f.suggested_action ?? "",
     daysWaiting: f.days_waiting ?? 0,
     autoReminderSent: f.auto_reminder_sent ?? false,
   }
