@@ -13,17 +13,22 @@ import { SettingsView } from "@/components/settings-view"
 import { FollowupTracker } from "@/components/followup-tracker"
 import { ContactsView } from "@/components/contacts-view"
 import { AiAgent } from "@/components/ai-agent"
+import { FloatingAiChat } from "@/components/floating-ai-chat"
 import { AddMailboxDialog } from "@/components/add-mailbox-dialog"
+import { AiChatProvider } from "@/lib/ai-chat-context"
 import { mailboxes as mailboxesApi } from "@/lib/api"
 
 const AUTO_SYNC_INTERVAL = 60_000 // 1 minute
 
 async function runSyncAll() {
   const mbs = await mailboxesApi.list()
-  if (mbs.length === 0) return
+  // New mailboxes stay `pending` until the post-connect dialog (Continue / Skip) or a manual sync.
+  // Otherwise the 1-minute auto-sync would fetch the full inbox while the user is still choosing.
+  const eligible = mbs.filter((mb) => mb.sync_status !== "pending")
+  if (eligible.length === 0) return
 
   const settled = await Promise.allSettled(
-    mbs.map((mb: { id: string }) => mailboxesApi.sync(mb.id))
+    eligible.map((mb) => mailboxesApi.sync(mb.id))
   )
 
   let totalSynced = 0
@@ -162,70 +167,76 @@ export default function AppDashboard() {
   }, [activeView])
 
   return (
-    <SidebarProvider>
-      <AppSidebar
-        activeView={activeView}
-        onViewChange={setActiveView}
-        onAddMailboxClick={() => setShowAddMailbox(true)}
-        mailboxListKey={mailboxListKey}
-      />
-      <SidebarInset className="overflow-hidden">
-        <div className="flex h-svh flex-col">
-          {/* Mobile trigger */}
-          <div className="flex items-center gap-2 border-b border-border px-4 py-2 md:hidden">
-            <SidebarTrigger />
-            <span className="text-sm font-semibold text-foreground">MailMind</span>
-          </div>
+    <AiChatProvider>
+      <SidebarProvider>
+        <AppSidebar
+          activeView={activeView}
+          onViewChange={setActiveView}
+          onAddMailboxClick={() => setShowAddMailbox(true)}
+          mailboxListKey={mailboxListKey}
+        />
+        <SidebarInset className="overflow-hidden">
+          <div className="flex h-svh flex-col">
+            {/* Mobile trigger */}
+            <div className="flex items-center gap-2 border-b border-border px-4 py-2 md:hidden">
+              <SidebarTrigger />
+              <span className="text-sm font-semibold text-foreground">MailMind</span>
+            </div>
 
-          {/* Main Content */}
-          <div className="flex-1 overflow-hidden">
-            {activeView === "dashboard" && (
-              <DailyBriefing
-                onViewChange={setActiveView}
-                onNavigateInbox={handleNavigateInbox}
-                onNavigateToEmail={handleNavigateToEmail}
-              />
-            )}
-            {activeView === "inbox" && (
-              <InboxView
-                initialFilter={inboxFilter}
-                onInitialFilterConsumed={handleFilterConsumed}
-                initialEmailId={initialEmailId}
-                initialComposeMode={initialComposeMode}
-                onInitialEmailConsumed={handleEmailConsumed}
-                initialSenderEmail={initialSenderEmail}
-                initialSenderName={initialSenderName}
-                onInitialSenderConsumed={handleSenderConsumed}
-              />
-            )}
-            {activeView === "followups" && <FollowupTracker />}
-            {activeView === "contacts" && (
-              <ContactsView onAddMailboxClick={() => setShowAddMailbox(true)} />
-            )}
-            {activeView === "agent" && <AiAgent />}
-            {activeView === "assistant" && <AiAssistant />}
-            {activeView === "compose" && (
-              <ComposeView
-                initialTo={initialComposeTo}
-                initialToName={initialComposeToName}
-                onInitialComposeConsumed={handleComposeConsumed}
-              />
-            )}
-            {activeView === "analytics" && <AnalyticsView />}
-            {activeView === "settings" && (
-              <SettingsView
-                onAddMailboxClick={() => setShowAddMailbox(true)}
-                mailboxListKey={mailboxListKey}
-              />
-            )}
+            {/* Main Content */}
+            <div className="flex-1 overflow-hidden">
+              {activeView === "dashboard" && (
+                <DailyBriefing
+                  onViewChange={setActiveView}
+                  onNavigateInbox={handleNavigateInbox}
+                  onNavigateToEmail={handleNavigateToEmail}
+                />
+              )}
+              {activeView === "inbox" && (
+                <InboxView
+                  initialFilter={inboxFilter}
+                  onInitialFilterConsumed={handleFilterConsumed}
+                  initialEmailId={initialEmailId}
+                  initialComposeMode={initialComposeMode}
+                  onInitialEmailConsumed={handleEmailConsumed}
+                  initialSenderEmail={initialSenderEmail}
+                  initialSenderName={initialSenderName}
+                  onInitialSenderConsumed={handleSenderConsumed}
+                />
+              )}
+              {activeView === "followups" && <FollowupTracker />}
+              {activeView === "contacts" && (
+                <ContactsView onAddMailboxClick={() => setShowAddMailbox(true)} />
+              )}
+              {activeView === "agent" && <AiAgent />}
+              {activeView === "assistant" && <AiAssistant />}
+              {activeView === "compose" && (
+                <ComposeView
+                  initialTo={initialComposeTo}
+                  initialToName={initialComposeToName}
+                  onInitialComposeConsumed={handleComposeConsumed}
+                />
+              )}
+              {activeView === "analytics" && <AnalyticsView />}
+              {activeView === "settings" && (
+                <SettingsView
+                  onAddMailboxClick={() => setShowAddMailbox(true)}
+                  mailboxListKey={mailboxListKey}
+                />
+              )}
+            </div>
           </div>
-        </div>
-      </SidebarInset>
-      <AddMailboxDialog
-        open={showAddMailbox}
-        onOpenChange={setShowAddMailbox}
-        onSuccess={() => setMailboxListKey((k) => k + 1)}
-      />
-    </SidebarProvider>
+        </SidebarInset>
+        <FloatingAiChat
+          activeView={activeView}
+          onNavigateToAssistant={() => setActiveView("assistant")}
+        />
+        <AddMailboxDialog
+          open={showAddMailbox}
+          onOpenChange={setShowAddMailbox}
+          onSuccess={() => setMailboxListKey((k) => k + 1)}
+        />
+      </SidebarProvider>
+    </AiChatProvider>
   )
 }

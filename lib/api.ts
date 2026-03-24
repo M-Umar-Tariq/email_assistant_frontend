@@ -372,6 +372,7 @@ export const ai = {
     request<{ answer: string; sources: { email_id: string; subject: string }[]; actions: AgentActionApi[] }>(
       "POST", "/ai/ask/", {
         query,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
         ...(mailboxId ? { mailbox_id: mailboxId } : {}),
         ...(history?.length ? { history } : {}),
       }

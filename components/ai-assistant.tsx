@@ -50,6 +50,7 @@ import {
   type AgentActionApi,
 } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
+import { useAiChat } from "@/lib/ai-chat-context"
 import type { ChatMessage } from "@/lib/mock-data"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
@@ -303,12 +304,11 @@ const CAPABILITIES = [
 
 export function AiAssistant() {
   const { user } = useAuth()
+  const { messages, setMessages, selectedMailbox, setSelectedMailbox } = useAiChat()
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>(FALLBACK_SUGGESTIONS)
-  const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
   const [isLoading, setIsLoading] = useState(false)
   const [mailboxList, setMailboxList] = useState<MailboxApi[]>([])
-  const [selectedMailbox, setSelectedMailbox] = useState<string>("all")
   const [executingId, setExecutingId] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
   const scrollBottomRef = useRef<HTMLDivElement>(null)
