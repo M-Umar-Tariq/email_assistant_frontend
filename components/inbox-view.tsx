@@ -1421,7 +1421,7 @@ function EmailDetail({
         {/* Email Content */}
         <div className={`flex flex-col ${showAiChat ? "flex-1" : "w-full"} overflow-hidden`}>
           <ScrollArea className="flex-1">
-            <div className="w-full min-w-0">
+            <div className="w-full min-w-0 pb-6 pr-6">
               <div className="p-6 max-w-4xl mx-auto">
               <div className="flex items-start justify-between mb-5 animate-fade-in-up">
                 <div className="flex-1 min-w-0">
@@ -2334,11 +2334,12 @@ export function InboxView({
 
             {/* Email List */}
             <ScrollArea className="flex-1">
-              {loading ? (
-                <EmailListSkeleton />
-              ) : (
-                <>
-                  <div className="divide-y divide-border/50">
+              <div className="pb-6 pr-6">
+                {loading ? (
+                  <EmailListSkeleton />
+                ) : (
+                  <>
+                    <div className="divide-y divide-border/50">
                     {filteredEmails.map((email, idx) => (
                       <EmailListItem
                         key={email.id}
@@ -2436,7 +2437,8 @@ export function InboxView({
                   )}
                 </>
               )}
-            </ScrollArea>
+            </div>
+          </ScrollArea>
           </>
         )}
       </div>
