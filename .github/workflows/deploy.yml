@@ -14,10 +14,15 @@ jobs:
       - name: Deploy frontend on VPS
         shell: powershell
         run: |
+          $ErrorActionPreference = "Stop"
+
           Set-Location C:\Users\Administrator\Desktop\apps\email-assistant\frontend
+
           git fetch origin
           git reset --hard origin/main
-          npm install
-          npm run build
+
+          npm.cmd install
+          npm.cmd run build
+
           pm2 restart email-assistant-frontend
           pm2 save
