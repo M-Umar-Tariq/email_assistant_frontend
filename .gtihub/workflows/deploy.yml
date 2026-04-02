@@ -1,0 +1,35 @@
+name: Deploy Frontend to VPS
+
+on:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+jobs:
+  deploy:
+    runs-on: [self-hosted, Windows, X64]
+
+    steps:
+      - name: Deploy frontend on VPS
+        shell: powershell
+        run: |
+          $ErrorActionPreference = "Stop"
+
+          git config --global --add safe.directory C:/apps/email-assistant/frontend/email_assistant_frontend
+
+          Set-Location C:\apps\email-assistant\frontend\email_assistant_frontend
+
+          pm2 stop email-assistant-frontend
+          if ($LASTEXITCODE -ne 0) {
+            Write-Host "PM2 stop skipped..."
+          }
+
+          git fetch origin
+          git reset --hard origin/main
+
+          npm install
+          npm run build
+
+          pm2 restart email-assistant-frontend
+          pm2 save
