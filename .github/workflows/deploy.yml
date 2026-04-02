@@ -16,7 +16,7 @@ jobs:
         run: |
           $ErrorActionPreference = "Stop"
 
-          Set-Location C:\Users\Administrator\Desktop\apps\email-assistant\frontend
+          Set-Location C:\apps\email-assistant\frontend\email_assistant_frontend
 
           git fetch origin
           git reset --hard origin/main
