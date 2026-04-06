@@ -63,10 +63,12 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
-import { emails as emailsApi, mailboxes as mailboxesApi, compose as composeApi, ai as aiApi, getStoredUser, type UniqueSendersApi } from "@/lib/api"
+import { emails as emailsApi, mailboxes as mailboxesApi, compose as composeApi, ai as aiApi, settingsApi, getStoredUser, calendar as calendarApi, type UniqueSendersApi, type SettingsApi } from "@/lib/api"
 import { mapEmailListApi, mapEmailDetailApi, mapMailboxApi } from "@/lib/mappers"
-import type { Email, EmailCategory, Mailbox } from "@/lib/mock-data"
+import type { Email, EmailCategory, Mailbox, SchedulingInfo } from "@/lib/mock-data"
+import { format } from "date-fns"
 import type { InboxFilter } from "@/components/daily-briefing"
+import { ConnectMailboxCta } from "@/components/connect-mailbox-cta"
 import { sanitizeEmailHtml } from "@/lib/sanitize-html"
 
 function EmailListSkeleton() {
@@ -285,9 +287,18 @@ function EmailListItem({
               <Paperclip className="h-2.5 w-2.5" />
             </span>
           )}
-          {email.priority === "high" && (
+          {/* Priority badge — always shown */}
+          {email.priority === "high" ? (
             <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-red-400/30 text-red-400 bg-red-400/5 font-semibold uppercase tracking-wide">
-              urgent
+              high
+            </Badge>
+          ) : email.priority === "low" ? (
+            <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-emerald-400/30 text-emerald-500 bg-emerald-400/5 font-semibold uppercase tracking-wide">
+              low
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-blue-400/30 text-blue-400 bg-blue-400/5 font-semibold uppercase tracking-wide">
+              medium
             </Badge>
           )}
           {email.followUp && email.followUp.status === "overdue" && (
@@ -306,8 +317,9 @@ function EmailListItem({
               {email.threadCount}
             </span>
           )}
-          {email.labels.slice(0, 2).map((label) => (
-            <Badge key={label} variant="secondary" className="text-[9px] px-1.5 py-0 bg-secondary/80 text-secondary-foreground/80 font-medium">
+          {/* User-defined label badges */}
+          {email.labels.slice(0, 3).map((label) => (
+            <Badge key={label} variant="secondary" className="text-[9px] px-1.5 py-0 bg-primary/8 text-primary border border-primary/15 font-medium">
               {label}
             </Badge>
           ))}
@@ -378,10 +390,78 @@ function InstantReplyBar({ email, onSend }: { email: Email; onSend: (text: strin
   )
 }
 
+function applySuggestedTimeToDate(base: Date, timeStr: string | undefined): Date {
+  const d = new Date(base)
+  if (!timeStr?.trim()) {
+    d.setHours(9, 0, 0, 0)
+    return d
+  }
+  const t = timeStr.trim()
+  const m = t.match(/^(\d{1,2}):(\d{2})(?::(\d{2}))?\s*(am|pm)?$/i)
+  if (m) {
+    let h = parseInt(m[1], 10)
+    const min = parseInt(m[2], 10)
+    const ap = m[4]?.toLowerCase()
+    if (ap === "pm" && h < 12) h += 12
+    if (ap === "am" && h === 12) h = 0
+    d.setHours(h, min, 0, 0)
+    return d
+  }
+  const combined = new Date(`${format(d, "yyyy-MM-dd")} ${t}`)
+  if (!Number.isNaN(combined.getTime())) return combined
+  d.setHours(9, 0, 0, 0)
+  return d
+}
+
+function schedulingToIsoRange(info: SchedulingInfo, fallbackTitle: string) {
+  if (!info.suggestedDate) return null
+  const base = new Date(info.suggestedDate)
+  if (Number.isNaN(base.getTime())) return null
+  const start = applySuggestedTimeToDate(base, info.suggestedTime)
+  const end = new Date(start.getTime() + 60 * 60 * 1000)
+  return {
+    title: (info.title?.trim() || fallbackTitle || "Meeting").slice(0, 500),
+    start: start.toISOString(),
+    end: end.toISOString(),
+    location: info.location?.trim() || undefined,
+    attendees: info.attendees?.filter(Boolean),
+  }
+}
+
 // -- Schedule from Email Widget --
 function ScheduleWidget({ email }: { email: Email }) {
   const [created, setCreated] = useState(false)
+  const [creating, setCreating] = useState(false)
   if (!email.schedulingInfo?.detected) return null
+
+  const payload = schedulingToIsoRange(email.schedulingInfo, email.subject)
+
+  const handleCreate = async () => {
+    if (!payload) {
+      toast.error("Could not read date/time from this email. Add the event manually in Calendar.")
+      return
+    }
+    setCreating(true)
+    try {
+      const res = await calendarApi.create({
+        title: payload.title,
+        start: payload.start,
+        end: payload.end,
+        location: payload.location,
+        attendees: payload.attendees,
+      })
+      toast.success("Event added to calendar")
+      if (res.has_overlap && res.overlapping_titles?.length) {
+        toast.warning(`Overlaps with: ${res.overlapping_titles.join(", ")}`)
+      }
+      setCreated(true)
+      window.dispatchEvent(new CustomEvent("calendar:updated"))
+    } catch (e) {
+      toast.error((e as Error).message || "Could not create calendar event")
+    } finally {
+      setCreating(false)
+    }
+  }
 
   return (
     <div className="rounded-lg border border-indigo-400/20 bg-indigo-400/5 p-4">
@@ -392,7 +472,7 @@ function ScheduleWidget({ email }: { email: Email }) {
       {created ? (
         <div className="flex items-center gap-2 text-sm text-emerald-400">
           <CheckCircle2 className="h-4 w-4" />
-          Event created in your calendar
+          Event added to calendar
         </div>
       ) : (
         <>
@@ -419,12 +499,16 @@ function ScheduleWidget({ email }: { email: Email }) {
               <p className="text-foreground font-medium">{email.schedulingInfo.attendees?.length || 0} people</p>
             </div>
           </div>
+          {!payload && (
+            <p className="text-[11px] text-amber-500/90 mb-2">Add a detectable date to create this event automatically.</p>
+          )}
           <Button
             size="sm"
             className="bg-indigo-500 text-white hover:bg-indigo-600 gap-1.5 h-7 text-xs"
-            onClick={() => setCreated(true)}
+            disabled={creating}
+            onClick={handleCreate}
           >
-            <CalendarPlus className="h-3 w-3" />
+            {creating ? <RefreshCw className="h-3 w-3 animate-spin" /> : <CalendarPlus className="h-3 w-3" />}
             Create Calendar Event
           </Button>
         </>
@@ -1421,7 +1505,7 @@ function EmailDetail({
         {/* Email Content */}
         <div className={`flex flex-col ${showAiChat ? "flex-1" : "w-full"} overflow-hidden`}>
           <ScrollArea className="flex-1">
-            <div className="w-full min-w-0 pb-6 pr-6">
+            <div className="w-full min-w-0">
               <div className="p-6 max-w-4xl mx-auto">
               <div className="flex items-start justify-between mb-5 animate-fade-in-up">
                 <div className="flex-1 min-w-0">
@@ -1569,7 +1653,7 @@ function EmailDetail({
                           download={att.filename}
                           onClick={(e) => {
                             e.preventDefault()
-                            const token = localStorage.getItem("mailmind_access_token")
+                            const token = localStorage.getItem("smartmailai_access_token")
                             fetch(emailsApi.attachmentDownloadUrl(email.id, i), {
                               headers: token ? { Authorization: `Bearer ${token}` } : {},
                             })
@@ -1738,6 +1822,16 @@ function FilterDropdownContent({
   )
 }
 
+const INBOX_FOLDER_TITLE: Record<string, string> = {
+  inbox: "Inbox",
+  sent: "Sent",
+  trash: "Trash",
+  archive: "Archive",
+  star: "Star",
+  spam: "Spam",
+  snoozed: "Snoozed",
+}
+
 // -- Main Inbox View --
 export function InboxView({
   initialFilter,
@@ -1748,6 +1842,10 @@ export function InboxView({
   initialSenderEmail,
   initialSenderName,
   onInitialSenderConsumed,
+  initialLabel,
+  onInitialLabelConsumed,
+  onConnectMailbox,
+  folder = "inbox",
 }: {
   initialFilter?: InboxFilter | null
   onInitialFilterConsumed?: () => void
@@ -1757,6 +1855,11 @@ export function InboxView({
   initialSenderEmail?: string | null
   initialSenderName?: string | null
   onInitialSenderConsumed?: () => void
+  /** When set (e.g. from Labels section), inbox loads filtered to this AI label only */
+  initialLabel?: string | null
+  onInitialLabelConsumed?: () => void
+  onConnectMailbox?: () => void
+  folder?: string
 } = {}) {
   const [mailboxesList, setMailboxesList] = useState<Mailbox[]>([])
   const [emailsList, setEmailsList] = useState<Email[]>([])
@@ -1776,6 +1879,9 @@ export function InboxView({
   const [showFilterDropdown, setShowFilterDropdown] = useState(false)
   const [uniqueSenders, setUniqueSenders] = useState<UniqueSendersApi | null>(null)
   const [showUniqueSendersDialog, setShowUniqueSendersDialog] = useState(false)
+  const [filterLabel, setFilterLabel] = useState<string | null>(null)
+  const [userLabels, setUserLabels] = useState<string[]>([])
+  const [userSettings, setUserSettings] = useState<SettingsApi | null>(null)
 
   const PAGE_SIZE = 50
   const [hasMore, setHasMore] = useState(true)
@@ -1789,6 +1895,14 @@ export function InboxView({
   }, [initialFilter])
 
   useEffect(() => {
+    settingsApi.get().then((s) => {
+      setUserSettings(s)
+      const names = (s.ai_label_rules ?? []).map((r) => r.name).filter(Boolean)
+      setUserLabels(names)
+    }).catch(() => {})
+  }, [])
+
+  useEffect(() => {
     if (initialSenderEmail?.trim()) {
       setSenderFilter({
         from_email: initialSenderEmail.trim(),
@@ -1797,6 +1911,23 @@ export function InboxView({
       onInitialSenderConsumed?.()
     }
   }, [initialSenderEmail, initialSenderName, onInitialSenderConsumed])
+
+  useEffect(() => {
+    const name = initialLabel?.trim()
+    if (!name) return
+    setFilterLabel(name)
+    onInitialLabelConsumed?.()
+  }, [initialLabel, onInitialLabelConsumed])
+
+  const prevFolderRef = useRef(folder)
+  useEffect(() => {
+    if (prevFolderRef.current !== folder) {
+      prevFolderRef.current = folder
+      setSelectedEmail(null)
+      setSearchQuery("")
+      setHasMore(true)
+    }
+  }, [folder])
 
   useEffect(() => {
     if (!initialEmailId) return
@@ -1844,9 +1975,11 @@ export function InboxView({
 
   const fetchMailboxesAndEmails = useCallback((mailboxId?: string) => {
     const mbFilter = mailboxId ?? filterMailbox
-    const listParams: { limit: number; offset: number; mailbox_id?: string; from_email?: string } = { limit: PAGE_SIZE, offset: 0 }
+    const listParams: { limit: number; offset: number; mailbox_id?: string; from_email?: string; label?: string; folder?: string } = { limit: PAGE_SIZE, offset: 0 }
     if (mbFilter !== "all") listParams.mailbox_id = mbFilter
     if (senderFilter?.from_email) listParams.from_email = senderFilter.from_email
+    if (filterLabel) listParams.label = filterLabel
+    if (folder && folder !== "inbox") listParams.folder = folder
     return Promise.all([
       mailboxesApi.list().then((list) => setMailboxesList(list.map(mapMailboxApi))).catch(() => {}),
       emailsApi
@@ -1857,14 +1990,16 @@ export function InboxView({
         })
         .catch(() => {}),
     ])
-  }, [filterMailbox, senderFilter?.from_email])
+  }, [filterMailbox, senderFilter?.from_email, filterLabel, folder])
 
   const loadMore = useCallback(() => {
     if (loadingMore || !hasMore) return
     setLoadingMore(true)
-    const listParams: { limit: number; offset: number; mailbox_id?: string; from_email?: string } = { limit: PAGE_SIZE, offset: emailsList.length }
+    const listParams: { limit: number; offset: number; mailbox_id?: string; from_email?: string; label?: string; folder?: string } = { limit: PAGE_SIZE, offset: emailsList.length }
     if (filterMailbox !== "all") listParams.mailbox_id = filterMailbox
     if (senderFilter?.from_email) listParams.from_email = senderFilter.from_email
+    if (filterLabel) listParams.label = filterLabel
+    if (folder && folder !== "inbox") listParams.folder = folder
     emailsApi
       .list(listParams)
       .then((list) => {
@@ -1874,7 +2009,7 @@ export function InboxView({
       })
       .catch(() => {})
       .finally(() => setLoadingMore(false))
-  }, [loadingMore, hasMore, emailsList.length, filterMailbox, senderFilter?.from_email])
+  }, [loadingMore, hasMore, emailsList.length, filterMailbox, senderFilter?.from_email, filterLabel, folder])
 
   useEffect(() => {
     const isMailboxSwitch = initialLoadDoneRef.current
@@ -1977,6 +2112,23 @@ export function InboxView({
     window.addEventListener("mailbox:updated", onMailboxUpdated)
     return () => window.removeEventListener("mailbox:updated", onMailboxUpdated)
   }, [])
+
+  // Account / mailbox menu (sidebar): switch inbox mailbox filter globally
+  useEffect(() => {
+    const onSetFilter = (e: Event) => {
+      const id = (e as CustomEvent<{ mailboxId?: string }>).detail?.mailboxId
+      if (id === "all") setFilterMailbox("all")
+      else if (id && typeof id === "string") setFilterMailbox(id)
+    }
+    window.addEventListener("inbox:setMailboxFilter", onSetFilter as EventListener)
+    return () => window.removeEventListener("inbox:setMailboxFilter", onSetFilter as EventListener)
+  }, [])
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("inbox:filterMailboxChanged", { detail: { mailboxId: filterMailbox } }),
+    )
+  }, [filterMailbox])
 
   const handleSelectEmail = useCallback((email: Email) => {
     emailsApi
@@ -2125,35 +2277,61 @@ export function InboxView({
       <div className="flex h-full flex-col bg-background">
         {/* Header */}
         <div className="border-b border-border/80 bg-gradient-to-r from-background via-background to-primary/[0.02]">
-          <div className="px-5 py-4">
+          <div className="px-6 py-4">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-3 shrink-0 min-w-0">
                 <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 shadow-sm">
-                  <Inbox className="h-5 w-5 text-primary" />
-                  {unreadCount > 0 && (
+                  {(() => {
+                    const folderIcons: Record<string, React.ElementType> = {
+                      inbox: Inbox,
+                      sent: Send,
+                      trash: Trash2,
+                      archive: Archive,
+                      star: Star,
+                      spam: ShieldAlert,
+                      snoozed: Clock,
+                    }
+                    const FolderIcon = folderIcons[folder] ?? Inbox
+                    return <FolderIcon className="h-5 w-5 text-primary" />
+                  })()}
+                  {unreadCount > 0 && folder === "inbox" && (
                     <div className="absolute -top-1 -right-1 h-4.5 min-w-[18px] px-1 flex items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground shadow-sm">
                       {unreadCount > 99 ? "99+" : unreadCount}
                     </div>
                   )}
                 </div>
                 <div className="min-w-0">
-                  <h1 className="text-lg font-bold text-foreground leading-tight tracking-tight">Inbox</h1>
-                  <p className="text-[11px] text-muted-foreground/70 mt-0.5 flex items-center gap-1 flex-wrap">
-                    <span>{allCount} email{allCount !== 1 ? "s" : ""}</span>
-                    {unreadCount > 0 && <span className="text-primary/80 font-medium"> · {unreadCount} unread</span>}
-                    {uniqueSenders != null && (
-                      <>
-                        <span> · </span>
-                        <button
-                          type="button"
-                          onClick={() => setShowUniqueSendersDialog(true)}
-                          className="text-muted-foreground/70 hover:text-foreground hover:underline font-medium transition-colors"
-                        >
-                          {uniqueSenders.unique_senders_count} unique sender{uniqueSenders.unique_senders_count !== 1 ? "s" : ""}
-                        </button>
-                      </>
-                    )}
-                  </p>
+                  <h1 className="text-lg font-bold text-foreground leading-tight tracking-tight">
+                    {INBOX_FOLDER_TITLE[folder] ?? folder}
+                  </h1>
+                  {filterLabel && (
+                    <p className="text-[11px] font-medium text-primary mt-0.5 flex items-center gap-1">
+                      <Tag className="h-3 w-3 shrink-0" />
+                      <span>Label: {filterLabel}</span>
+                    </p>
+                  )}
+                  {!loading && mailboxesList.length === 0 ? (
+                    <p className="mt-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400/90">
+                      No mailbox connected — connect one to load messages.
+                    </p>
+                  ) : (
+                    <p className="text-[11px] text-muted-foreground/70 mt-0.5 flex items-center gap-1 flex-wrap">
+                      <span>{allCount} email{allCount !== 1 ? "s" : ""}</span>
+                      {unreadCount > 0 && <span className="text-primary/80 font-medium"> · {unreadCount} unread</span>}
+                      {uniqueSenders != null && (
+                        <>
+                          <span> · </span>
+                          <button
+                            type="button"
+                            onClick={() => setShowUniqueSendersDialog(true)}
+                            className="text-muted-foreground/70 hover:text-foreground hover:underline font-medium transition-colors"
+                          >
+                            {uniqueSenders.unique_senders_count} unique sender{uniqueSenders.unique_senders_count !== 1 ? "s" : ""}
+                          </button>
+                        </>
+                      )}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -2225,10 +2403,16 @@ export function InboxView({
               onEmailRefreshed={(updated) => setSelectedEmail(updated)}
             />
           </div>
+        ) : !loading && mailboxesList.length === 0 ? (
+          <ScrollArea className="flex-1">
+            <div className="mx-auto max-w-2xl p-6">
+              <ConnectMailboxCta onConnect={onConnectMailbox} variant="hero" />
+            </div>
+          </ScrollArea>
         ) : (
           <>
             {/* Mailbox Tabs */}
-            <div className="flex items-center gap-1 border-b border-border/60 px-5 py-2.5 overflow-x-auto bg-muted/20">
+            <div className="flex items-center gap-1 border-b border-border/60 px-6 py-2.5 overflow-x-auto bg-muted/20">
               <Button
                 variant={filterMailbox === "all" ? "default" : "ghost"}
                 size="sm"
@@ -2267,8 +2451,45 @@ export function InboxView({
               })}
             </div>
 
+            {/* Label Filter Tabs */}
+            {userLabels.length > 0 && (
+              <div className="flex items-center gap-1 border-b border-border/60 px-6 py-2 overflow-x-auto bg-muted/10">
+                <Tag className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0 mr-1" />
+                <Button
+                  variant={filterLabel === null ? "default" : "ghost"}
+                  size="sm"
+                  className={`text-[11px] h-7 rounded-lg gap-1 px-2.5 transition-all duration-200 ${
+                    filterLabel === null
+                      ? "bg-foreground text-background shadow-sm"
+                      : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                  }`}
+                  onClick={() => setFilterLabel(null)}
+                >
+                  All Labels
+                </Button>
+                {userLabels.map((label) => {
+                  const active = filterLabel === label
+                  return (
+                    <Button
+                      key={label}
+                      variant={active ? "default" : "ghost"}
+                      size="sm"
+                      className={`text-[11px] h-7 rounded-lg gap-1 px-2.5 transition-all duration-200 ${
+                        active
+                          ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                      }`}
+                      onClick={() => setFilterLabel(active ? null : label)}
+                    >
+                      {label}
+                    </Button>
+                  )
+                })}
+              </div>
+            )}
+
             {/* Filter Bar */}
-            <div className="relative flex items-center justify-between gap-2 border-b border-border/60 px-5 py-2 overflow-visible bg-background">
+            <div className="relative flex items-center justify-between gap-2 border-b border-border/60 px-6 py-2 overflow-visible bg-background">
               <div className="flex items-center gap-2 shrink-0">
                 <DropdownMenu open={showFilterDropdown} onOpenChange={setShowFilterDropdown}>
                   <DropdownMenuTrigger asChild>
@@ -2334,12 +2555,11 @@ export function InboxView({
 
             {/* Email List */}
             <ScrollArea className="flex-1">
-              <div className="pb-6 pr-6">
-                {loading ? (
-                  <EmailListSkeleton />
-                ) : (
-                  <>
-                    <div className="divide-y divide-border/50">
+              {loading ? (
+                <EmailListSkeleton />
+              ) : (
+                <>
+                  <div className="divide-y divide-border/50">
                     {filteredEmails.map((email, idx) => (
                       <EmailListItem
                         key={email.id}
@@ -2371,7 +2591,7 @@ export function InboxView({
                         </div>
                       </div>
                       <h3 className="text-base font-semibold text-foreground mb-1.5">
-                        {searchQuery ? "No matching emails" : filterPreset ? "No emails match this filter" : senderFilter ? "No emails from this sender" : "All caught up!"}
+                        {searchQuery ? "No matching emails" : filterPreset ? "No emails match this filter" : senderFilter ? "No emails from this sender" : folder !== "inbox" ? `No emails in ${INBOX_FOLDER_TITLE[folder] ?? folder}` : "All caught up!"}
                       </h3>
                       <p className="text-sm text-muted-foreground/70 text-center max-w-[280px] leading-relaxed">
                         {searchQuery
@@ -2380,7 +2600,15 @@ export function InboxView({
                             ? "Try adjusting your filter or clearing it to see all emails."
                             : senderFilter
                               ? `No emails from ${senderFilter.from_name || senderFilter.from_email} in inbox.`
-                              : "Your inbox is empty. New emails will appear here."}
+                              : folder !== "inbox"
+                                ? folder === "star"
+                                  ? "Star an email to see it here."
+                                  : folder === "archive"
+                                    ? "Archived messages appear here."
+                                    : folder === "sent"
+                                      ? "Sent messages will show here when synced as sent mail."
+                                      : `Your ${folder} folder is empty.`
+                                : "Your inbox is empty. New emails will appear here."}
                       </p>
                       {(searchQuery || filterPreset || senderFilter) && (
                         <Button
@@ -2437,8 +2665,7 @@ export function InboxView({
                   )}
                 </>
               )}
-            </div>
-          </ScrollArea>
+            </ScrollArea>
           </>
         )}
       </div>

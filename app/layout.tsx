@@ -9,7 +9,7 @@ const _inter = Inter({ subsets: ['latin'], variable: '--font-inter' })
 const _jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-jetbrains-mono' })
 
 export const metadata: Metadata = {
-  title: 'MailMind - AI Email Assistant',
+  title: 'Smart Mail AI Beta — AI Inbox That Makes Decisions For You',
   description: 'Unified AI layer for all your mailboxes. Daily briefings, smart search, compose assistance, and actionable insights.',
 }
 
@@ -25,7 +25,7 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className={`${_inter.variable} ${_jetbrainsMono.variable} font-sans antialiased`}>
-        <ThemeProvider attribute="class" defaultTheme="light" enableSystem storageKey="mailmind-theme">
+        <ThemeProvider attribute="class" defaultTheme="light" enableSystem storageKey="smartmailai-theme">
           <AuthProvider>
             {children}
             <Toaster />

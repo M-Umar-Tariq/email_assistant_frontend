@@ -4,10 +4,13 @@ import { useState, useEffect } from "react"
 import {
   Mail,
   Plus,
+  Minus,
   CheckCircle2,
   XCircle,
   RefreshCw,
   Trash2,
+  Pencil,
+  Save,
 
   ChevronDown,
   Clock,
@@ -71,6 +74,8 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { toast } from "sonner"
+import { Textarea } from "@/components/ui/textarea"
+import { Input } from "@/components/ui/input"
 import {
   mailboxes as mailboxesApi,
   emails as emailsApi,
@@ -79,6 +84,7 @@ import {
   auth,
   type AgentProfile,
   type SettingsApi,
+  type AiLabelRule,
 } from "@/lib/api"
 import { mapMailboxApi } from "@/lib/mappers"
 import type { Mailbox } from "@/lib/mock-data"
@@ -130,6 +136,14 @@ export function SettingsView({
   const [userProfile, setUserProfile] = useState<{ id: string; email: string; name: string; timezone?: string } | null>(null)
   const [exporting, setExporting] = useState(false)
 
+  const [prefsEditing, setPrefsEditing] = useState(false)
+  const [prefsSaving, setPrefsSaving] = useState(false)
+  const [occupation, setOccupation] = useState("")
+  const [importantEmails, setImportantEmails] = useState("")
+  const [draftStyle, setDraftStyle] = useState("")
+  const [labelRules, setLabelRules] = useState<AiLabelRule[]>([])
+  const [labelsSaving, setLabelsSaving] = useState(false)
+
   useEffect(() => {
     mailboxesApi.list()
       .then((mbs) => setMailboxes(mbs.map(mapMailboxApi)))
@@ -147,7 +161,13 @@ export function SettingsView({
 
   useEffect(() => {
     settingsApi.get()
-      .then(setUserSettings)
+      .then((s) => {
+        setUserSettings(s)
+        setOccupation(s.occupation ?? "")
+        setImportantEmails(s.important_emails_notes ?? "")
+        setDraftStyle(s.draft_style_notes ?? "")
+        setLabelRules(s.ai_label_rules?.length ? s.ai_label_rules : [])
+      })
       .catch(() => {})
       .finally(() => setSettingsLoading(false))
   }, [])
@@ -176,6 +196,54 @@ export function SettingsView({
       .catch(() => toast.error("Failed to update sync range"))
   }
 
+  const handleSavePreferences = async () => {
+    setPrefsSaving(true)
+    try {
+      const updated = await settingsApi.update({
+        occupation: occupation.trim(),
+        important_emails_notes: importantEmails.trim(),
+        draft_style_notes: draftStyle.trim(),
+      })
+      setUserSettings(updated)
+      setPrefsEditing(false)
+      toast.success("Preferences saved")
+    } catch {
+      toast.error("Failed to save preferences")
+    } finally {
+      setPrefsSaving(false)
+    }
+  }
+
+  const handleSaveLabels = async () => {
+    setLabelsSaving(true)
+    try {
+      const cleaned = labelRules
+        .map((r) => ({ name: r.name.trim(), instruction: r.instruction.trim() }))
+        .filter((r) => r.name || r.instruction)
+      const updated = await settingsApi.update({ ai_label_rules: cleaned })
+      setUserSettings(updated)
+      setLabelRules(updated.ai_label_rules?.length ? updated.ai_label_rules : [])
+      toast.success("Labels saved — re-classifying your emails now…")
+      settingsApi.relabel()
+        .then((res) => toast.success(`Done! ${res.updated} email(s) re-labelled.`))
+        .catch(() => toast.error("Re-labelling failed — you can retry from settings."))
+    } catch {
+      toast.error("Failed to save labels")
+    } finally {
+      setLabelsSaving(false)
+    }
+  }
+
+  const addLabelRow = () => {
+    if (labelRules.length >= 10) return
+    setLabelRules((r) => [...r, { name: "", instruction: "" }])
+  }
+
+  const removeLabelRow = (i: number) => setLabelRules((r) => r.filter((_, j) => j !== i))
+
+  const updateLabel = (i: number, field: keyof AiLabelRule, value: string) =>
+    setLabelRules((r) => r.map((row, j) => (j === i ? { ...row, [field]: value } : row)))
+
   const handleExportData = () => {
     setExporting(true)
     emailsApi.list({ limit: 999999 })
@@ -184,7 +252,7 @@ export function SettingsView({
         const url = URL.createObjectURL(blob)
         const a = document.createElement("a")
         a.href = url
-        a.download = `mailmind-export-${new Date().toISOString().slice(0, 10)}.json`
+        a.download = `smart-mail-ai-export-${new Date().toISOString().slice(0, 10)}.json`
         a.click()
         URL.revokeObjectURL(url)
         toast.success("Data exported successfully")
@@ -276,7 +344,7 @@ export function SettingsView({
     <TooltipProvider>
       <div className="flex h-full flex-col bg-background">
         {/* Header */}
-        <header className="border-b border-border px-8 py-6">
+        <header className="border-b border-border px-6 py-5">
           <div className="flex items-center gap-4 max-w-5xl">
             <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/10">
               <Settings className="h-5 w-5 text-primary" />
@@ -938,6 +1006,179 @@ export function SettingsView({
                       )}
                     </CardContent>
                   </Card>
+
+                  {/* ── Your Preferences ── */}
+                  <Card className="bg-card border-border shadow-sm">
+                    <CardHeader className="pb-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500/20 to-orange-500/10">
+                            <Briefcase className="h-4.5 w-4.5 text-amber-500" />
+                          </div>
+                          <div>
+                            <CardTitle className="text-base font-semibold text-foreground">Your Preferences</CardTitle>
+                            <CardDescription className="text-sm text-muted-foreground">
+                              These shape how AI drafts, prioritizes, and summarizes for you
+                            </CardDescription>
+                          </div>
+                        </div>
+                        {!prefsEditing ? (
+                          <Button size="sm" variant="outline" className="gap-2" onClick={() => setPrefsEditing(true)}>
+                            <Pencil className="h-3.5 w-3.5" /> Edit
+                          </Button>
+                        ) : (
+                          <Button size="sm" className="gap-2" disabled={prefsSaving} onClick={handleSavePreferences}>
+                            {prefsSaving ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                            {prefsSaving ? "Saving…" : "Save"}
+                          </Button>
+                        )}
+                      </div>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-5">
+                      {settingsLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                        </div>
+                      ) : (
+                        <>
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium text-foreground flex items-center gap-2">
+                              <User className="h-3.5 w-3.5 text-muted-foreground" /> Occupation / Role
+                            </Label>
+                            {prefsEditing ? (
+                              <Textarea
+                                value={occupation}
+                                onChange={(e) => setOccupation(e.target.value)}
+                                placeholder="Ex: Product manager at a SaaS company"
+                                rows={2}
+                                className="resize-none bg-background"
+                              />
+                            ) : (
+                              <p className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground min-h-[42px]">
+                                {userSettings?.occupation || <span className="italic">Not set</span>}
+                              </p>
+                            )}
+                          </div>
+
+                          <Separator />
+
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium text-foreground flex items-center gap-2">
+                              <Sparkles className="h-3.5 w-3.5 text-muted-foreground" /> Important Emails
+                            </Label>
+                            {prefsEditing ? (
+                              <Textarea
+                                value={importantEmails}
+                                onChange={(e) => setImportantEmails(e.target.value)}
+                                placeholder="Ex: Messages from my manager, invoices, anything from @acmecorp.com"
+                                rows={3}
+                                className="resize-none bg-background"
+                              />
+                            ) : (
+                              <p className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground min-h-[42px]">
+                                {userSettings?.important_emails_notes || <span className="italic">Not set</span>}
+                              </p>
+                            )}
+                          </div>
+
+                          <Separator />
+
+                          <div className="space-y-2">
+                            <Label className="text-sm font-medium text-foreground flex items-center gap-2">
+                              <MessageSquare className="h-3.5 w-3.5 text-muted-foreground" /> Draft Reply Style
+                            </Label>
+                            {prefsEditing ? (
+                              <Textarea
+                                value={draftStyle}
+                                onChange={(e) => setDraftStyle(e.target.value)}
+                                placeholder="Ex: Work email — concise and professional. Friends — warm and casual."
+                                rows={3}
+                                className="resize-none bg-background"
+                              />
+                            ) : (
+                              <p className="rounded-lg border border-border bg-muted/30 px-4 py-3 text-sm text-muted-foreground min-h-[42px]">
+                                {userSettings?.draft_style_notes || <span className="italic">Not set</span>}
+                              </p>
+                            )}
+                          </div>
+                        </>
+                      )}
+                    </CardContent>
+                  </Card>
+
+                  {/* ── AI Label Rules ── */}
+                  <Card className="bg-card border-border shadow-sm">
+                    <CardHeader className="pb-4">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-3">
+                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500/20 to-teal-500/10">
+                            <Tag className="h-4.5 w-4.5 text-emerald-500" />
+                          </div>
+                          <div>
+                            <CardTitle className="text-base font-semibold text-foreground">AI Label Rules</CardTitle>
+                            <CardDescription className="text-sm text-muted-foreground">
+                              Plain-English rules that guide auto-labeling and prioritization
+                            </CardDescription>
+                          </div>
+                        </div>
+                        <Button size="sm" className="gap-2" disabled={labelsSaving} onClick={handleSaveLabels}>
+                          {labelsSaving ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                          {labelsSaving ? "Saving…" : "Save Labels"}
+                        </Button>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="flex flex-col gap-3">
+                      {settingsLoading ? (
+                        <div className="flex items-center justify-center py-8">
+                          <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
+                        </div>
+                      ) : (
+                        <>
+                          {labelRules.length === 0 && (
+                            <p className="text-sm text-muted-foreground py-4 text-center">
+                              No label rules yet. Add one to teach the AI how to categorize your mail.
+                            </p>
+                          )}
+                          <div className="flex flex-col gap-3 max-h-[400px] overflow-y-auto pr-1">
+                            {labelRules.map((row, i) => (
+                              <div key={i} className="relative rounded-xl border border-border bg-muted/20 p-3 sm:p-4">
+                                <button
+                                  type="button"
+                                  onClick={() => removeLabelRow(i)}
+                                  className="absolute right-2 top-2 flex h-8 w-8 items-center justify-center rounded-full text-destructive hover:bg-destructive/10"
+                                  aria-label="Remove label"
+                                >
+                                  <Minus className="h-4 w-4" />
+                                </button>
+                                <div className="space-y-2 pr-8">
+                                  <Label className="text-xs uppercase tracking-wide text-muted-foreground">Label name</Label>
+                                  <Input
+                                    value={row.name}
+                                    onChange={(e) => updateLabel(i, "name", e.target.value)}
+                                    placeholder="e.g. Client work"
+                                    className="bg-background"
+                                  />
+                                </div>
+                                <div className="mt-3 space-y-2">
+                                  <Label className="text-xs uppercase tracking-wide text-muted-foreground">When to use it</Label>
+                                  <Textarea
+                                    value={row.instruction}
+                                    onChange={(e) => updateLabel(i, "instruction", e.target.value)}
+                                    placeholder="Describe in plain English what belongs under this label."
+                                    rows={2}
+                                    className="resize-none bg-background text-sm"
+                                  />
+                                </div>
+                              </div>
+                            ))}
+                          </div>
+                          <Button type="button" variant="ghost" className="mt-1 gap-1 text-primary self-start" onClick={addLabelRow}>
+                            <Plus className="h-4 w-4" /> Add label
+                          </Button>
+                        </>
+                      )}
+                    </CardContent>
+                  </Card>
                 </TabsContent>
 
                 {/* ────── Account Tab ────── */}
@@ -1313,7 +1554,7 @@ export function SettingsView({
                           <div>
                             <p className="text-sm font-medium text-foreground">Delete account</p>
                             <p className="text-xs text-muted-foreground max-w-md">
-                              Permanently delete your MailMind account and all associated data
+                              Permanently delete your Smart Mail AI Beta account and all associated data
                             </p>
                           </div>
                         </div>

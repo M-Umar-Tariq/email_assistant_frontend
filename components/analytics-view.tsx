@@ -14,6 +14,7 @@ import {
   Cell,
 } from "recharts"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
+import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { analytics, mailboxes as mailboxesApi } from "@/lib/api"
@@ -184,7 +185,7 @@ function RankIndicator({ rank }: { rank: number }) {
 
 /* ─── Main Component ─────────────────────────────────────────────────── */
 
-export function AnalyticsView() {
+export function AnalyticsView({ onConnectMailbox }: { onConnectMailbox?: () => void } = {}) {
   const [overview, setOverview] = useState<{
     total_received: number
     received_change: string
@@ -701,12 +702,15 @@ export function AnalyticsView() {
                     </div>
                   ))}
                   {mailboxes.length === 0 && (
-                    <div className="text-center py-8">
-                      <Inbox className="h-8 w-8 text-muted-foreground/30 mx-auto mb-2" />
+                    <div className="px-4 py-8 text-center">
+                      <Inbox className="mx-auto mb-2 h-8 w-8 text-muted-foreground/30" />
                       <p className="text-xs text-muted-foreground">No mailboxes connected</p>
-                      <p className="text-[11px] text-muted-foreground/60 mt-1">
-                        Connect a mailbox to see analytics
-                      </p>
+                      <p className="mt-1 text-[11px] text-muted-foreground/60">Connect an account to see volume, senders, and per-mailbox stats.</p>
+                      {onConnectMailbox && (
+                        <Button size="sm" className="mt-4 gap-1.5" onClick={onConnectMailbox}>
+                          Connect mailbox
+                        </Button>
+                      )}
                     </div>
                   )}
                 </div>

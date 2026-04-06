@@ -417,7 +417,7 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
     el.style.height = `${Math.min(el.scrollHeight, 100)}px`
   }
 
-  const hideOnViews = ["assistant", "agent"]
+  const hideOnViews = ["assistant", "agent", "inbox", "calendar"]
   const shouldHide = Boolean(activeView && hideOnViews.includes(activeView))
   if (shouldHide) return null
 

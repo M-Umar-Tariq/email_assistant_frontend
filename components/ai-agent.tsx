@@ -668,7 +668,7 @@ export function AiAgent() {
   return (
     <div className="flex h-full flex-col bg-background overflow-hidden">
       {/* ─── Header ──────────────────────────────────────────────── */}
-      <header className="shrink-0 flex items-center justify-between gap-4 px-5 py-3 border-b border-border/60 bg-background/95 backdrop-blur-sm z-10">
+      <header className="shrink-0 flex items-center justify-between gap-4 px-6 py-3 border-b border-border/60 bg-background/95 backdrop-blur-sm z-10">
         <div className="flex items-center gap-3 min-w-0">
           <div className="relative">
             <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 text-primary">
@@ -758,7 +758,7 @@ export function AiAgent() {
 
       {/* ─── Scrollable Content ──────────────────────────────────── */}
       <main className="flex-1 overflow-y-auto overflow-x-hidden scroll-smooth">
-        <div className="max-w-2xl mx-auto px-4 py-4 space-y-3">
+        <div className="max-w-2xl mx-auto px-6 py-4 space-y-3">
           {/* Suggestions (when idle with few or no messages) */}
           {suggestions.length > 0 && messages.length <= 1 && state === "idle" && (
             <div className="space-y-2.5 pb-2">
@@ -923,7 +923,7 @@ export function AiAgent() {
 
       {/* ─── Fixed Bottom Voice Interface ────────────────────────── */}
       <div className="shrink-0 border-t border-border/40 bg-gradient-to-t from-background via-background to-background/80 backdrop-blur-sm">
-        <div className="max-w-2xl mx-auto px-4 py-4 flex flex-col items-center gap-3">
+        <div className="max-w-2xl mx-auto px-6 py-4 flex flex-col items-center gap-3">
 
           {/* Audio Visualizer */}
           <div className="flex items-center justify-center gap-[2px] h-12 w-full max-w-md">

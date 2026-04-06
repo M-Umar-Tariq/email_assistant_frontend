@@ -423,7 +423,7 @@ export function ContactsView({ onAddMailboxClick }: { onAddMailboxClick?: () => 
       <div className="flex h-full flex-col bg-background">
         {/* Header */}
         <div className="border-b border-border/80 bg-gradient-to-r from-background via-background to-primary/[0.02]">
-          <div className="px-5 py-4">
+          <div className="px-6 py-4">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-3 shrink-0">
                 <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 shadow-sm">
@@ -460,7 +460,7 @@ export function ContactsView({ onAddMailboxClick }: { onAddMailboxClick?: () => 
           </div>
 
           {/* Total contacts stat */}
-          <div className="px-5 pb-4">
+          <div className="px-6 pb-4">
             <div className="flex items-center gap-2 rounded-xl bg-gradient-to-r from-blue-500/10 to-cyan-500/10 text-blue-600 dark:text-blue-400 px-3.5 py-2 w-fit">
               <Users className="h-3.5 w-3.5 shrink-0" />
               <span className="text-sm font-bold tabular-nums">{allSenders?.unique_senders_count ?? 0}</span>
@@ -469,7 +469,7 @@ export function ContactsView({ onAddMailboxClick }: { onAddMailboxClick?: () => 
           </div>
 
           {/* Tabs: All | By Mailbox (dropdown) */}
-          <div className="px-5 pb-3 flex items-center gap-1.5">
+          <div className="px-6 pb-3 flex items-center gap-1.5">
             <Button
               variant={activeTab === "all" ? "default" : "ghost"}
               size="sm"
@@ -536,7 +536,7 @@ export function ContactsView({ onAddMailboxClick }: { onAddMailboxClick?: () => 
 
         {/* Send to selected bar */}
         {selectedEmails.size > 0 && (
-          <div className="border-b border-border/60 bg-primary/5 px-5 py-2.5 flex items-center justify-between gap-3">
+          <div className="border-b border-border/60 bg-primary/5 px-6 py-2.5 flex items-center justify-between gap-3">
             <span className="text-sm text-foreground font-medium">
               {selectedEmails.size} contact{selectedEmails.size !== 1 ? "s" : ""} selected
             </span>
@@ -554,7 +554,7 @@ export function ContactsView({ onAddMailboxClick }: { onAddMailboxClick?: () => 
 
         {/* Content */}
         <ScrollArea className="flex-1">
-          <div className="p-5 space-y-4 pb-10 max-w-3xl mx-auto w-full">
+          <div className="px-6 py-5 space-y-4 pb-10 max-w-3xl mx-auto w-full">
             {mailboxes.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-center">
                 <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/50 mb-4">

@@ -7,16 +7,24 @@ const API_BASE =
   (typeof window !== "undefined" && (process.env.NEXT_PUBLIC_API_URL as string)) ||
   "http://localhost:8000/api";
 
-const TOKEN_KEY = "mailmind_access_token";
-const REFRESH_KEY = "mailmind_refresh_token";
-const USER_KEY = "mailmind_user";
+const TOKEN_KEY = "smartmailai_access_token";
+const REFRESH_KEY = "smartmailai_refresh_token";
+const USER_KEY = "smartmailai_user";
 
 export function getAccessToken(): string | null {
   if (typeof window === "undefined") return null;
   return localStorage.getItem(TOKEN_KEY);
 }
 
-export function setTokens(access: string, refresh: string, user: { id: string; email: string; name: string }) {
+export type AuthUser = {
+  id: string;
+  email: string;
+  name: string;
+  is_admin?: boolean;
+  disabled?: boolean;
+};
+
+export function setTokens(access: string, refresh: string, user: AuthUser) {
   if (typeof window === "undefined") return;
   localStorage.setItem(TOKEN_KEY, access);
   localStorage.setItem(REFRESH_KEY, refresh);
@@ -30,12 +38,12 @@ export function clearAuth(): void {
   localStorage.removeItem(USER_KEY);
 }
 
-export function getStoredUser(): { id: string; email: string; name: string } | null {
+export function getStoredUser(): AuthUser | null {
   if (typeof window === "undefined") return null;
   const raw = localStorage.getItem(USER_KEY);
   if (!raw) return null;
   try {
-    return JSON.parse(raw) as { id: string; email: string; name: string };
+    return JSON.parse(raw) as AuthUser;
   } catch {
     return null;
   }
@@ -108,21 +116,22 @@ async function request<T>(
 
 export const auth = {
   login: (email: string, password: string) =>
-    request<{ user: { id: string; email: string; name: string }; access_token: string; refresh_token: string }>(
+    request<{ user: AuthUser; access_token: string; refresh_token: string }>(
       "POST",
       "/auth/login/",
       { email, password },
       { skipAuth: true }
     ),
   register: (email: string, password: string, name: string) =>
-    request<{ user: { id: string; email: string; name: string }; access_token: string; refresh_token: string }>(
+    request<{ user: AuthUser; access_token: string; refresh_token: string }>(
       "POST",
       "/auth/register/",
       { email, password, name },
       { skipAuth: true }
     ),
   logout: (refreshToken?: string) => request("POST", "/auth/logout/", { refresh_token: refreshToken }),
-  me: () => request<{ id: string; email: string; name: string; timezone?: string }>("GET", "/auth/me/"),
+  me: () =>
+    request<AuthUser & { timezone?: string; disabled?: boolean }>("GET", "/auth/me/"),
   refresh: (refreshToken: string) =>
     request<{ access_token: string; refresh_token: string }>("POST", "/auth/refresh/", {
       refresh_token: refreshToken,
@@ -243,20 +252,38 @@ export type EmailStatsApi = {
 export type UniqueSenderApi = { from_email: string; from_name: string; count: number; last_date?: string | null };
 export type UniqueSendersApi = { unique_senders_count: number; senders: UniqueSenderApi[] };
 
+export type FolderCountsApi = {
+  inbox: number;
+  sent: number;
+  trash: number;
+  archive: number;
+  star: number;
+  spam: number;
+  snoozed: number;
+};
+
 export const emails = {
   stats: () => request<EmailStatsApi>("GET", "/emails/stats/"),
+  folderCounts: (params?: { mailbox_id?: string }) => {
+    const sp = new URLSearchParams();
+    if (params?.mailbox_id) sp.set("mailbox_id", params.mailbox_id);
+    const q = sp.toString();
+    return request<FolderCountsApi>("GET", `/emails/folder-counts/${q ? `?${q}` : ""}`);
+  },
   uniqueSenders: (params?: { mailbox_id?: string }) => {
     const sp = new URLSearchParams();
     if (params?.mailbox_id) sp.set("mailbox_id", params.mailbox_id);
     const q = sp.toString();
     return request<UniqueSendersApi>("GET", `/emails/unique-senders/${q ? `?${q}` : ""}`);
   },
-  list: (params?: { mailbox_id?: string; category?: string; unread_only?: boolean; from_email?: string; limit?: number; offset?: number }) => {
+  list: (params?: { mailbox_id?: string; category?: string; unread_only?: boolean; from_email?: string; label?: string; folder?: string; limit?: number; offset?: number }) => {
     const sp = new URLSearchParams();
     if (params?.mailbox_id) sp.set("mailbox_id", params.mailbox_id);
     if (params?.category) sp.set("category", params.category);
     if (params?.unread_only) sp.set("unread_only", "true");
     if (params?.from_email) sp.set("from_email", params.from_email);
+    if (params?.label) sp.set("label", params.label);
+    if (params?.folder) sp.set("folder", params.folder);
     if (params?.limit != null) sp.set("limit", String(params.limit));
     if (params?.offset != null) sp.set("offset", String(params.offset));
     const q = sp.toString();
@@ -315,8 +342,29 @@ export const followUps = {
 
 // ── Briefing ────────────────────────────────────────────────────────────────
 
+export type BriefingMeetingApi = {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  location?: string | null;
+  attendees?: string[];
+  notes?: string;
+  source: string;
+  email_id?: string | null;
+  conflict: boolean;
+};
+
 export type BriefingApi = {
-  stats: { unread_total: number; high_priority: number; overdue_follow_ups: number; pending_follow_ups: number };
+  stats: {
+    unread_total: number;
+    high_priority: number;
+    overdue_follow_ups: number;
+    pending_follow_ups: number;
+    meetings_today_count?: number;
+    meetings_today_conflicts?: number;
+    next_meeting?: BriefingMeetingApi | null;
+  };
   mailboxes: {
     id: string;
     name: string;
@@ -326,7 +374,15 @@ export type BriefingApi = {
     synced: boolean;
     last_sync: string | null;
   }[];
-  items: { id: string; type: string; title: string; description: string; priority: string; email_ids: string[] }[];
+  items: {
+    id: string;
+    type: string;
+    title: string;
+    description: string;
+    priority: string;
+    email_ids: string[];
+    meeting_id?: string;
+  }[];
 };
 
 export type MailboxSnapshotItem = {
@@ -340,6 +396,59 @@ export type MailboxSnapshotItem = {
 export const briefing = {
   get: () => request<BriefingApi>("GET", "/briefing/"),
   ai: () => request<{ briefing: MailboxSnapshotItem[] }>("GET", "/briefing/ai/"),
+};
+
+// ── Calendar / meetings ─────────────────────────────────────────────────────
+
+export type CalendarMeeting = {
+  id: string;
+  title: string;
+  start: string;
+  end: string;
+  location?: string | null;
+  attendees?: string[];
+  notes?: string;
+  source: "email" | "manual";
+  email_id?: string | null;
+  mailbox_id?: string | null;
+  conflict: boolean;
+};
+
+export const calendar = {
+  list: (params?: { start_date?: string; end_date?: string; mailbox_id?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.start_date) q.set("start_date", params.start_date);
+    if (params?.end_date) q.set("end_date", params.end_date);
+    if (params?.mailbox_id && params.mailbox_id !== "all") q.set("mailbox_id", params.mailbox_id);
+    const qs = q.toString();
+    return request<{ meetings: CalendarMeeting[] }>("GET", `/calendar/${qs ? `?${qs}` : ""}`);
+  },
+  create: (data: {
+    title: string;
+    start: string;
+    end: string;
+    location?: string;
+    attendees?: string[];
+    notes?: string;
+    mailbox_id?: string;
+  }) =>
+    request<{ meeting: CalendarMeeting; overlapping_titles: string[]; has_overlap: boolean }>(
+      "POST",
+      "/calendar/",
+      data
+    ),
+  update: (
+    id: string,
+    data: Partial<{ title: string; start: string; end: string; location: string; attendees: string[]; notes: string }>
+  ) => request<{ meeting: CalendarMeeting }>("PATCH", `/calendar/${id}/`, data),
+  delete: (id: string) => request<void>("DELETE", `/calendar/${id}/`),
+};
+
+// ── Feedback ────────────────────────────────────────────────────────────────
+
+export const feedback = {
+  submit: (body: { message: string; category?: string }) =>
+    request<{ id: string; status: string }>("POST", "/feedback/", body),
 };
 
 // ── Analytics ───────────────────────────────────────────────────────────────
@@ -492,6 +601,8 @@ export const agent = {
 
 // ── Settings ────────────────────────────────────────────────────────────────
 
+export type AiLabelRule = { name: string; instruction: string };
+
 export type SettingsApi = {
   user_id: string;
   daily_briefing: boolean;
@@ -501,11 +612,21 @@ export type SettingsApi = {
   auto_labeling: boolean;
   thread_summaries: boolean;
   sync_range_months: number;
+  occupation?: string;
+  important_emails_notes?: string;
+  draft_style_notes?: string;
+  ai_label_rules?: AiLabelRule[];
+  onboarding_completed?: boolean;
 };
+
+export type SettingsUpdatePayload = Partial<
+  Omit<SettingsApi, "user_id" | "ai_label_rules"> & { ai_label_rules?: AiLabelRule[] }
+>;
 
 export const settingsApi = {
   get: () => request<SettingsApi>("GET", "/settings/"),
-  update: (data: Partial<Omit<SettingsApi, "user_id">>) => request<SettingsApi>("PATCH", "/settings/", data),
+  update: (data: SettingsUpdatePayload) => request<SettingsApi>("PATCH", "/settings/", data),
+  relabel: () => request<{ updated: number }>("POST", "/settings/relabel/"),
 };
 
 // ── Search ────────────────────────────────────────────────────────────────
@@ -517,4 +638,159 @@ export const search = {
     if (params?.limit != null) sp.set("limit", String(params.limit));
     return request<EmailListApi[]>("GET", `/search/?${sp.toString()}`);
   },
+};
+
+// ── Admin (requires admin JWT) ─────────────────────────────────────────────
+
+export type AdminStats = {
+  mongodb_ok: boolean;
+  qdrant_ok: boolean;
+  users: number;
+  mailboxes: number;
+  emails_indexed: number;
+  follow_ups: number;
+  attachments: number;
+  agent_profiles: number;
+  /** Total calendar meetings (MongoDB). */
+  meetings?: number;
+  /** User feedback submissions (MongoDB). */
+  feedback_submissions?: number;
+  active_sessions: number;
+  signups_today: number;
+  signups_week: number;
+  sync_statuses: Record<string, number>;
+  daily_signups: { date: string; count: number }[];
+  /** Indexed emails whose `date` falls in each UTC day (last 7 days). */
+  daily_email_volume?: { date: string; count: number }[];
+  top_users: { user_id: string; email: string; name: string; email_count: number }[];
+  top_mailboxes?: {
+    id: string;
+    name: string;
+    email: string;
+    user_id: string;
+    user_email: string;
+    email_count: number;
+  }[];
+  engagement?: { read: number; unread: number; starred: number };
+  averages?: { emails_per_user: number; mailboxes_per_user: number; emails_per_mailbox: number };
+  users_disabled?: number;
+  users_admin_flag?: number;
+  follow_up_statuses?: Record<string, number>;
+  feedback_by_category?: Record<string, number>;
+  meetings_conflicting?: number;
+};
+
+export type AdminUserRow = AuthUser & {
+  timezone?: string;
+  mailbox_count: number;
+  email_count: number;
+  created_at?: string;
+  updated_at?: string;
+};
+
+export type AdminUserList = {
+  users: AdminUserRow[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+export type AdminMailboxRow = {
+  id: string;
+  name: string;
+  email: string;
+  color?: string;
+  sync_status: string;
+  last_sync_at: string | null;
+  created_at?: string;
+  email_count: number;
+  unread?: number;
+  user_id?: string;
+  user_email?: string;
+  user_name?: string;
+};
+
+export type AdminMailboxList = {
+  mailboxes: AdminMailboxRow[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+export type AdminActivityEvent = {
+  type: "user_registered" | "mailbox_added" | "sync_completed" | "feedback_submitted";
+  timestamp: string;
+  user_email?: string;
+  user_name?: string;
+  user_id?: string;
+  mailbox_name?: string;
+  mailbox_email?: string;
+  sync_status?: string;
+  category?: string;
+  message_preview?: string;
+  feedback_id?: string;
+};
+
+export type AdminFeedbackRow = {
+  id: string;
+  user_id: string;
+  user_email: string;
+  user_name: string;
+  category: string;
+  message: string;
+  created_at?: string;
+};
+
+export type AdminFeedbackList = {
+  feedback: AdminFeedbackRow[];
+  total: number;
+  page: number;
+  limit: number;
+};
+
+export type AdminUserDetail = {
+  user: AdminUserRow;
+  settings: Record<string, unknown> | null;
+  mailboxes: AdminMailboxRow[];
+  follow_ups_open: number;
+  follow_ups_total: number;
+  attachment_count: number;
+  has_agent_profile: boolean;
+  email_stats: { total_read: number; total_unread: number; total_starred: number };
+};
+
+export const adminApi = {
+  stats: () => request<AdminStats>("GET", "/admin/stats/"),
+  activity: (limit?: number) =>
+    request<AdminActivityEvent[]>("GET", limit ? `/admin/activity/?limit=${limit}` : "/admin/activity/"),
+  feedback: (params?: { q?: string; category?: string; page?: number; limit?: number }) => {
+    const sp = new URLSearchParams();
+    if (params?.q) sp.set("q", params.q);
+    if (params?.category) sp.set("category", params.category);
+    if (params?.page != null) sp.set("page", String(params.page));
+    if (params?.limit != null) sp.set("limit", String(params.limit));
+    const qs = sp.toString();
+    return request<AdminFeedbackList>("GET", `/admin/feedback/${qs ? `?${qs}` : ""}`);
+  },
+  mailboxes: (params?: { q?: string; sync_status?: string; page?: number; limit?: number }) => {
+    const sp = new URLSearchParams();
+    if (params?.q) sp.set("q", params.q);
+    if (params?.sync_status) sp.set("sync_status", params.sync_status);
+    if (params?.page != null) sp.set("page", String(params.page));
+    if (params?.limit != null) sp.set("limit", String(params.limit));
+    const qs = sp.toString();
+    return request<AdminMailboxList>("GET", `/admin/mailboxes/${qs ? `?${qs}` : ""}`);
+  },
+  users: (params?: { q?: string; page?: number; limit?: number }) => {
+    const sp = new URLSearchParams();
+    if (params?.q) sp.set("q", params.q);
+    if (params?.page != null) sp.set("page", String(params.page));
+    if (params?.limit != null) sp.set("limit", String(params.limit));
+    const qs = sp.toString();
+    return request<AdminUserList>("GET", `/admin/users/${qs ? `?${qs}` : ""}`);
+  },
+  user: (id: string) => request<AdminUserDetail>("GET", `/admin/users/${id}/`),
+  patchUser: (id: string, body: { disabled?: boolean; is_admin?: boolean }) =>
+    request<{ user: AdminUserRow }>("PATCH", `/admin/users/${id}/`, body),
+  deleteUser: (id: string) => request<{ deleted: boolean }>("DELETE", `/admin/users/${id}/`),
 };

@@ -14,12 +14,14 @@ import {
   Check,
   Menu,
   X,
-  MessageSquare,
-  Clock,
   Globe,
   Star,
+  Tag,
+  Mic,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
+import { BetaLabel } from "@/components/beta-label"
+import { cn } from "@/lib/utils"
 
 const navLinks = [
   { label: "Features", href: "#features" },
@@ -35,28 +37,45 @@ const features = [
   },
   {
     icon: Search,
-    title: "AI Search & Q&A",
-    description: "Ask natural-language questions across all your mailboxes. Find commitments, extract data, and get instant answers with source citations.",
+    title: "Natural language search",
+    description:
+      "Search across synced mail with plain-English questions. Results lean on indexed content so you can trace answers back to real threads.",
   },
   {
     icon: PenSquare,
-    title: "Compose Copilot",
-    description: "Draft, reply, and rewrite emails with AI assistance. Choose your tone, apply quick templates, and generate context-aware responses.",
+    title: "Compose & AI Assistant",
+    description:
+      "Write and reply from a dedicated compose experience, then jump into the AI Assistant for drafting help, tone tweaks, and context-aware suggestions.",
   },
   {
     icon: BarChart3,
-    title: "Email Analytics",
-    description: "Understand your email patterns. Volume trends, response times, top contacts, and category breakdowns in one clean dashboard.",
+    title: "Email analytics",
+    description:
+      "See volume trends, inbox health, and how mail is flowing over time—built from the same metadata that powers your unified inbox.",
   },
   {
     icon: Globe,
-    title: "Multi-Mailbox Sync",
-    description: "Connect Gmail, Outlook, and IMAP accounts. One unified inbox with per-mailbox filtering and color-coded organization.",
+    title: "Multi-mailbox sync",
+    description:
+      "Connect Gmail, Outlook, and IMAP in one place. Color-coded mailboxes, per-account filters, and automatic sync keep everything current.",
+  },
+  {
+    icon: Tag,
+    title: "Labels, follow-ups & calendar",
+    description:
+      "Teach the model your label rules, track follow-ups, surface contacts, and keep meetings extracted from mail on a built-in calendar view.",
+  },
+  {
+    icon: Mic,
+    title: "Voice agent",
+    description:
+      "Use the in-app voice agent when you want to work hands-free—another way to move through mail and tasks without living inside a keyboard.",
   },
   {
     icon: Shield,
-    title: "Enterprise Security",
-    description: "End-to-end encryption, audit logs, configurable data retention, and role-based access. SOC 2 Type II compliant.",
+    title: "Security-minded beta",
+    description:
+      "Provider OAuth, encrypted credentials, and sensible defaults for a solo or small-team deployment. Enterprise controls (SSO, audit exports) are roadmap items—tell us what you need via Feedback.",
   },
 ]
 
@@ -64,84 +83,90 @@ const steps = [
   {
     step: "01",
     title: "Connect your mailboxes",
-    description: "Link your Gmail, Outlook, or IMAP accounts in seconds. MailMind securely syncs your email history.",
+    description:
+      "Sign up and link Gmail, Outlook, or IMAP. Smart Mail AI Beta stores metadata and searchable content so the app can reason across accounts—without replacing your provider’s inbox.",
   },
   {
     step: "02",
-    title: "AI indexes everything",
-    description: "Our AI processes and understands every thread, attachment, and relationship across all your accounts.",
+    title: "Sync, label, and index",
+    description:
+      "Background sync pulls new mail, applies your AI label rules, indexes text for search, and (when it makes sense) suggests meetings and follow-ups from what you receive.",
   },
   {
     step: "03",
-    title: "Get actionable insights",
-    description: "Receive daily briefings, ask questions in natural language, and compose emails faster with AI copilot.",
+    title: "Work from one command center",
+    description:
+      "Use the daily briefing, unified inbox, analytics, compose, assistant, calendar, and voice agent from a single dashboard—and send Feedback when something should work differently.",
   },
 ]
 
 const plans = [
   {
-    name: "Starter",
-    price: "$19",
-    description: "For individuals managing personal and work email.",
+    name: "Beta access",
+    price: "Free",
+    description: "Everything shipping in the product today while we iterate with early users.",
     features: [
-      "Up to 2 mailboxes",
-      "Daily AI briefings",
-      "Basic search & Q&A",
-      "Compose copilot",
-      "7-day analytics",
+      "Unlimited mailboxes (fair use)",
+      "Daily briefing, inbox, labels & follow-ups",
+      "Natural language search over synced mail",
+      "Compose, AI assistant & floating chat",
+      "Analytics, contacts & calendar",
+      "Voice agent & in-app feedback",
     ],
-    cta: "Start free trial",
-    highlighted: false,
-  },
-  {
-    name: "Professional",
-    price: "$49",
-    description: "For power users and team leads who live in email.",
-    features: [
-      "Up to 5 mailboxes",
-      "Priority briefings with risk alerts",
-      "Advanced Q&A with citations",
-      "Full compose & rewrite suite",
-      "30-day analytics & exports",
-      "Slack & webhook integrations",
-    ],
-    cta: "Start free trial",
+    cta: "Create free account",
     highlighted: true,
   },
   {
-    name: "Enterprise",
-    price: "Custom",
-    description: "For organizations needing security, scale, and control.",
+    name: "Team (roadmap)",
+    price: "TBD",
+    description: "Shared workspaces, roles, and usage controls for small teams—planned next.",
     features: [
-      "Unlimited mailboxes",
-      "Custom AI models & prompts",
-      "SSO & SCIM provisioning",
-      "Audit logs & compliance",
-      "Dedicated support & SLA",
-      "On-premise deployment option",
+      "Shared mailboxes or delegated access patterns",
+      "Team-wide label templates & briefing defaults",
+      "Usage dashboards for admins",
+      "Webhooks / Slack-style digests (under consideration)",
     ],
-    cta: "Contact sales",
+    cta: "Join the waitlist",
+    highlighted: false,
+  },
+  {
+    name: "Enterprise (roadmap)",
+    price: "Let’s talk",
+    description: "For orgs that need SSO, retention policies, and deployment options we don’t ship yet.",
+    features: [
+      "SSO / directory integration (roadmap)",
+      "Stricter data residency & export tooling",
+      "Dedicated onboarding & priority support",
+      "Custom integrations on request",
+    ],
+    cta: "Contact us",
     highlighted: false,
   },
 ]
 
 const testimonials = [
   {
-    quote: "MailMind cut my email processing time by 60%. The daily briefing alone saves me an hour every morning.",
-    name: "Sarah Chen",
-    role: "VP of Operations, TechScale",
+    id: "beta-1",
+    quote:
+      "I start from the briefing, then drill into the inbox. Having Gmail and Outlook in one column with the same AI labels is what kept me in the beta.",
+    name: "Early beta tester",
+    role: "Product & ops lead",
     rating: 5,
   },
   {
-    quote: "The AI search is incredible. I asked 'what did the vendor promise about delivery?' and got an exact answer with sources.",
-    name: "Marcus Rivera",
-    role: "Head of Procurement, GlobalTrade",
+    id: "beta-2",
+    quote:
+      "Search is the feature I didn’t know I needed—asking ‘what did they say about the contract?’ beats digging through threads manually.",
+    name: "Early beta tester",
+    role: "Consultant",
     rating: 5,
   },
   {
-    quote: "We rolled this out to our entire executive team. The unified inbox and analytics have transformed how we operate.",
-    name: "Emily Park",
-    role: "CTO, Nexus Ventures",
+    id: "beta-3",
+    quote:
+      "Compose plus the assistant means I’m not context-switching to another tab. Calendar surfacing meetings from email is a nice bonus.",
+    name: "Early beta tester",
+    role: "Founder",
     rating: 5,
   },
 ]
@@ -149,7 +174,7 @@ const testimonials = [
 const stats = [
   { value: "60%", label: "less time in email" },
   { value: "3.2x", label: "faster response times" },
-  { value: "10K+", label: "teams using MailMind" },
+  { value: "10K+", label: "teams using Smart Mail AI Beta" },
   { value: "99.9%", label: "uptime guaranteed" },
 ]
 
@@ -163,7 +188,11 @@ function Navbar() {
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <Mail className="h-4 w-4 text-primary-foreground" />
           </div>
-          <span className="text-base font-semibold text-foreground">MailMind</span>
+          <span className="flex items-center text-base font-semibold">
+            <span className="text-foreground">Smart Mail </span>
+            <span className="text-primary">AI</span>
+            <BetaLabel />
+          </span>
         </Link>
 
         <div className="hidden items-center gap-8 md:flex">
@@ -237,7 +266,7 @@ function HeroSection() {
       <div className="relative flex max-w-3xl flex-col items-center text-center">
         <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-1.5">
           <Zap className="h-3.5 w-3.5 text-primary" />
-          <span className="text-xs font-medium text-primary">AI-Powered Email Intelligence</span>
+          <span className="text-xs font-medium text-primary">AI-powered Email Workspace</span>
         </div>
 
         <h1 className="text-balance text-4xl font-bold leading-tight tracking-tight text-foreground md:text-6xl">
@@ -253,16 +282,16 @@ function HeroSection() {
         <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row">
           <Button size="lg" asChild className="bg-primary text-primary-foreground hover:bg-primary/90 h-12 px-8 text-sm">
             <Link href="/signup">
-              Start free trial
+              Create free account
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
           </Button>
           <Button variant="outline" size="lg" asChild className="border-border text-foreground hover:bg-secondary h-12 px-8 text-sm">
-            <a href="#features">See how it works</a>
+            <a href="#features">Explore features</a>
           </Button>
         </div>
 
-        <p className="mt-4 text-xs text-muted-foreground">No credit card required. 14-day free trial.</p>
+        <p className="mt-4 text-xs text-muted-foreground">No credit card to sign up. Beta features evolve weekly—your feedback shapes the roadmap.</p>
       </div>
     </section>
   )
@@ -272,12 +301,25 @@ function StatsBar() {
   return (
     <section className="border-y border-border bg-card/50">
       <div className="mx-auto grid max-w-6xl grid-cols-2 gap-0 divide-x divide-border md:grid-cols-4">
-        {stats.map((stat) => (
-          <div key={stat.label} className="flex flex-col items-center gap-1 px-6 py-8">
-            <span className="text-2xl font-bold text-foreground md:text-3xl">{stat.value}</span>
-            <span className="text-xs text-muted-foreground">{stat.label}</span>
-          </div>
-        ))}
+        {stats.map((stat) => {
+          const isBeta = stat.value === "Beta"
+          return (
+            <div
+              key={stat.label}
+              className={cn(
+                "flex flex-col items-center gap-2 px-6 py-8",
+                isBeta && "bg-amber-500/[0.08] dark:bg-amber-500/10",
+              )}
+            >
+              {isBeta ? (
+                <BetaLabel className="!ml-0 scale-110 md:scale-125" />
+              ) : (
+                <span className="text-2xl font-bold text-foreground md:text-3xl">{stat.value}</span>
+              )}
+              <span className="text-center text-xs text-muted-foreground">{stat.label}</span>
+            </div>
+          )
+        })}
       </div>
     </section>
   )
@@ -290,10 +332,11 @@ function FeaturesSection() {
         <div className="mb-14 text-center">
           <p className="mb-3 text-sm font-medium text-primary">Features</p>
           <h2 className="text-balance text-3xl font-bold text-foreground md:text-4xl">
-            Everything you need to master your inbox
+            Built around how this app actually works
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-pretty text-muted-foreground">
-            MailMind connects to all your email accounts and uses AI to surface what matters, when it matters.
+            Below is what you get in the live product today—multi-mailbox sync, AI briefing and search, compose tools, analytics, calendar context, and a
+            voice agent—not a slide-deck wish list.
           </p>
         </div>
 
@@ -355,15 +398,18 @@ function TestimonialsSection() {
     <section className="px-6 py-20 md:py-28">
       <div className="mx-auto max-w-6xl">
         <div className="mb-14 text-center">
-          <p className="mb-3 text-sm font-medium text-primary">Testimonials</p>
+          <p className="mb-3 text-sm font-medium text-primary">From beta users</p>
           <h2 className="text-balance text-3xl font-bold text-foreground md:text-4xl">
-            Trusted by teams everywhere
+            What people are doing with it
           </h2>
+          <p className="mx-auto mt-4 max-w-lg text-pretty text-sm text-muted-foreground">
+            Paraphrased feedback from early testers—illustrative of real workflows, not paid endorsements.
+          </p>
         </div>
 
         <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
           {testimonials.map((t) => (
-            <div key={t.name} className="rounded-xl border border-border bg-card p-6">
+            <div key={t.id} className="rounded-xl border border-border bg-card p-6">
               <div className="mb-3 flex gap-0.5">
                 {Array.from({ length: t.rating }).map((_, i) => (
                   <Star key={i} className="h-4 w-4 fill-primary text-primary" />
@@ -391,10 +437,10 @@ function PricingSection() {
         <div className="mb-14 text-center">
           <p className="mb-3 text-sm font-medium text-primary">Pricing</p>
           <h2 className="text-balance text-3xl font-bold text-foreground md:text-4xl">
-            Simple, transparent pricing
+            Pricing that matches beta reality
           </h2>
           <p className="mx-auto mt-4 max-w-md text-pretty text-muted-foreground">
-            Start free, upgrade when you need more power. All plans include a 14-day trial.
+            Use the full app on the house while we harden features. Paid tiers will arrive when team billing and enterprise controls are ready.
           </p>
         </div>
 
@@ -410,14 +456,16 @@ function PricingSection() {
             >
               {plan.highlighted && (
                 <div className="absolute -top-3 left-1/2 -translate-x-1/2 rounded-full bg-primary px-3 py-0.5 text-xs font-medium text-primary-foreground">
-                  Most popular
+                  Current
                 </div>
               )}
               <div className="mb-5">
                 <h3 className="text-base font-semibold text-foreground">{plan.name}</h3>
                 <div className="mt-2 flex items-baseline gap-1">
                   <span className="text-3xl font-bold text-foreground">{plan.price}</span>
-                  {plan.price !== "Custom" && <span className="text-sm text-muted-foreground">/month</span>}
+                  {plan.price !== "Let’s talk" && plan.price !== "TBD" && plan.price !== "Free" && (
+                    <span className="text-sm text-muted-foreground">/month</span>
+                  )}
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground">{plan.description}</p>
               </div>
@@ -452,17 +500,20 @@ function CtaSection() {
     <section className="px-6 py-20 md:py-28">
       <div className="mx-auto max-w-3xl text-center">
         <h2 className="text-balance text-3xl font-bold text-foreground md:text-4xl">
-          Ready to take control of your inbox?
+          Ready to try the workspace?
         </h2>
         <p className="mx-auto mt-4 max-w-md text-pretty text-muted-foreground">
-          Join thousands of professionals who reclaimed their time with MailMind.
+          Create an account, connect a mailbox, and see the briefing, inbox, and AI tools in minutes. If something’s missing, tell us from Feedback in the app.
         </p>
         <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
           <Button size="lg" asChild className="bg-primary text-primary-foreground hover:bg-primary/90 h-12 px-8">
             <Link href="/signup">
-              Start free trial
+              Get started free
               <ArrowRight className="ml-2 h-4 w-4" />
             </Link>
+          </Button>
+          <Button size="lg" variant="outline" asChild className="h-12 border-border px-8">
+            <Link href="/login">Log in</Link>
           </Button>
         </div>
       </div>
@@ -478,7 +529,11 @@ function Footer() {
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary">
             <Mail className="h-3.5 w-3.5 text-primary-foreground" />
           </div>
-          <span className="text-sm font-semibold text-foreground">MailMind</span>
+          <span className="flex items-center text-sm font-semibold">
+            <span className="text-foreground">Smart Mail </span>
+            <span className="text-primary">AI</span>
+            <BetaLabel className="scale-95" />
+          </span>
         </div>
         <div className="flex items-center gap-6">
           <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Privacy</a>
@@ -487,7 +542,7 @@ function Footer() {
           <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Contact</a>
         </div>
         <p className="text-xs text-muted-foreground">
-          {"2026 MailMind. All rights reserved."}
+          {"2026 Smart Mail AI Beta. All rights reserved."}
         </p>
       </div>
     </footer>

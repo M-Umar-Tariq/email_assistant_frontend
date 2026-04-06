@@ -37,6 +37,7 @@ import {
   Sun,
   Moon,
   Sunset,
+  CalendarDays,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -49,11 +50,14 @@ import {
   analytics as analyticsApi,
   agent as agentApi,
   type AgentProfile,
+  type BriefingApi,
 } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
+import { ConnectMailboxCta } from "@/components/connect-mailbox-cta"
 import { mapBriefingItem, mapEmailListApi } from "@/lib/mappers"
 import type { Mailbox, BriefingItem, Email } from "@/lib/mock-data"
 import { cn } from "@/lib/utils"
+import { format, parseISO } from "date-fns"
 
 export type InboxFilter =
   | "today"
@@ -70,10 +74,11 @@ const typeConfig: Record<
 > = {
   urgent: { icon: AlertTriangle, color: "text-red-400", bg: "bg-red-400/10", accent: "border-l-red-500", label: "Urgent", groupLabel: "Needs Immediate Attention", groupOrder: 0 },
   followup: { icon: Clock, color: "text-amber-400", bg: "bg-amber-400/10", accent: "border-l-amber-500", label: "Follow-up", groupLabel: "Follow-ups Due", groupOrder: 1 },
-  deadline: { icon: Calendar, color: "text-orange-400", bg: "bg-orange-400/10", accent: "border-l-orange-500", label: "Deadline", groupLabel: "Upcoming Deadlines", groupOrder: 2 },
-  vip: { icon: Star, color: "text-primary", bg: "bg-primary/10", accent: "border-l-primary", label: "VIP", groupLabel: "VIP Messages", groupOrder: 3 },
-  risk: { icon: ShieldAlert, color: "text-red-400", bg: "bg-red-400/10", accent: "border-l-red-500", label: "Risk", groupLabel: "Potential Risks", groupOrder: 4 },
-  info: { icon: Info, color: "text-blue-400", bg: "bg-blue-400/10", accent: "border-l-blue-500", label: "Info", groupLabel: "Recent Updates", groupOrder: 5 },
+  meeting: { icon: CalendarDays, color: "text-violet-400", bg: "bg-violet-400/10", accent: "border-l-violet-500", label: "Meeting", groupLabel: "Today's Meetings", groupOrder: 2 },
+  deadline: { icon: Calendar, color: "text-orange-400", bg: "bg-orange-400/10", accent: "border-l-orange-500", label: "Deadline", groupLabel: "Upcoming Deadlines", groupOrder: 3 },
+  vip: { icon: Star, color: "text-primary", bg: "bg-primary/10", accent: "border-l-primary", label: "VIP", groupLabel: "VIP Messages", groupOrder: 4 },
+  risk: { icon: ShieldAlert, color: "text-red-400", bg: "bg-red-400/10", accent: "border-l-red-500", label: "Risk", groupLabel: "Potential Risks", groupOrder: 5 },
+  info: { icon: Info, color: "text-blue-400", bg: "bg-blue-400/10", accent: "border-l-blue-500", label: "Info", groupLabel: "Recent Updates", groupOrder: 6 },
 }
 
 /* ─── Helpers ───────────────────────────────────────────────────────── */
@@ -541,6 +546,59 @@ function RecentActivityFeed({ emails }: { emails: Email[] }) {
   )
 }
 
+/* ─── Today's meetings (dashboard) ───────────────────────────────────── */
+
+function TodaysMeetingsCard({
+  count,
+  conflicts,
+  next,
+  onOpenCalendar,
+}: {
+  count: number
+  conflicts: number
+  next: BriefingApi["stats"]["next_meeting"]
+  onOpenCalendar: () => void
+}) {
+  let nextLine = "No more meetings scheduled today"
+  if (next) {
+    try {
+      const t = format(parseISO(next.start), "p")
+      nextLine = `Next: ${next.title} at ${t}`
+    } catch {
+      nextLine = `Next: ${next.title}`
+    }
+  }
+
+  return (
+    <Card
+      className="border-border/50 overflow-hidden cursor-pointer transition-all hover:shadow-md hover:border-violet-500/25 hover:-translate-y-0.5 active:translate-y-0"
+      onClick={onOpenCalendar}
+    >
+      <CardContent className="p-4">
+        <div className="flex items-start justify-between gap-3">
+          <div className="flex items-center gap-3 min-w-0">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/15">
+              <CalendarDays className="h-5 w-5 text-violet-400" />
+            </div>
+            <div className="min-w-0">
+              <p className="text-[11px] font-semibold text-muted-foreground uppercase tracking-widest">Today&apos;s meetings</p>
+              <p className="text-2xl font-bold text-foreground tabular-nums">{count}</p>
+              <p className="text-xs text-muted-foreground mt-1 truncate">{nextLine}</p>
+              {conflicts > 0 && (
+                <div className="mt-2 flex items-center gap-1.5 text-xs text-destructive font-medium">
+                  <AlertTriangle className="h-3.5 w-3.5 shrink-0" />
+                  {conflicts} overlap{conflicts !== 1 ? "s" : ""} — open calendar to resolve
+                </div>
+              )}
+            </div>
+          </div>
+          <ArrowRight className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
+        </div>
+      </CardContent>
+    </Card>
+  )
+}
+
 /* ─── Grouped Briefing Items ─────────────────────────────────────────── */
 
 function GroupedBriefingItems({
@@ -666,10 +724,17 @@ function GroupedBriefingItems({
                               {item.description}
                             </p>
                             <div className="mt-2.5 flex items-center gap-3">
-                              <span className="text-[10px] font-medium text-muted-foreground/70 flex items-center gap-1">
-                                <Mail className="h-3 w-3" />
-                                {item.emails.length} email{item.emails.length !== 1 ? "s" : ""}
-                              </span>
+                              {item.type === "meeting" ? (
+                                <span className="text-[10px] font-medium text-muted-foreground/70 flex items-center gap-1">
+                                  <CalendarDays className="h-3 w-3" />
+                                  Calendar
+                                </span>
+                              ) : (
+                                <span className="text-[10px] font-medium text-muted-foreground/70 flex items-center gap-1">
+                                  <Mail className="h-3 w-3" />
+                                  {item.emails.length} email{item.emails.length !== 1 ? "s" : ""}
+                                </span>
+                              )}
                               <ArrowRight className="h-3 w-3 text-primary opacity-0 group-hover:opacity-100 group-hover:translate-x-0.5 transition-all duration-200" />
                             </div>
                           </div>
@@ -953,10 +1018,13 @@ export function DailyBriefing({
   onViewChange,
   onNavigateInbox,
   onNavigateToEmail,
+  onConnectMailbox,
 }: {
   onViewChange: (view: string) => void
   onNavigateInbox?: (filter: InboxFilter) => void
   onNavigateToEmail?: (emailId: string) => void
+  /** Opens add-mailbox dialog when user has no accounts */
+  onConnectMailbox?: () => void
 }) {
   const { user } = useAuth()
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([])
@@ -971,6 +1039,11 @@ export function DailyBriefing({
   const [loading, setLoading] = useState(true)
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
   const [widgetRefreshKey, setWidgetRefreshKey] = useState(0)
+  const [meetingsToday, setMeetingsToday] = useState<{
+    count: number
+    conflicts: number
+    next: BriefingApi["stats"]["next_meeting"]
+  }>({ count: 0, conflicts: 0, next: null })
 
   const refreshDashboard = useCallback(() => {
     Promise.all([
@@ -981,6 +1054,11 @@ export function DailyBriefing({
           setStats({
             unreadTotal: data.stats.unread_total,
             highPriority: data.stats.high_priority,
+          })
+          setMeetingsToday({
+            count: data.stats.meetings_today_count ?? 0,
+            conflicts: data.stats.meetings_today_conflicts ?? 0,
+            next: data.stats.next_meeting ?? null,
           })
           return data
         })
@@ -1079,6 +1157,17 @@ export function DailyBriefing({
   }
 
   const handleItemClick = (item: BriefingItem) => {
+    if (item.type === "meeting") {
+      onViewChange("calendar")
+      if (item.meetingId) {
+        queueMicrotask(() =>
+          window.dispatchEvent(
+            new CustomEvent("calendar:openMeeting", { detail: { id: item.meetingId } })
+          )
+        )
+      }
+      return
+    }
     if (item.emails.length > 0 && onNavigateToEmail) {
       onNavigateToEmail(item.emails[0])
     } else if (onNavigateInbox) {
@@ -1106,6 +1195,8 @@ export function DailyBriefing({
     day: "numeric",
     year: "numeric",
   })
+
+  const noMailboxConnected = !loading && mailboxes.length === 0
 
   if (loading) {
     return (
@@ -1139,22 +1230,36 @@ export function DailyBriefing({
               </div>
             </div>
             <div className="flex items-center gap-2.5">
-              {stats.highPriority > 0 && (
-                <Badge variant="outline" className="border-red-400/30 text-red-400 bg-red-400/5 gap-1 font-semibold">
-                  <AlertTriangle className="h-3 w-3" />
-                  {stats.highPriority} urgent
+              {noMailboxConnected ? (
+                <Badge variant="outline" className="gap-1 border-amber-500/40 bg-amber-500/10 font-semibold text-amber-800 dark:text-amber-300">
+                  <Inbox className="h-3 w-3" />
+                  No mailbox connected
                 </Badge>
+              ) : (
+                <>
+                  {stats.highPriority > 0 && (
+                    <Badge variant="outline" className="border-red-400/30 text-red-400 bg-red-400/5 gap-1 font-semibold">
+                      <AlertTriangle className="h-3 w-3" />
+                      {stats.highPriority} urgent
+                    </Badge>
+                  )}
+                  <Badge variant="outline" className="border-primary/30 text-primary bg-primary/5 gap-1 font-semibold">
+                    <Mail className="h-3 w-3" />
+                    {stats.unreadTotal} unread
+                  </Badge>
+                </>
               )}
-              <Badge variant="outline" className="border-primary/30 text-primary bg-primary/5 gap-1 font-semibold">
-                <Mail className="h-3 w-3" />
-                {stats.unreadTotal} unread
-              </Badge>
             </div>
           </div>
         </div>
       </header>
 
       <ScrollArea className="flex-1">
+        {noMailboxConnected ? (
+          <div className="p-6">
+            <ConnectMailboxCta onConnect={onConnectMailbox} variant="hero" />
+          </div>
+        ) : (
         <div className="p-6 space-y-6">
           {/* Stats Row */}
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
@@ -1196,6 +1301,13 @@ export function DailyBriefing({
             />
           </div>
 
+          <TodaysMeetingsCard
+            count={meetingsToday.count}
+            conflicts={meetingsToday.conflicts}
+            next={meetingsToday.next}
+            onOpenCalendar={() => onViewChange("calendar")}
+          />
+
           {/* AI Summary */}
           <AiSummaryBanner />
 
@@ -1231,6 +1343,7 @@ export function DailyBriefing({
             </div>
           </div>
         </div>
+        )}
       </ScrollArea>
     </div>
   )

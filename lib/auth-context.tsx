@@ -3,8 +3,9 @@
 import React, { createContext, useCallback, useContext, useEffect, useState } from "react"
 import { useRouter } from "next/navigation"
 import * as api from "./api"
+import { markFreshSignup } from "@/lib/fresh-signup"
 
-type User = { id: string; email: string; name: string }
+type User = api.AuthUser
 
 type AuthContextType = {
   user: User | null
@@ -14,6 +15,7 @@ type AuthContextType = {
   register: (name: string, email: string, password: string) => Promise<void>
   logout: () => Promise<void>
   setUser: (u: User | null) => void
+  refreshUser: () => Promise<void>
 }
 
 const AuthContext = createContext<AuthContextType | null>(null)
@@ -63,13 +65,36 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       api.setTokens(res.access_token, res.refresh_token, res.user)
       setToken(res.access_token)
       setUserState(res.user)
+      markFreshSignup()
       router.push("/app")
     },
     [router]
   )
 
+  const refreshUser = useCallback(async () => {
+    const me = await api.auth.me()
+    const t = api.getAccessToken()
+    const refresh = typeof window !== "undefined" ? localStorage.getItem("smartmailai_refresh_token") : null
+    if (t && refresh) {
+      api.setTokens(t, refresh, {
+        id: me.id,
+        email: me.email,
+        name: me.name,
+        is_admin: me.is_admin,
+        disabled: me.disabled,
+      })
+    }
+    setUserState({
+      id: me.id,
+      email: me.email,
+      name: me.name,
+      is_admin: me.is_admin,
+      disabled: me.disabled,
+    })
+  }, [])
+
   const logout = useCallback(async () => {
-    const refresh = typeof window !== "undefined" ? localStorage.getItem("mailmind_refresh_token") : null
+    const refresh = typeof window !== "undefined" ? localStorage.getItem("smartmailai_refresh_token") : null
     try {
       if (refresh) await api.auth.logout(refresh)
     } catch {
@@ -91,6 +116,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         register,
         logout,
         setUser,
+        refreshUser,
       }}
     >
       {children}

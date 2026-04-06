@@ -71,6 +71,7 @@ export function mapBriefingItem(item: BriefingApi["items"][0]): BriefingItem {
     description: item.description,
     emails: item.email_ids || [],
     priority: (item.priority as "high" | "medium" | "low") || "medium",
+    meetingId: item.meeting_id,
   }
 }
 

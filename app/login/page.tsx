@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useState } from "react"
 import { Mail, ArrowRight, Eye, EyeOff } from "lucide-react"
+import { BetaLabel } from "@/components/beta-label"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -37,7 +38,11 @@ export default function LoginPage() {
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
               <Mail className="h-4 w-4 text-primary-foreground" />
             </div>
-            <span className="text-base font-semibold text-foreground">MailMind</span>
+            <span className="flex items-center text-base font-semibold">
+              <span className="text-foreground">Smart Mail </span>
+              <span className="text-primary">AI</span>
+              <BetaLabel />
+            </span>
           </Link>
         </div>
 
@@ -46,7 +51,8 @@ export default function LoginPage() {
             Welcome back
           </h2>
           <p className="mt-4 text-base leading-relaxed text-muted-foreground">
-            Your AI email assistant is ready. Pick up where you left off with your daily briefing, inbox, and intelligent search.
+            Continue where you left off: daily briefing, unified inbox across your mailboxes, AI search, compose, assistant, analytics, and calendar—all in
+            one workspace.
           </p>
 
           <div className="mt-10 rounded-xl border border-border bg-background/50 p-5">
@@ -54,27 +60,18 @@ export default function LoginPage() {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
                 <Mail className="h-4 w-4 text-primary" />
               </div>
-              <span className="text-sm font-medium text-foreground">Today{"'"}s quick look</span>
+              <span className="text-sm font-medium text-foreground">Inside the app</span>
             </div>
-            <div className="flex flex-col gap-2.5">
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Unread emails</span>
-                <span className="text-sm font-semibold text-foreground">25</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Action required</span>
-                <span className="text-sm font-semibold text-red-400">4 urgent</span>
-              </div>
-              <div className="flex items-center justify-between">
-                <span className="text-sm text-muted-foreground">Briefing ready</span>
-                <span className="text-sm font-semibold text-emerald-400">Yes</span>
-              </div>
-            </div>
+            <ul className="flex flex-col gap-2 text-sm text-muted-foreground">
+              <li>• Briefing and inbox sync from your connected accounts</li>
+              <li>• Labels, follow-ups, and meetings from mail context</li>
+              <li>• Voice agent and feedback to shape what we build next</li>
+            </ul>
           </div>
         </div>
 
         <p className="text-xs text-muted-foreground">
-          {"2026 MailMind. All rights reserved."}
+          {"2026 Smart Mail AI Beta. All rights reserved."}
         </p>
       </div>
 
@@ -87,12 +84,23 @@ export default function LoginPage() {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
                 <Mail className="h-4 w-4 text-primary-foreground" />
               </div>
-              <span className="text-base font-semibold text-foreground">MailMind</span>
+              <span className="flex items-center text-base font-semibold">
+                <span className="text-foreground">Smart Mail </span>
+                <span className="text-primary">AI</span>
+                <BetaLabel />
+              </span>
             </Link>
           </div>
 
           <div className="mb-8">
-            <h1 className="text-2xl font-bold text-foreground">Log in to MailMind</h1>
+            <h1 className="flex flex-wrap items-center gap-x-1 text-2xl font-bold text-foreground">
+              <span>Log in to</span>
+              <span className="flex items-center">
+                <span>Smart Mail </span>
+                <span className="text-primary">AI</span>
+                <BetaLabel />
+              </span>
+            </h1>
             <p className="mt-2 text-sm text-muted-foreground">
               {"Don't have an account?"}{" "}
               <Link href="/signup" className="font-medium text-primary hover:text-primary/80 transition-colors">

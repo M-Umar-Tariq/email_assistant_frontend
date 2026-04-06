@@ -98,11 +98,13 @@ export type Mailbox = {
 
 export type BriefingItem = {
   id: string
-  type: "urgent" | "followup" | "deadline" | "vip" | "risk" | "info"
+  type: "urgent" | "followup" | "deadline" | "vip" | "risk" | "info" | "meeting"
   title: string
   description: string
   emails: string[]
   priority: "high" | "medium" | "low"
+  /** When type is meeting, backend briefing item id for calendar navigation */
+  meetingId?: string
 }
 
 export type AnalyticsData = {

@@ -10,6 +10,9 @@
 
 @layer base {
   :root {
+    /* Main column horizontal inset — keep view headers/body aligned with sidebar seam */
+    --app-main-padding-x: 1.5rem;
+
     /* Light theme (default) */
     --background: 0 0% 100%;
     --foreground: 220 20% 12%;

@@ -3,6 +3,7 @@
 import { useEffect } from "react"
 import { useRouter, usePathname } from "next/navigation"
 import { useAuth } from "@/lib/auth-context"
+import { WelcomeOnboardingDialog } from "@/components/welcome-onboarding-dialog"
 
 export default function AppLayout({ children }: { children: React.ReactNode }) {
   const { token, isLoading } = useAuth()
@@ -28,5 +29,10 @@ export default function AppLayout({ children }: { children: React.ReactNode }) {
     return null
   }
 
-  return <>{children}</>
+  return (
+    <>
+      {children}
+      <WelcomeOnboardingDialog />
+    </>
+  )
 }

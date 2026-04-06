@@ -387,7 +387,7 @@ export function FollowupTracker() {
 
         {/* Stat Rings */}
         <div className="border-b border-border/50 bg-gradient-to-b from-muted/20 to-transparent">
-          <div className="flex items-center justify-center gap-2 px-4 py-3">
+          <div className="flex items-center justify-center gap-2 px-6 py-3">
             <StatRing
               value={overdueCount}
               total={totalCount}
@@ -422,7 +422,7 @@ export function FollowupTracker() {
         </div>
 
         {/* Filter Tabs */}
-        <div className="flex items-center gap-1.5 border-b border-border/50 px-5 py-2.5">
+        <div className="flex items-center gap-1.5 border-b border-border/50 px-6 py-2.5">
           {filterTabs.map((tab) => {
             const TabIcon = tab.icon
             const active = filter === tab.key

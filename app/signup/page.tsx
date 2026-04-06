@@ -3,6 +3,7 @@
 import Link from "next/link"
 import { useState } from "react"
 import { Mail, ArrowRight, Eye, EyeOff, Check } from "lucide-react"
+import { BetaLabel } from "@/components/beta-label"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
@@ -44,23 +45,28 @@ export default function SignupPage() {
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
               <Mail className="h-4 w-4 text-primary-foreground" />
             </div>
-            <span className="text-base font-semibold text-foreground">MailMind</span>
+            <span className="flex items-center text-base font-semibold">
+              <span className="text-foreground">Smart Mail </span>
+              <span className="text-primary">AI</span>
+              <BetaLabel />
+            </span>
           </Link>
         </div>
 
         <div className="max-w-md">
           <h2 className="text-3xl font-bold leading-tight text-foreground">
-            Start making sense of your inbox today
+            Your email workspace, in one login
           </h2>
           <p className="mt-4 text-base leading-relaxed text-muted-foreground">
-            Join 10,000+ professionals who use MailMind to save hours every week with AI-powered email intelligence.
+            Smart Mail AI Beta connects Gmail, Outlook, or IMAP, then layers a daily briefing, unified inbox, AI search, compose tools, analytics, and more—free
+            while we&apos;re in beta.
           </p>
 
           <div className="mt-10 flex flex-col gap-4">
             {[
-              "AI briefings across all your mailboxes",
-              "Natural language search with source citations",
-              "Smart compose with tone and template control",
+              "Morning briefing plus inbox across all connected mailboxes",
+              "Natural language search over synced mail",
+              "Compose, AI assistant, calendar & follow-ups in the same app",
             ].map((item) => (
               <div key={item} className="flex items-center gap-3">
                 <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/10">
@@ -73,7 +79,7 @@ export default function SignupPage() {
         </div>
 
         <p className="text-xs text-muted-foreground">
-          {"2026 MailMind. All rights reserved."}
+          {"2026 Smart Mail AI Beta. All rights reserved."}
         </p>
       </div>
 
@@ -86,7 +92,11 @@ export default function SignupPage() {
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
                 <Mail className="h-4 w-4 text-primary-foreground" />
               </div>
-              <span className="text-base font-semibold text-foreground">MailMind</span>
+              <span className="flex items-center text-base font-semibold">
+                <span className="text-foreground">Smart Mail </span>
+                <span className="text-primary">AI</span>
+                <BetaLabel />
+              </span>
             </Link>
           </div>
 
