@@ -70,14 +70,15 @@ import { format } from "date-fns"
 import type { InboxFilter } from "@/components/daily-briefing"
 import { ConnectMailboxCta } from "@/components/connect-mailbox-cta"
 import { sanitizeEmailHtml } from "@/lib/sanitize-html"
+import { LABELS_UPDATED_EVENT, type LabelsUpdatedDetail } from "@/lib/labels-events"
 
 function EmailListSkeleton() {
   return (
-    <div className="divide-y divide-border">
+    <div className="space-y-2 px-3 py-3">
       {Array.from({ length: 8 }).map((_, i) => (
         <div
           key={i}
-          className="flex items-start gap-3 p-4"
+          className="flex items-start gap-3 rounded-xl border border-border/50 bg-card/50 p-4 shadow-sm"
           style={{ animationDelay: `${i * 60}ms` }}
         >
           <Skeleton className="h-9 w-9 rounded-full shrink-0" />
@@ -168,6 +169,17 @@ function formatTime(dateStr: string) {
   return date.toLocaleDateString("en-US", { month: "short", day: "numeric" })
 }
 
+/** Full calendar date for “received on” column (right side of list row). */
+function formatReceivedDate(dateStr: string) {
+  try {
+    const d = new Date(dateStr)
+    if (Number.isNaN(d.getTime())) return "—"
+    return format(d, "MMM d, yyyy")
+  } catch {
+    return "—"
+  }
+}
+
 const categoryConfig: Record<EmailCategory, { label: string; icon: React.ElementType; color: string }> = {
   important: { label: "Important", icon: ShieldCheck, color: "text-primary" },
   updates: { label: "Updates", icon: TrendingUp, color: "text-amber-400" },
@@ -208,25 +220,31 @@ function EmailListItem({
   const mb = showMailbox ? mailboxes.find((m) => m.id === email.mailbox) : null
   const mbColor = getMailboxColor(email.mailbox, mailboxes)
 
+  const receivedAt =
+    email.date && String(email.date).trim() !== ""
+      ? email.date
+      : email.repliedAt ?? ""
+
   return (
     <button
+      type="button"
       onClick={onSelect}
-      className={`email-list-item group w-full flex items-start gap-3.5 px-5 py-3.5 text-left transition-all duration-200 border-l-[3px] relative ${
+      className={`email-list-item group relative grid w-full min-w-0 max-w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 px-4 py-3.5 text-left transition-all duration-300 rounded-xl border shadow-sm overflow-hidden ${
         isSelected
-          ? "bg-primary/[0.06] border-l-primary shadow-[inset_0_0_0_1px_hsl(var(--primary)/0.1)]"
+          ? "bg-primary/[0.07] border-primary/35 shadow-[0_6px_24px_hsl(var(--primary)/0.08)]"
           : email.read
-            ? "bg-transparent border-l-transparent hover:bg-muted/40 hover:border-l-muted-foreground/20"
-            : "bg-primary/[0.04] border-l-primary/60 hover:bg-primary/[0.08]"
+            ? "bg-card/50 border-border/50 hover:bg-muted/30 hover:border-border/80 hover:shadow-md"
+            : "bg-primary/[0.04] border-primary/20 hover:bg-primary/[0.08] hover:border-primary/35 hover:shadow-md"
       }`}
       style={{ animationDelay: `${index * 30}ms` }}
     >
       {!email.read && (
-        <div className="absolute left-[7px] top-1/2 -translate-y-1/2 -translate-x-1/2">
+        <div className="absolute left-2.5 top-3">
           <div className="h-2 w-2 rounded-full bg-primary animate-pulse-dot" />
         </div>
       )}
 
-      <div className="relative">
+      <div className="relative shrink-0">
         <Avatar className="h-10 w-10 shrink-0 mt-0.5 ring-2 ring-transparent group-hover:ring-primary/10 transition-all duration-200">
           <AvatarFallback
             className="text-xs font-semibold"
@@ -245,8 +263,7 @@ function EmailListItem({
         )}
       </div>
 
-      <div className="flex-1 min-w-0">
-        <div className="flex items-center justify-between gap-2">
+      <div className="min-w-0">
           <div className="flex items-center gap-2 min-w-0">
             <span className={`text-[13px] truncate ${!email.read ? "font-semibold text-foreground" : "font-medium text-foreground/75"}`}>
               {email.from.name}
@@ -261,25 +278,23 @@ function EmailListItem({
               </span>
             )}
           </div>
-          <span className="text-[11px] text-muted-foreground/70 shrink-0 tabular-nums">{formatTime(email.date)}</span>
-        </div>
 
-        <div className="flex items-center gap-2 mt-0.5">
-          <span className={`text-[13px] truncate ${!email.read ? "font-medium text-foreground" : "text-foreground/65"}`}>
-            {email.subject}
-          </span>
-        </div>
+          <div className="flex items-center gap-2 mt-0.5">
+            <span className={`text-[13px] truncate ${!email.read ? "font-medium text-foreground" : "text-foreground/65"}`}>
+              {email.subject}
+            </span>
+          </div>
 
-        {email.aiSummary && (
-          <p className="text-[11px] text-primary/60 truncate mt-0.5 flex items-center gap-1.5">
-            <Sparkles className="h-2.5 w-2.5 shrink-0 text-primary/50" />
-            <span className="truncate">{email.aiSummary}</span>
-          </p>
-        )}
+          {email.aiSummary && (
+            <p className="text-[11px] text-primary/60 truncate mt-0.5 flex items-center gap-1.5">
+              <Sparkles className="h-2.5 w-2.5 shrink-0 text-primary/50" />
+              <span className="truncate">{email.aiSummary}</span>
+            </p>
+          )}
 
-        <p className="text-xs text-muted-foreground/60 truncate mt-0.5 leading-relaxed">{email.preview}</p>
+          <p className="text-xs text-muted-foreground/60 truncate mt-0.5 leading-relaxed">{email.preview}</p>
 
-        <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+          <div className="flex items-center gap-1.5 mt-2 flex-wrap">
           <SentimentDot score={email.sentimentScore} />
           {email.starred && <Star className="h-3 w-3 text-amber-400 fill-amber-400 drop-shadow-[0_0_3px_rgba(251,191,36,0.4)]" />}
           {email.hasAttachment && (
@@ -326,8 +341,27 @@ function EmailListItem({
         </div>
       </div>
 
-      <div className="opacity-0 group-hover:opacity-100 transition-opacity duration-200 flex items-center gap-0.5 shrink-0 mt-0.5">
-        <ChevronRight className="h-4 w-4 text-muted-foreground/40" />
+      {/* Received date — dedicated grid column so it is never pushed off-screen by long subject/preview */}
+      <div className="flex w-[5.25rem] shrink-0 flex-col items-end justify-start gap-0.5 border-l border-border/50 pl-2 text-right sm:w-[6.75rem] sm:pl-3">
+        <div className="flex items-center justify-end gap-0.5">
+          <span className="text-[11px] font-semibold tabular-nums text-foreground">
+            {receivedAt ? formatTime(receivedAt) : "—"}
+          </span>
+          <ChevronRight className="h-3.5 w-3.5 shrink-0 text-muted-foreground/50 opacity-0 transition-opacity duration-200 group-hover:opacity-100" />
+        </div>
+        <span
+          className="text-[10px] leading-tight text-muted-foreground"
+          title={
+            receivedAt
+              ? new Date(receivedAt).toLocaleString(undefined, {
+                  dateStyle: "medium",
+                  timeStyle: "short",
+                })
+              : undefined
+          }
+        >
+          {receivedAt ? `Received ${formatReceivedDate(receivedAt)}` : "No date"}
+        </span>
       </div>
     </button>
   )
@@ -536,22 +570,24 @@ function SnoozePopover({ onSnooze, onClose }: { onSnooze: (hours: number) => voi
 }
 
 // -- Tag/Label Popover --
-const AVAILABLE_LABELS = ["work", "personal", "finance", "travel", "project", "urgent", "follow-up", "reference"]
-
 function TagPopover({
   currentLabels,
+  availableLabels,
   onToggle,
   onClose,
 }: {
   currentLabels: string[]
+  availableLabels: string[]
   onToggle: (label: string) => void
   onClose: () => void
 }) {
-  const [custom, setCustom] = useState("")
   return (
     <div className="absolute right-0 top-full mt-1 z-50 w-52 rounded-lg border border-border bg-card shadow-lg p-1.5 animate-in fade-in-0 slide-in-from-top-1 duration-150">
       <p className="px-2 py-1.5 text-[11px] text-muted-foreground font-medium uppercase tracking-wider">Labels</p>
-      {AVAILABLE_LABELS.map((label) => {
+      {availableLabels.length === 0 && (
+        <p className="px-2 py-3 text-xs text-muted-foreground text-center">No labels created yet. Go to Labels settings to create labels.</p>
+      )}
+      {availableLabels.map((label) => {
         const active = currentLabels.includes(label)
         return (
           <button
@@ -569,25 +605,6 @@ function TagPopover({
           </button>
         )
       })}
-      <div className="mt-1 px-1">
-        <form
-          onSubmit={(e) => {
-            e.preventDefault()
-            const trimmed = custom.trim().toLowerCase()
-            if (trimmed && !currentLabels.includes(trimmed)) {
-              onToggle(trimmed)
-            }
-            setCustom("")
-          }}
-        >
-          <Input
-            placeholder="Add custom label…"
-            value={custom}
-            onChange={(e) => setCustom(e.target.value)}
-            className="h-7 text-xs"
-          />
-        </form>
-      </div>
       <button
         onClick={onClose}
         className="w-full mt-1 text-center text-xs text-muted-foreground hover:text-foreground py-1.5 rounded-md hover:bg-muted transition-colors"
@@ -1271,6 +1288,7 @@ function EmailDetail({
   email,
   mailboxes,
   initialComposeMode,
+  userLabels,
   onBack,
   onSnooze,
   onArchive,
@@ -1282,6 +1300,7 @@ function EmailDetail({
   email: Email
   mailboxes: Mailbox[]
   initialComposeMode?: ComposeMode | null
+  userLabels: string[]
   onBack: () => void
   onSnooze: (emailId: string, hours: number) => void
   onArchive: (emailId: string) => void
@@ -1493,6 +1512,7 @@ function EmailDetail({
             {showTags && (
               <TagPopover
                 currentLabels={email.labels}
+                availableLabels={userLabels}
                 onToggle={handleToggleLabel}
                 onClose={() => setShowTags(false)}
               />
@@ -1834,6 +1854,7 @@ const INBOX_FOLDER_TITLE: Record<string, string> = {
 
 // -- Main Inbox View --
 export function InboxView({
+  initialMailboxFilter,
   initialFilter,
   onInitialFilterConsumed,
   initialEmailId,
@@ -1847,6 +1868,8 @@ export function InboxView({
   onConnectMailbox,
   folder = "inbox",
 }: {
+  /** When navigating from Mailboxes, inbox mounts with this mailbox pre-selected (custom events do not run if Inbox was unmounted). */
+  initialMailboxFilter?: string | null
   initialFilter?: InboxFilter | null
   onInitialFilterConsumed?: () => void
   initialEmailId?: string | null
@@ -1866,7 +1889,18 @@ export function InboxView({
   const [loading, setLoading] = useState(true)
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
-  const [filterMailbox, setFilterMailbox] = useState<string>("all")
+  const [filterMailbox, setFilterMailbox] = useState<string>(() => {
+    const id = initialMailboxFilter?.trim()
+    return id && id.length > 0 ? id : "all"
+  })
+
+  useEffect(() => {
+    const id = initialMailboxFilter?.trim()
+    if (id && id.length > 0) {
+      setFilterMailbox(id)
+    }
+  }, [initialMailboxFilter])
+
   const [senderFilter, setSenderFilter] = useState<{ from_email: string; from_name: string } | null>(() =>
     initialSenderEmail?.trim()
       ? { from_email: initialSenderEmail.trim(), from_name: (initialSenderName || initialSenderEmail).trim() }
@@ -1879,7 +1913,7 @@ export function InboxView({
   const [showFilterDropdown, setShowFilterDropdown] = useState(false)
   const [uniqueSenders, setUniqueSenders] = useState<UniqueSendersApi | null>(null)
   const [showUniqueSendersDialog, setShowUniqueSendersDialog] = useState(false)
-  const [filterLabel, setFilterLabel] = useState<string | null>(null)
+  const [filterLabel, setFilterLabel] = useState<string | null>(() => initialLabel?.trim() || null)
   const [userLabels, setUserLabels] = useState<string[]>([])
   const [userSettings, setUserSettings] = useState<SettingsApi | null>(null)
 
@@ -1903,6 +1937,15 @@ export function InboxView({
   }, [])
 
   useEffect(() => {
+    const handler = (e: Event) => {
+      const { rules } = (e as CustomEvent<LabelsUpdatedDetail>).detail
+      setUserLabels(rules.map((r) => r.name).filter(Boolean))
+    }
+    window.addEventListener(LABELS_UPDATED_EVENT, handler)
+    return () => window.removeEventListener(LABELS_UPDATED_EVENT, handler)
+  }, [])
+
+  useEffect(() => {
     if (initialSenderEmail?.trim()) {
       setSenderFilter({
         from_email: initialSenderEmail.trim(),
@@ -1916,6 +1959,8 @@ export function InboxView({
     const name = initialLabel?.trim()
     if (!name) return
     setFilterLabel(name)
+    setFilterPreset(null)
+    setSenderFilter(null)
     onInitialLabelConsumed?.()
   }, [initialLabel, onInitialLabelConsumed])
 
@@ -2274,13 +2319,13 @@ export function InboxView({
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="flex h-full flex-col bg-background">
+      <div className="flex h-full flex-col bg-gradient-to-b from-background to-muted/[0.12]">
         {/* Header */}
-        <div className="border-b border-border/80 bg-gradient-to-r from-background via-background to-primary/[0.02]">
-          <div className="px-6 py-4">
+        <div className="border-b border-border/60 bg-gradient-to-r from-background via-background to-primary/[0.03] backdrop-blur-sm">
+          <div className="px-6 py-4 md:py-4.5">
             <div className="flex items-center gap-4">
               <div className="flex items-center gap-3 shrink-0 min-w-0">
-                <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 shadow-sm">
+                <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 shadow-md shadow-primary/10 ring-1 ring-primary/10">
                   {(() => {
                     const folderIcons: Record<string, React.ElementType> = {
                       inbox: Inbox,
@@ -2301,7 +2346,7 @@ export function InboxView({
                   )}
                 </div>
                 <div className="min-w-0">
-                  <h1 className="text-lg font-bold text-foreground leading-tight tracking-tight">
+                  <h1 className="text-lg font-extrabold text-foreground leading-tight tracking-tight">
                     {INBOX_FOLDER_TITLE[folder] ?? folder}
                   </h1>
                   {filterLabel && (
@@ -2335,13 +2380,13 @@ export function InboxView({
                 </div>
               </div>
 
-              <div className="relative flex-1 min-w-0 max-w-md">
+              <div className="relative flex-1 min-w-0 max-w-lg">
                 <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50 pointer-events-none" />
                 <Input
                   placeholder="Search by name, subject, or content..."
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-9 h-10 rounded-xl bg-muted/40 border border-border/60 text-foreground placeholder:text-muted-foreground/50 text-sm focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary/30 transition-all duration-200 shadow-sm"
+                  className="w-full pl-10 pr-9 h-10 rounded-xl bg-card/75 border border-border/60 text-foreground placeholder:text-muted-foreground/50 text-sm focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary/30 transition-all duration-200 shadow-sm hover:border-border"
                 />
                 {searchQuery && (
                   <button
@@ -2360,7 +2405,7 @@ export function InboxView({
                     variant="outline"
                     size="sm"
                     onClick={handleStopSync}
-                    className="shrink-0 border-red-400/30 text-red-400 hover:bg-red-400/10 hover:text-red-400 gap-1.5 h-9 text-xs rounded-lg"
+                    className="shrink-0 border-red-400/30 text-red-400 hover:bg-red-400/10 hover:text-red-400 gap-1.5 h-9 text-xs rounded-xl shadow-sm"
                   >
                     <Square className="h-3 w-3 fill-current" />
                     Stop Sync
@@ -2372,7 +2417,7 @@ export function InboxView({
                         variant="outline"
                         size="sm"
                         onClick={handleRefresh}
-                        className="shrink-0 bg-muted/40 hover:bg-primary/10 hover:text-primary hover:border-primary/30 border-border/60 text-foreground/80 gap-1.5 h-9 text-xs rounded-lg transition-all duration-200 shadow-sm"
+                        className="shrink-0 bg-card/70 hover:bg-primary/10 hover:text-primary hover:border-primary/30 border-border/60 text-foreground/80 gap-1.5 h-9 text-xs rounded-xl transition-all duration-200 shadow-sm"
                       >
                         <RefreshCw className="h-3.5 w-3.5" />
                         Sync
@@ -2394,6 +2439,7 @@ export function InboxView({
               email={selectedEmail}
               mailboxes={mailboxesList}
               initialComposeMode={initialComposeMode === "reply" ? "reply" : null}
+              userLabels={userLabels}
               onBack={() => setSelectedEmail(null)}
               onSnooze={handleSnooze}
               onArchive={handleArchive}
@@ -2412,11 +2458,11 @@ export function InboxView({
         ) : (
           <>
             {/* Mailbox Tabs */}
-            <div className="flex items-center gap-1 border-b border-border/60 px-6 py-2.5 overflow-x-auto bg-muted/20">
+            <div className="flex items-center gap-1.5 border-b border-border/60 px-6 py-3 overflow-x-auto bg-card/40">
               <Button
                 variant={filterMailbox === "all" ? "default" : "ghost"}
                 size="sm"
-                className={`text-xs h-8 rounded-lg gap-1.5 transition-all duration-200 ${filterMailbox === "all" ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" : "text-muted-foreground hover:text-foreground hover:bg-muted/60"}`}
+                className={`text-xs h-8 rounded-xl gap-1.5 transition-all duration-200 ${filterMailbox === "all" ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" : "text-muted-foreground hover:text-foreground hover:bg-muted/70"}`}
                 onClick={() => setFilterMailbox("all")}
               >
                 <Mail className="h-3.5 w-3.5" />
@@ -2432,7 +2478,7 @@ export function InboxView({
                     key={mb.id}
                     variant={isActive ? "default" : "ghost"}
                     size="sm"
-                    className={`text-xs h-8 gap-1.5 rounded-lg transition-all duration-200 ${isActive ? "text-white shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-muted/60"}`}
+                    className={`text-xs h-8 gap-1.5 rounded-xl transition-all duration-200 ${isActive ? "text-white shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-muted/70"}`}
                     style={isActive ? { backgroundColor: mb.color, boxShadow: `0 2px 8px ${mb.color}30` } : undefined}
                     onClick={() => setFilterMailbox(mb.id)}
                   >
@@ -2453,12 +2499,12 @@ export function InboxView({
 
             {/* Label Filter Tabs */}
             {userLabels.length > 0 && (
-              <div className="flex items-center gap-1 border-b border-border/60 px-6 py-2 overflow-x-auto bg-muted/10">
+              <div className="flex items-center gap-1.5 border-b border-border/60 px-6 py-2.5 overflow-x-auto bg-card/30">
                 <Tag className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0 mr-1" />
                 <Button
                   variant={filterLabel === null ? "default" : "ghost"}
                   size="sm"
-                  className={`text-[11px] h-7 rounded-lg gap-1 px-2.5 transition-all duration-200 ${
+                    className={`text-[11px] h-7 rounded-xl gap-1 px-2.5 transition-all duration-200 ${
                     filterLabel === null
                       ? "bg-foreground text-background shadow-sm"
                       : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
@@ -2474,7 +2520,7 @@ export function InboxView({
                       key={label}
                       variant={active ? "default" : "ghost"}
                       size="sm"
-                      className={`text-[11px] h-7 rounded-lg gap-1 px-2.5 transition-all duration-200 ${
+                      className={`text-[11px] h-7 rounded-xl gap-1 px-2.5 transition-all duration-200 ${
                         active
                           ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20"
                           : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
@@ -2489,14 +2535,14 @@ export function InboxView({
             )}
 
             {/* Filter Bar */}
-            <div className="relative flex items-center justify-between gap-2 border-b border-border/60 px-6 py-2 overflow-visible bg-background">
+            <div className="relative flex items-center justify-between gap-2 border-b border-border/60 px-6 py-2.5 overflow-visible bg-background/90 backdrop-blur-sm">
               <div className="flex items-center gap-2 shrink-0">
                 <DropdownMenu open={showFilterDropdown} onOpenChange={setShowFilterDropdown}>
                   <DropdownMenuTrigger asChild>
                     <Button
                       variant="outline"
                       size="sm"
-                      className={`gap-1.5 h-8 text-xs rounded-lg transition-all duration-200 ${filterPreset ? "border-primary/40 bg-primary/5 text-primary shadow-sm shadow-primary/10" : "border-border/60 text-muted-foreground hover:text-foreground hover:border-border"}`}
+                      className={`gap-1.5 h-8 text-xs rounded-xl transition-all duration-200 ${filterPreset ? "border-primary/40 bg-primary/5 text-primary shadow-sm shadow-primary/10" : "border-border/60 text-muted-foreground hover:text-foreground hover:border-border"}`}
                     >
                       <SlidersHorizontal className={`h-3 w-3 ${filterPreset ? "text-primary" : ""}`} />
                       {filterPreset ? filterPresetConfig[filterPreset].label : "Filter"}
@@ -2520,7 +2566,7 @@ export function InboxView({
                   <Button
                     variant="ghost"
                     size="sm"
-                    className="h-8 text-xs rounded-lg text-muted-foreground hover:text-foreground gap-1"
+                    className="h-8 text-xs rounded-xl text-muted-foreground hover:text-foreground gap-1"
                     onClick={clearFilterPreset}
                   >
                     <X className="h-3 w-3" />
@@ -2528,7 +2574,7 @@ export function InboxView({
                   </Button>
                 )}
                 {senderFilter && (
-                  <div className="flex items-center gap-1.5 rounded-lg border border-primary/30 bg-primary/5 px-2.5 py-1.5">
+                  <div className="flex items-center gap-1.5 rounded-xl border border-primary/30 bg-primary/5 px-2.5 py-1.5">
                     <span className="text-xs font-medium text-primary truncate max-w-[180px]">
                       From: {senderFilter.from_name || senderFilter.from_email}
                     </span>
@@ -2559,7 +2605,7 @@ export function InboxView({
                 <EmailListSkeleton />
               ) : (
                 <>
-                  <div className="divide-y divide-border/50">
+                  <div className="space-y-2 px-3 py-3">
                     {filteredEmails.map((email, idx) => (
                       <EmailListItem
                         key={email.id}
@@ -2614,7 +2660,7 @@ export function InboxView({
                         <Button
                           variant="outline"
                           size="sm"
-                          className="mt-4 gap-1.5 text-xs rounded-lg"
+                          className="mt-4 gap-1.5 text-xs rounded-xl"
                           onClick={() => { setSearchQuery(""); clearFilterPreset(); clearSenderFilter(); }}
                         >
                           <X className="h-3 w-3" />
@@ -2644,7 +2690,7 @@ export function InboxView({
                           variant="ghost"
                           size="sm"
                           onClick={loadMore}
-                          className="gap-1.5 text-xs text-muted-foreground hover:text-primary rounded-lg"
+                          className="gap-1.5 text-xs text-muted-foreground hover:text-primary rounded-xl"
                         >
                           Load more
                           <ChevronDown className="h-3 w-3" />

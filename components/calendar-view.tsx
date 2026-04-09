@@ -22,10 +22,20 @@ import {
   Pencil,
   Trash2,
   AlertTriangle,
+  Sparkles,
+  Send,
 } from "lucide-react"
 import { toast } from "sonner"
-import { calendar as calendarApi, mailboxes as mailboxesApi, type CalendarMeeting } from "@/lib/api"
+import {
+  calendar as calendarApi,
+  mailboxes as mailboxesApi,
+  compose,
+  emails as emailsApi,
+  type CalendarMeeting,
+} from "@/lib/api"
+import { useAuth } from "@/lib/auth-context"
 import { mapMailboxApi } from "@/lib/mappers"
+import type { Mailbox } from "@/lib/mock-data"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -37,6 +47,7 @@ import { Calendar as DayPicker } from "@/components/ui/calendar"
 import {
   Dialog,
   DialogContent,
+  DialogDescription,
   DialogFooter,
   DialogHeader,
   DialogTitle,
@@ -62,8 +73,32 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from "@/components/ui/tooltip"
+import { Switch } from "@/components/ui/switch"
+import { Checkbox } from "@/components/ui/checkbox"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
 
 type ViewMode = "month" | "week" | "day"
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
+
+function parseAttendeeEmails(raw: string): string[] {
+  const seen = new Set<string>()
+  const out: string[] = []
+  for (const part of raw.split(/[,;]/)) {
+    const e = part.trim()
+    if (e && EMAIL_RE.test(e) && !seen.has(e.toLowerCase())) {
+      seen.add(e.toLowerCase())
+      out.push(e)
+    }
+  }
+  return out
+}
 
 const HOURS = Array.from({ length: 17 }, (_, i) => i + 6) // 6am–10pm
 
@@ -80,11 +115,36 @@ function meetingOverlapTitles(m: CalendarMeeting, others: CalendarMeeting[]): st
     .map((o) => o.title)
 }
 
+/** On the calendar cell that is "today", hide meetings once their end time has passed. */
+function isMeetingEndedOnTodayCell(meeting: CalendarMeeting, cellDay: Date, now: Date): boolean {
+  if (!isSameDay(cellDay, now)) return false
+  try {
+    return parseISO(meeting.end).getTime() <= now.getTime()
+  } catch {
+    return false
+  }
+}
+
+/** Meeting is currently happening (start ≤ now < end) on today's cell only. */
+function isMeetingInProgressOnCell(meeting: CalendarMeeting, cellDay: Date, now: Date): boolean {
+  if (!isSameDay(cellDay, now)) return false
+  try {
+    const s = parseISO(meeting.start).getTime()
+    const e = parseISO(meeting.end).getTime()
+    const t = now.getTime()
+    return s <= t && t < e
+  } catch {
+    return false
+  }
+}
+
 export function CalendarView() {
+  const { user } = useAuth()
   const [view, setView] = useState<ViewMode>("month")
   const [anchor, setAnchor] = useState(() => new Date())
   const [mailboxFilter, setMailboxFilter] = useState<string>("all")
   const [mailboxNameById, setMailboxNameById] = useState<Record<string, string>>({})
+  const [mailboxList, setMailboxList] = useState<Mailbox[]>([])
   const [meetings, setMeetings] = useState<CalendarMeeting[]>([])
   const [loading, setLoading] = useState(true)
   const [selectedMeeting, setSelectedMeeting] = useState<CalendarMeeting | null>(null)
@@ -97,18 +157,36 @@ export function CalendarView() {
   const [formStart, setFormStart] = useState("09:00")
   const [formEnd, setFormEnd] = useState("10:00")
   const [formLocation, setFormLocation] = useState("")
+  const [formMeetingLink, setFormMeetingLink] = useState("")
   const [formAttendees, setFormAttendees] = useState("")
-  const [formNotes, setFormNotes] = useState("")
+  /** Which connected mailbox owns this meeting (required for new manual events). */
+  const [formMailboxId, setFormMailboxId] = useState("")
   const [saving, setSaving] = useState(false)
 
+  /** AI meeting invite: send after create */
+  const [sendInviteEmail, setSendInviteEmail] = useState(false)
+  const [inviteSelection, setInviteSelection] = useState<Record<string, boolean>>({})
+  const [sendFromMailboxId, setSendFromMailboxId] = useState("")
+  const [inviteTone, setInviteTone] = useState<"formal" | "friendly">("formal")
+  const [sendingInvite, setSendingInvite] = useState(false)
+  /** Review before send */
+  const [invitePreviewOpen, setInvitePreviewOpen] = useState(false)
+  const [inviteDraftLoading, setInviteDraftLoading] = useState(false)
+  const [invitePreviewSubject, setInvitePreviewSubject] = useState("")
+  const [invitePreviewBody, setInvitePreviewBody] = useState("")
+  const [invitePreviewTo, setInvitePreviewTo] = useState<string[]>([])
+  const [invitePreviewMailboxId, setInvitePreviewMailboxId] = useState("")
+
   const [overlapDialogOpen, setOverlapDialogOpen] = useState(false)
+  /** Bumps on an interval so the calendar can hide ended meetings and highlight live ones. */
+  const [nowTick, setNowTick] = useState(0)
   const [pendingCreateBody, setPendingCreateBody] = useState<{
     title: string
     start: string
     end: string
     location?: string
+    meeting_link?: string
     attendees?: string[]
-    notes?: string
     mailbox_id?: string
   } | null>(null)
   const [overlapTitles, setOverlapTitles] = useState<string[]>([])
@@ -132,12 +210,115 @@ export function CalendarView() {
     return { start: d, end: addDays(d, 1) }
   }, [anchor, view])
 
+  const parsedInviteEmails = useMemo(() => parseAttendeeEmails(formAttendees), [formAttendees])
+
+  useEffect(() => {
+    setInviteSelection((prev) => {
+      const next: Record<string, boolean> = {}
+      for (const e of parsedInviteEmails) {
+        next[e] = prev[e] !== false
+      }
+      return next
+    })
+  }, [parsedInviteEmails])
+
+  const resolveSendMailboxId = useCallback(() => {
+    if (mailboxFilter !== "all") return mailboxFilter
+    if (sendFromMailboxId) return sendFromMailboxId
+    if (formMailboxId.trim()) return formMailboxId.trim()
+    return mailboxList[0]?.id ?? ""
+  }, [mailboxFilter, sendFromMailboxId, formMailboxId, mailboxList])
+
+  const openMeetingInvitePreview = useCallback(
+    async (params: {
+      title: string
+      start: string
+      end: string
+      location?: string
+      meeting_link?: string
+      to: string[]
+    }) => {
+      const mbId = resolveSendMailboxId()
+      if (!mbId) {
+        toast.error("Select a mailbox to send from (connect an account in Mailboxes first).")
+        return
+      }
+      if (params.to.length === 0) return
+
+      const subject = `Meeting: ${params.title}`
+      setInvitePreviewTo(params.to)
+      setInvitePreviewMailboxId(mbId)
+      setInvitePreviewSubject(subject)
+      setInvitePreviewBody("")
+      setInvitePreviewOpen(true)
+      setInviteDraftLoading(true)
+      try {
+        const startStr = format(parseISO(params.start), "PPpp")
+        const endStr = format(parseISO(params.end), "PPpp")
+        let context =
+          `Write a meeting invitation email. Meeting title: ${params.title}. ` +
+          `Start: ${startStr}. End: ${endStr}.`
+        if (params.location) context += ` Location: ${params.location}.`
+        if (params.meeting_link) {
+          context += ` Include this join link clearly in the email (as a clickable URL line): ${params.meeting_link}`
+        }
+        context +=
+          " Invite recipients to attend; ask for RSVP or a reply if they cannot make it. Keep the body concise."
+
+        const { draft } = await compose.generate({
+          to: params.to.join(", "),
+          subject,
+          context,
+          tone: inviteTone,
+          sender_name: user?.name?.trim() || "Me",
+        })
+        setInvitePreviewBody(draft)
+      } catch (e) {
+        toast.error((e as Error).message || "Could not generate invite draft")
+        setInvitePreviewOpen(false)
+      } finally {
+        setInviteDraftLoading(false)
+      }
+    },
+    [inviteTone, resolveSendMailboxId, user?.name]
+  )
+
+  const handleConfirmSendInvite = useCallback(async () => {
+    const sub = invitePreviewSubject.trim()
+    const body = invitePreviewBody.trim()
+    if (!sub || !body) {
+      toast.error("Subject and message body cannot be empty")
+      return
+    }
+    if (!invitePreviewMailboxId || invitePreviewTo.length === 0) {
+      toast.error("Missing mailbox or recipients")
+      return
+    }
+    setSendingInvite(true)
+    try {
+      await emailsApi.send({
+        mailbox_id: invitePreviewMailboxId,
+        to: invitePreviewTo,
+        subject: sub,
+        body,
+      })
+      toast.success(`Invite sent to ${invitePreviewTo.length} recipient(s)`)
+      setInvitePreviewOpen(false)
+    } catch (e) {
+      toast.error((e as Error).message || "Send failed")
+    } finally {
+      setSendingInvite(false)
+    }
+  }, [invitePreviewSubject, invitePreviewBody, invitePreviewMailboxId, invitePreviewTo])
+
   const refreshMailboxNames = useCallback(() => {
     mailboxesApi
       .list()
       .then((list) => {
+        const mapped = list.map(mapMailboxApi)
+        setMailboxList(mapped)
         const m: Record<string, string> = {}
-        for (const x of list.map(mapMailboxApi)) {
+        for (const x of mapped) {
           m[x.id] = x.name?.trim() || x.email || x.id
         }
         setMailboxNameById(m)
@@ -148,6 +329,20 @@ export function CalendarView() {
   useEffect(() => {
     refreshMailboxNames()
   }, [refreshMailboxNames])
+
+  const now = useMemo(() => new Date(), [nowTick])
+  useEffect(() => {
+    const id = window.setInterval(() => setNowTick((n) => n + 1), 15_000)
+    return () => window.clearInterval(id)
+  }, [])
+  useEffect(() => {
+    const bump = () => setNowTick((n) => n + 1)
+    const onVis = () => {
+      if (typeof document !== "undefined" && document.visibilityState === "visible") bump()
+    }
+    document.addEventListener("visibilitychange", onVis)
+    return () => document.removeEventListener("visibilitychange", onVis)
+  }, [])
 
   useEffect(() => {
     const onMb = () => refreshMailboxNames()
@@ -236,10 +431,14 @@ export function CalendarView() {
     setFormStart("09:00")
     setFormEnd("10:00")
     setFormLocation("")
+    setFormMeetingLink("")
     setFormAttendees("")
-    setFormNotes("")
+    setFormMailboxId(mailboxFilter !== "all" ? mailboxFilter : "")
+    setSendInviteEmail(false)
+    setInviteSelection({})
+    setSendFromMailboxId(mailboxFilter !== "all" ? mailboxFilter : "")
     setFormOpen(true)
-  }, [anchor])
+  }, [anchor, mailboxFilter])
 
   useEffect(() => {
     window.dispatchEvent(new CustomEvent("calendar:viewChanged", { detail: { view } }))
@@ -288,6 +487,7 @@ export function CalendarView() {
 
   const openEdit = (m: CalendarMeeting) => {
     setEditingId(m.id)
+    setSendInviteEmail(false)
     setFormTitle(m.title)
     try {
       const s = parseISO(m.start)
@@ -298,8 +498,9 @@ export function CalendarView() {
       setFormDate(new Date())
     }
     setFormLocation(m.location ?? "")
+    setFormMeetingLink(m.meeting_link ?? "")
     setFormAttendees((m.attendees ?? []).join(", "))
-    setFormNotes(m.notes ?? "")
+    setFormMailboxId(m.mailbox_id?.trim() ?? "")
     setFormOpen(true)
     setDetailOpen(false)
   }
@@ -322,6 +523,15 @@ export function CalendarView() {
       toast.error("Pick a date and valid times")
       return
     }
+    if (!editingId && mailboxList.length === 0) {
+      toast.error("Connect at least one mailbox (Mailboxes) before creating a meeting.")
+      return
+    }
+    const mbForMeeting = formMailboxId.trim()
+    if (!mbForMeeting) {
+      toast.error("Select which mailbox this meeting belongs to.")
+      return
+    }
     const attendees = formAttendees
       .split(/[,;]/)
       .map((s) => s.trim())
@@ -331,15 +541,40 @@ export function CalendarView() {
       start: times.start,
       end: times.end,
       location: formLocation.trim() || undefined,
+      meeting_link: formMeetingLink.trim() || undefined,
       attendees: attendees.length ? attendees : undefined,
-      notes: formNotes.trim() || undefined,
-      ...(mailboxFilter !== "all" ? { mailbox_id: mailboxFilter } : {}),
+      mailbox_id: mbForMeeting,
+    }
+
+    if (!editingId && sendInviteEmail) {
+      const emails = parseAttendeeEmails(formAttendees)
+      const selected = emails.filter((e) => inviteSelection[e] !== false)
+      if (emails.length === 0) {
+        toast.error("Add attendee email addresses (e.g. name@company.com) to send an AI invite")
+        return
+      }
+      if (selected.length === 0) {
+        toast.error("Select at least one recipient for the invite")
+        return
+      }
+      if (!resolveSendMailboxId()) {
+        toast.error("Choose which mailbox to send from")
+        return
+      }
     }
 
     if (editingId) {
       setSaving(true)
       try {
-        await calendarApi.update(editingId, body)
+        await calendarApi.update(editingId, {
+          title: body.title,
+          start: body.start,
+          end: body.end,
+          location: body.location,
+          meeting_link: body.meeting_link,
+          attendees: body.attendees,
+          mailbox_id: mbForMeeting,
+        })
         toast.success("Meeting updated")
         setFormOpen(false)
         window.dispatchEvent(new CustomEvent("calendar:updated"))
@@ -376,6 +611,19 @@ export function CalendarView() {
       }
       setFormOpen(false)
       window.dispatchEvent(new CustomEvent("calendar:updated"))
+      if (sendInviteEmail) {
+        const to = parseAttendeeEmails(formAttendees).filter((e) => inviteSelection[e] !== false)
+        if (to.length > 0) {
+          void openMeetingInvitePreview({
+            title: body.title,
+            start: body.start,
+            end: body.end,
+            location: body.location,
+            meeting_link: body.meeting_link,
+            to,
+          })
+        }
+      }
     } catch (err) {
       toast.error((err as Error).message || "Create failed")
     } finally {
@@ -397,6 +645,19 @@ export function CalendarView() {
       setOverlapDialogOpen(false)
       setPendingCreateBody(null)
       window.dispatchEvent(new CustomEvent("calendar:updated"))
+      if (sendInviteEmail) {
+        const to = parseAttendeeEmails(formAttendees).filter((e) => inviteSelection[e] !== false)
+        if (to.length > 0) {
+          void openMeetingInvitePreview({
+            title: pendingCreateBody.title,
+            start: pendingCreateBody.start,
+            end: pendingCreateBody.end,
+            location: pendingCreateBody.location,
+            meeting_link: pendingCreateBody.meeting_link,
+            to,
+          })
+        }
+      }
     } catch (e) {
       toast.error((e as Error).message || "Create failed")
     } finally {
@@ -466,13 +727,15 @@ export function CalendarView() {
 
   return (
     <TooltipProvider>
-      <div className="flex h-full min-h-0 flex-col bg-background">
-        <header className="flex min-h-[3.25rem] flex-col items-center justify-center border-b border-border px-6 py-3 shrink-0 gap-0.5">
-          <h1 className="text-base sm:text-lg font-semibold text-foreground tracking-tight text-center">
+      <div className="flex h-full min-h-0 flex-col bg-gradient-to-b from-background to-muted/[0.12]">
+        <header className="relative flex min-h-[3.5rem] flex-col items-center justify-center border-b border-border/60 px-6 py-3.5 shrink-0 gap-0.5 backdrop-blur-sm overflow-hidden">
+          <div className="absolute inset-0 bg-gradient-to-r from-primary/[0.04] via-transparent to-violet-500/[0.03]" />
+          <div className="absolute top-0 right-0 h-44 w-44 rounded-full bg-primary/[0.05] blur-3xl -translate-y-1/2 translate-x-1/2" />
+          <h1 className="relative text-base sm:text-lg font-extrabold text-foreground tracking-tight text-center">
             {headerLabel}
           </h1>
           {mailboxFilter !== "all" && (
-            <p className="text-xs text-muted-foreground text-center max-w-md">
+            <p className="relative text-xs text-muted-foreground/80 text-center max-w-md font-medium">
               Mailbox:{" "}
               <span className="font-medium text-foreground/90">
                 {mailboxNameById[mailboxFilter] ?? "Selected account"}
@@ -483,8 +746,11 @@ export function CalendarView() {
 
         <div className="flex-1 min-h-0 relative">
           {loading && (
-            <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">
-              <Loader2 className="h-8 w-8 animate-spin text-primary" />
+            <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/65 backdrop-blur-[1px]">
+              <div className="flex items-center gap-2.5 rounded-xl border border-border/50 bg-card/80 px-4 py-2 shadow-sm">
+                <Loader2 className="h-4 w-4 animate-spin text-primary" />
+                <span className="text-xs font-medium text-muted-foreground">Loading calendar...</span>
+              </div>
             </div>
           )}
 
@@ -496,10 +762,12 @@ export function CalendarView() {
                     <div key={d}>{d}</div>
                   ))}
                 </div>
-                <div className="grid grid-cols-7 gap-px rounded-lg border border-border overflow-hidden bg-border">
+                <div className="grid grid-cols-7 gap-px rounded-xl border border-border/70 overflow-hidden bg-border/60 shadow-sm">
                   {monthGridDays.map((day) => {
                     const key = format(day, "yyyy-MM-dd")
-                    const dayMeetings = meetingsByDay.get(key) ?? []
+                    const dayMeetings = (meetingsByDay.get(key) ?? []).filter(
+                      (m) => !isMeetingEndedOnTodayCell(m, day, now),
+                    )
                     const inMonth = isSameMonth(day, anchor)
                     const isToday = isSameDay(day, new Date())
                     return (
@@ -519,9 +787,9 @@ export function CalendarView() {
                           }
                         }}
                         className={cn(
-                          "min-h-[88px] bg-background p-1.5 text-left transition-colors hover:bg-muted/40 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset",
+                          "min-h-[92px] bg-card/80 p-1.5 text-left transition-all hover:bg-muted/40 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset",
                           !inMonth && "opacity-40",
-                          isToday && "ring-1 ring-inset ring-primary/40",
+                          isToday && "ring-1 ring-inset ring-primary/50 bg-primary/[0.03]",
                         )}
                       >
                         <span className={cn("text-xs font-semibold", isToday && "text-primary")}>{format(day, "d")}</span>
@@ -532,6 +800,7 @@ export function CalendarView() {
                               meeting={m}
                               meetings={meetings}
                               compact
+                              isLive={isMeetingInProgressOnCell(m, day, now)}
                               onOpen={() => {
                                 setSelectedMeeting(m)
                                 setDetailOpen(true)
@@ -563,16 +832,18 @@ export function CalendarView() {
                 <div className="flex-1 grid grid-cols-7 gap-1">
                   {weekDays.map((d) => {
                     const key = format(d, "yyyy-MM-dd")
-                    const dayMs = (meetingsByDay.get(key) ?? []).filter((m) => {
-                      try {
-                        return isSameDay(parseISO(m.start), d)
-                      } catch {
-                        return false
-                      }
-                    })
+                    const dayMs = (meetingsByDay.get(key) ?? [])
+                      .filter((m) => {
+                        try {
+                          return isSameDay(parseISO(m.start), d)
+                        } catch {
+                          return false
+                        }
+                      })
+                      .filter((m) => !isMeetingEndedOnTodayCell(m, d, now))
                     return (
-                      <div key={key} className="flex flex-col min-w-0 border border-border rounded-lg overflow-hidden bg-card/30">
-                        <div className="text-center py-2 border-b border-border text-xs font-semibold">
+                      <div key={key} className="flex flex-col min-w-0 border border-border/70 rounded-xl overflow-hidden bg-card/55 shadow-sm">
+                        <div className="text-center py-2 border-b border-border/70 text-xs font-semibold bg-muted/20">
                           <div className="text-muted-foreground">{format(d, "EEE")}</div>
                           <div className={cn(isSameDay(d, new Date()) && "text-primary")}>{format(d, "d")}</div>
                         </div>
@@ -591,6 +862,7 @@ export function CalendarView() {
                                 key={m.id}
                                 meeting={m}
                                 meetings={meetings}
+                                isLive={isMeetingInProgressOnCell(m, d, now)}
                                 style={{ top, height }}
                                 onOpen={() => {
                                   setSelectedMeeting(m)
@@ -618,7 +890,7 @@ export function CalendarView() {
                     </div>
                   ))}
                 </div>
-                <div className="flex-1 relative border border-border rounded-lg bg-card/20" style={{ height: HOURS.length * pxPerHour }}>
+                <div className="flex-1 relative border border-border/70 rounded-xl bg-card/55 shadow-sm" style={{ height: HOURS.length * pxPerHour }}>
                   {HOURS.map((h) => (
                     <div
                       key={h}
@@ -626,21 +898,24 @@ export function CalendarView() {
                       style={{ top: (h - HOURS[0]) * pxPerHour }}
                     />
                   ))}
-                  {(meetingsByDay.get(format(anchor, "yyyy-MM-dd")) ?? []).map((m) => {
-                    const { top, height } = placeMeeting(m, anchor)
-                    return (
-                      <MeetingBlock
-                        key={m.id}
-                        meeting={m}
-                        meetings={meetings}
-                        style={{ top, height, left: 4, right: 4 }}
-                        onOpen={() => {
-                          setSelectedMeeting(m)
-                          setDetailOpen(true)
-                        }}
-                      />
-                    )
-                  })}
+                  {(meetingsByDay.get(format(anchor, "yyyy-MM-dd")) ?? [])
+                    .filter((m) => !isMeetingEndedOnTodayCell(m, anchor, now))
+                    .map((m) => {
+                      const { top, height } = placeMeeting(m, anchor)
+                      return (
+                        <MeetingBlock
+                          key={m.id}
+                          meeting={m}
+                          meetings={meetings}
+                          isLive={isMeetingInProgressOnCell(m, anchor, now)}
+                          style={{ top, height, left: 4, right: 4 }}
+                          onOpen={() => {
+                            setSelectedMeeting(m)
+                            setDetailOpen(true)
+                          }}
+                        />
+                      )
+                    })}
                 </div>
               </div>
             </ScrollArea>
@@ -649,7 +924,7 @@ export function CalendarView() {
 
         {/* Detail popover-style dialog */}
         <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-          <DialogContent className="sm:max-w-md">
+          <DialogContent className="sm:max-w-md border-border/60 bg-card/95 backdrop-blur-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2 pr-8">
                 {selectedMeeting?.title}
@@ -686,16 +961,23 @@ export function CalendarView() {
                     <p>{selectedMeeting.location}</p>
                   </div>
                 )}
+                {selectedMeeting.meeting_link && (
+                  <div>
+                    <span className="text-xs text-muted-foreground">Join link</span>
+                    <a
+                      href={selectedMeeting.meeting_link}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="text-sm text-primary break-all underline-offset-2 hover:underline block"
+                    >
+                      {selectedMeeting.meeting_link}
+                    </a>
+                  </div>
+                )}
                 {(selectedMeeting.attendees?.length ?? 0) > 0 && (
                   <div>
                     <span className="text-xs text-muted-foreground">Attendees</span>
                     <p className="text-xs">{selectedMeeting.attendees!.join(", ")}</p>
-                  </div>
-                )}
-                {selectedMeeting.notes && (
-                  <div>
-                    <span className="text-xs text-muted-foreground">Notes</span>
-                    <p className="text-xs whitespace-pre-wrap">{selectedMeeting.notes}</p>
                   </div>
                 )}
                 <div className="flex flex-wrap gap-2 pt-2">
@@ -703,7 +985,7 @@ export function CalendarView() {
                     <Button
                       variant="outline"
                       size="sm"
-                      className="gap-1.5"
+                      className="gap-1.5 rounded-xl"
                       onClick={() => {
                         window.dispatchEvent(
                           new CustomEvent("followups:navigate", {
@@ -717,14 +999,14 @@ export function CalendarView() {
                       Open email
                     </Button>
                   )}
-                  <Button variant="outline" size="sm" className="gap-1.5" onClick={() => openEdit(selectedMeeting)}>
+                  <Button variant="outline" size="sm" className="gap-1.5 rounded-xl" onClick={() => openEdit(selectedMeeting)}>
                     <Pencil className="h-3.5 w-3.5" />
                     Edit
                   </Button>
                   <Button
                     variant="destructive"
                     size="sm"
-                    className="gap-1.5"
+                    className="gap-1.5 rounded-xl"
                     onClick={() => deleteMeeting(selectedMeeting)}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
@@ -738,11 +1020,36 @@ export function CalendarView() {
 
         {/* Create / edit */}
         <Dialog open={formOpen} onOpenChange={setFormOpen}>
-          <DialogContent className="sm:max-w-md max-h-[90vh] overflow-y-auto">
+          <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto border-border/60 bg-card/95 backdrop-blur-md">
             <DialogHeader>
               <DialogTitle>{editingId ? "Edit meeting" : "New meeting"}</DialogTitle>
             </DialogHeader>
             <div className="space-y-3 py-2">
+              <div className="space-y-1.5">
+                <Label htmlFor="cal-mailbox">
+                  Mailbox <span className="text-destructive">*</span>
+                </Label>
+                <Select value={formMailboxId || undefined} onValueChange={setFormMailboxId}>
+                  <SelectTrigger id="cal-mailbox" className="rounded-xl w-full">
+                    <SelectValue placeholder="Select mailbox for this meeting" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {mailboxList.map((mb) => (
+                      <SelectItem key={mb.id} value={mb.id}>
+                        {mb.name?.trim() || mb.email || mb.id}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-[11px] text-muted-foreground leading-relaxed">
+                  The meeting is saved under this account. Use the calendar sidebar to show all mailboxes or only one.
+                </p>
+                {mailboxList.length === 0 && (
+                  <p className="text-xs text-amber-700 dark:text-amber-400">
+                    No mailboxes connected. Add one in Mailboxes first.
+                  </p>
+                )}
+              </div>
               <div>
                 <Label htmlFor="cal-title">Title</Label>
                 <Input id="cal-title" value={formTitle} onChange={(e) => setFormTitle(e.target.value)} placeholder="Sprint planning" />
@@ -751,7 +1058,7 @@ export function CalendarView() {
                 <Label>Date</Label>
                 <Popover>
                   <PopoverTrigger asChild>
-                    <Button variant="outline" className="w-full justify-start text-left font-normal">
+                    <Button variant="outline" className="w-full justify-start text-left font-normal rounded-xl">
                       {formDate ? format(formDate, "PPP") : "Pick a date"}
                     </Button>
                   </PopoverTrigger>
@@ -775,21 +1082,140 @@ export function CalendarView() {
                 <Input id="cal-loc" value={formLocation} onChange={(e) => setFormLocation(e.target.value)} placeholder="Zoom" />
               </div>
               <div>
-                <Label htmlFor="cal-att">Attendees (comma-separated)</Label>
-                <Input id="cal-att" value={formAttendees} onChange={(e) => setFormAttendees(e.target.value)} />
+                <Label htmlFor="cal-link">Meeting link</Label>
+                <Input
+                  id="cal-link"
+                  value={formMeetingLink}
+                  onChange={(e) => setFormMeetingLink(e.target.value)}
+                  placeholder="https://zoom.us/j/... or meet.google.com/..."
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Paste your Zoom, Google Meet, or Teams join link. It will be saved on the event and included in AI invites.
+                </p>
               </div>
               <div>
-                <Label htmlFor="cal-notes">Notes</Label>
-                <Textarea id="cal-notes" value={formNotes} onChange={(e) => setFormNotes(e.target.value)} rows={3} />
+                <Label htmlFor="cal-att">Attendees (emails, comma-separated)</Label>
+                <Input
+                  id="cal-att"
+                  value={formAttendees}
+                  onChange={(e) => setFormAttendees(e.target.value)}
+                  placeholder="ana@company.com, bob@company.com"
+                />
+                <p className="text-[11px] text-muted-foreground mt-1">
+                  Use full email addresses. Names without @ are kept on the calendar only — not for email invites.
+                </p>
               </div>
+
+              {!editingId && (
+                <div className="rounded-xl border border-border/70 bg-muted/20 p-4 space-y-4">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-0.5 min-w-0">
+                      <div className="flex items-center gap-2">
+                        <Sparkles className="h-4 w-4 text-primary shrink-0" />
+                        <Label htmlFor="cal-send-invite" className="text-sm font-semibold cursor-pointer">
+                          Send AI meeting invite by email
+                        </Label>
+                      </div>
+                      <p className="text-xs text-muted-foreground leading-relaxed pl-6">
+                        After the event is saved, you’ll preview the AI-written email, edit if you like, then send.
+                      </p>
+                    </div>
+                    <Switch
+                      id="cal-send-invite"
+                      checked={sendInviteEmail}
+                      onCheckedChange={setSendInviteEmail}
+                    />
+                  </div>
+
+                  {sendInviteEmail && (
+                    <div className="space-y-3 pl-0 sm:pl-6 border-t border-border/50 pt-3">
+                      {parsedInviteEmails.length > 0 ? (
+                        <div className="space-y-2">
+                          <Label className="text-xs font-medium text-muted-foreground">Send to</Label>
+                          <div className="space-y-2 max-h-32 overflow-y-auto rounded-lg border border-border/60 bg-background/80 p-2">
+                            {parsedInviteEmails.map((email) => (
+                              <label
+                                key={email}
+                                className="flex items-center gap-2.5 cursor-pointer rounded-md px-1 py-1 hover:bg-muted/50"
+                              >
+                                <Checkbox
+                                  checked={inviteSelection[email] !== false}
+                                  onCheckedChange={(checked) => {
+                                    setInviteSelection((prev) => ({
+                                      ...prev,
+                                      [email]: checked === true,
+                                    }))
+                                  }}
+                                />
+                                <span className="text-sm truncate">{email}</span>
+                              </label>
+                            ))}
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="text-xs text-amber-700 dark:text-amber-400">
+                          Add at least one email above to choose recipients.
+                        </p>
+                      )}
+
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1.5">
+                          <Label className="text-xs">Tone</Label>
+                          <Select value={inviteTone} onValueChange={(v) => setInviteTone(v as "formal" | "friendly")}>
+                            <SelectTrigger className="rounded-xl h-9">
+                              <SelectValue />
+                            </SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="formal">Formal</SelectItem>
+                              <SelectItem value="friendly">Friendly</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        {mailboxFilter === "all" && mailboxList.length > 0 && (
+                          <div className="space-y-1.5">
+                            <Label className="text-xs">Send from</Label>
+                            <Select value={sendFromMailboxId || mailboxList[0]?.id} onValueChange={setSendFromMailboxId}>
+                              <SelectTrigger className="rounded-xl h-9">
+                                <SelectValue placeholder="Mailbox" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {mailboxList.map((mb) => (
+                                  <SelectItem key={mb.id} value={mb.id}>
+                                    {mb.name || mb.email}
+                                  </SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          </div>
+                        )}
+                      </div>
+
+                      {mailboxFilter !== "all" && (
+                        <p className="text-[11px] text-muted-foreground flex items-center gap-1.5">
+                          <Send className="h-3 w-3 shrink-0" />
+                          Invites will be sent from{" "}
+                          <span className="font-medium text-foreground">
+                            {mailboxNameById[mailboxFilter] ?? "this mailbox"}
+                          </span>{" "}
+                          (calendar filter).
+                        </p>
+                      )}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
             <DialogFooter>
-              <Button variant="outline" onClick={() => setFormOpen(false)}>
+              <Button variant="outline" className="rounded-xl" onClick={() => setFormOpen(false)} disabled={saving}>
                 Cancel
               </Button>
-              <Button onClick={submitForm} disabled={saving}>
-                {saving && <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />}
-                {editingId ? "Save" : "Create"}
+              <Button
+                className="rounded-xl gap-2"
+                onClick={submitForm}
+                disabled={saving || (!editingId && mailboxList.length === 0)}
+              >
+                {saving && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                {editingId ? "Save" : sendInviteEmail ? "Create & preview invite" : "Create"}
               </Button>
             </DialogFooter>
           </DialogContent>
@@ -815,6 +1241,85 @@ export function CalendarView() {
             </AlertDialogFooter>
           </AlertDialogContent>
         </AlertDialog>
+
+        {/* Review AI invite before send */}
+        <Dialog
+          open={invitePreviewOpen}
+          onOpenChange={(open) => {
+            setInvitePreviewOpen(open)
+            if (!open) {
+              setInviteDraftLoading(false)
+            }
+          }}
+        >
+          <DialogContent className="sm:max-w-lg max-h-[90vh] overflow-y-auto border-border/60 bg-card/95 backdrop-blur-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Sparkles className="h-5 w-5 text-primary shrink-0" />
+                Review invite email
+              </DialogTitle>
+              <DialogDescription>
+                Edit the subject or body below, then send. The meeting is already saved on your calendar.
+              </DialogDescription>
+            </DialogHeader>
+
+            {inviteDraftLoading ? (
+              <div className="flex flex-col items-center justify-center gap-3 py-12 text-muted-foreground">
+                <Loader2 className="h-9 w-9 animate-spin text-primary" />
+                <p className="text-sm">Writing your invite with AI…</p>
+              </div>
+            ) : (
+              <div className="space-y-4 py-1">
+                <div>
+                  <Label className="text-xs text-muted-foreground">To</Label>
+                  <p className="text-sm mt-1 rounded-lg border border-border/60 bg-muted/30 px-3 py-2 break-all">
+                    {invitePreviewTo.join(", ")}
+                  </p>
+                </div>
+                <div>
+                  <Label htmlFor="invite-preview-subject">Subject</Label>
+                  <Input
+                    id="invite-preview-subject"
+                    value={invitePreviewSubject}
+                    onChange={(e) => setInvitePreviewSubject(e.target.value)}
+                    className="rounded-xl mt-1"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="invite-preview-body">Message</Label>
+                  <Textarea
+                    id="invite-preview-body"
+                    value={invitePreviewBody}
+                    onChange={(e) => setInvitePreviewBody(e.target.value)}
+                    rows={12}
+                    className="rounded-xl mt-1 min-h-[200px] resize-y font-sans text-sm leading-relaxed"
+                  />
+                </div>
+              </div>
+            )}
+
+            <DialogFooter className="gap-2 sm:gap-0">
+              <Button
+                type="button"
+                variant="outline"
+                className="rounded-xl"
+                disabled={inviteDraftLoading || sendingInvite}
+                onClick={() => setInvitePreviewOpen(false)}
+              >
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                className="rounded-xl gap-2"
+                disabled={inviteDraftLoading || sendingInvite}
+                onClick={() => void handleConfirmSendInvite()}
+              >
+                {sendingInvite ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
+                Send email
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </TooltipProvider>
   )
@@ -824,11 +1329,13 @@ function MeetingPill({
   meeting,
   meetings,
   compact,
+  isLive,
   onOpen,
 }: {
   meeting: CalendarMeeting
   meetings: CalendarMeeting[]
   compact?: boolean
+  isLive?: boolean
   onOpen: () => void
 }) {
   const others = meetingOverlapTitles(meeting, meetings)
@@ -840,8 +1347,12 @@ function MeetingPill({
         onOpen()
       }}
       className={cn(
-        "w-full truncate rounded px-1 py-0.5 text-left text-[10px] font-medium transition-colors",
-        meeting.conflict ? "bg-destructive/15 text-destructive" : "bg-primary/15 text-primary hover:bg-primary/25",
+        "w-full truncate rounded-md px-1.5 py-1 text-left text-[10px] font-semibold transition-all",
+        isLive
+          ? "bg-emerald-500/15 text-emerald-900 dark:text-emerald-100 border border-emerald-500/40 hover:bg-emerald-500/25"
+          : meeting.conflict
+            ? "bg-destructive/12 text-destructive border border-destructive/25"
+            : "bg-primary/12 text-primary border border-primary/20 hover:bg-primary/20",
       )}
     >
       {format(parseISO(meeting.start), "h:mm a")} {meeting.title}
@@ -866,11 +1377,13 @@ function MeetingBlock({
   meeting,
   meetings,
   style,
+  isLive,
   onOpen,
 }: {
   meeting: CalendarMeeting
   meetings: CalendarMeeting[]
   style: CSSProperties
+  isLive?: boolean
   onOpen: () => void
 }) {
   const others = meetingOverlapTitles(meeting, meetings)
@@ -881,10 +1394,12 @@ function MeetingBlock({
           type="button"
           onClick={onOpen}
           className={cn(
-            "absolute z-[1] overflow-hidden rounded-md border px-1 py-0.5 text-left text-[10px] shadow-sm transition-transform hover:z-[2] hover:scale-[1.02]",
-            meeting.conflict
-              ? "border-destructive/50 bg-destructive/10 text-destructive"
-              : "border-primary/30 bg-primary/10 text-foreground",
+            "absolute z-[1] overflow-hidden rounded-lg border px-1.5 py-1 text-left text-[10px] shadow-sm transition-all hover:z-[2] hover:scale-[1.02]",
+            isLive
+              ? "border-emerald-500/45 bg-emerald-500/12 text-foreground dark:text-emerald-50 hover:border-emerald-500/60 ring-1 ring-emerald-500/20"
+              : meeting.conflict
+                ? "border-destructive/40 bg-destructive/10 text-destructive"
+                : "border-primary/25 bg-primary/[0.09] text-foreground hover:border-primary/40",
           )}
           style={style}
         >

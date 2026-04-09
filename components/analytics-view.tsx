@@ -211,7 +211,7 @@ export function AnalyticsView({ onConnectMailbox }: { onConnectMailbox?: () => v
       analytics.overview(days),
       analytics.volume(days),
       analytics.topSenders(5),
-      analytics.categories(),
+      analytics.categories(days),
       analytics.metrics(),
       mailboxesApi.list(),
     ])
@@ -444,7 +444,7 @@ export function AnalyticsView({ onConnectMailbox }: { onConnectMailbox?: () => v
               </CardContent>
             </Card>
 
-            {/* Category Breakdown */}
+            {/* Label breakdown (user-defined labels on mail in the last 7 days) */}
             <Card className="border-border/50 overflow-hidden">
               <CardHeader className="pb-2 pt-5 px-5">
                 <div className="flex items-center justify-between">
@@ -452,20 +452,25 @@ export function AnalyticsView({ onConnectMailbox }: { onConnectMailbox?: () => v
                     <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-gradient-to-br from-purple-500/15 to-violet-500/10">
                       <PieChartIcon className="h-4 w-4 text-purple-400" />
                     </div>
-                    Category Breakdown
+                    Label breakdown
                   </CardTitle>
                   <Badge
                     variant="outline"
                     className="text-[10px] px-2.5 py-0.5 border-border/60 text-muted-foreground font-medium"
                   >
-                    {categories.length} categories
+                    {categories.length} {categories.length === 1 ? "label" : "labels"}
                   </Badge>
                 </div>
                 <p className="text-xs text-muted-foreground mt-1 ml-[38px]">
-                  Email distribution by type
+                  Share of label assignments on mail received in the last 7 days (labels from your Labels settings)
                 </p>
               </CardHeader>
               <CardContent className="px-5 pb-5 pt-2">
+                {categories.length === 0 ? (
+                  <p className="text-sm text-muted-foreground py-8 text-center px-4">
+                    No label usage in this period. Add labels under Labels and sync mail, or assign labels to emails.
+                  </p>
+                ) : (
                 <div className="flex items-center gap-6">
                   {/* Donut Chart with Center Label */}
                   <div className="relative flex-shrink-0">
@@ -521,6 +526,7 @@ export function AnalyticsView({ onConnectMailbox }: { onConnectMailbox?: () => v
                     ))}
                   </div>
                 </div>
+                )}
               </CardContent>
             </Card>
           </div>

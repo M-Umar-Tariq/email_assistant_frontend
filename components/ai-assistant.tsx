@@ -92,10 +92,10 @@ function ChatMessageBubble({
     >
       <div
         className={cn(
-          "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl mt-1 transition-transform duration-200 hover:scale-110",
+          "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl mt-1 transition-transform duration-200 hover:scale-105",
           isUser
-            ? "bg-gradient-to-br from-primary to-primary/80 shadow-md shadow-primary/20"
-            : "bg-gradient-to-br from-primary/15 to-primary/5 ring-1 ring-primary/10"
+            ? "bg-gradient-to-br from-primary to-primary/80 shadow-md shadow-primary/25 ring-1 ring-primary/20"
+            : "bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/15 shadow-sm"
         )}
       >
         {isUser ? (
@@ -109,8 +109,8 @@ function ChatMessageBubble({
           className={cn(
             "px-5 py-4 text-sm leading-relaxed",
             isUser
-              ? "bg-gradient-to-br from-primary to-primary/90 text-primary-foreground rounded-2xl rounded-tr-md shadow-lg shadow-primary/15"
-              : "bg-card border border-border/60 rounded-2xl rounded-tl-md shadow-sm hover:shadow-md transition-shadow duration-300"
+              ? "bg-gradient-to-br from-primary to-primary/90 text-primary-foreground rounded-2xl rounded-tr-md shadow-lg shadow-primary/20 ring-1 ring-primary/20"
+              : "glass-card border border-border/50 rounded-2xl rounded-tl-md shadow-sm hover:shadow-md hover:border-border/80 transition-all duration-300"
           )}
         >
           <div className="whitespace-pre-line">
@@ -148,12 +148,12 @@ function ChatMessageBubble({
                 <div
                   key={action.id}
                   className={cn(
-                    "flex items-center gap-3 rounded-xl border px-4 py-3 transition-all",
+                    "flex items-center gap-3 rounded-xl border px-4 py-3 transition-all duration-200",
                     isExecuted
-                      ? "border-emerald-400/25 bg-gradient-to-r from-emerald-500/[0.06] to-transparent"
+                      ? "border-emerald-400/30 bg-gradient-to-r from-emerald-500/[0.08] to-transparent shadow-sm shadow-emerald-500/5"
                       : isRejected
-                        ? "border-red-400/25 bg-gradient-to-r from-red-500/[0.06] to-transparent opacity-60"
-                        : "border-amber-400/25 bg-gradient-to-r from-amber-500/[0.06] to-transparent hover:border-amber-400/40"
+                        ? "border-red-400/30 bg-gradient-to-r from-red-500/[0.06] to-transparent opacity-60"
+                        : "border-amber-400/30 bg-gradient-to-r from-amber-500/[0.08] to-transparent hover:border-amber-400/45 hover:shadow-sm"
                   )}
                 >
                   <div className={cn(
@@ -255,10 +255,10 @@ function ChatMessageBubble({
 function TypingIndicator() {
   return (
     <div className="flex gap-3 animate-fade-in-up">
-      <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/15 to-primary/5 ring-1 ring-primary/10 mt-1">
+      <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/15 shadow-sm mt-1">
         <Bot className="h-4 w-4 text-primary" />
       </div>
-      <div className="rounded-2xl rounded-tl-md bg-card border border-border/60 px-5 py-4 shadow-sm">
+      <div className="rounded-2xl rounded-tl-md glass-card border border-border/50 px-5 py-4 shadow-sm">
         <div className="flex items-center gap-1.5">
           <div className="h-2 w-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: "0ms", animationDuration: "1s" }} />
           <div className="h-2 w-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: "150ms", animationDuration: "1s" }} />
@@ -445,25 +445,28 @@ export function AiAssistant() {
   }
 
   return (
-    <div className="flex h-full flex-col bg-background">
+    <div className="flex h-full flex-col bg-gradient-to-b from-background to-muted/[0.12]">
       {/* ── Header ──────────────────────────────────────────────────── */}
-      <header className="relative shrink-0 border-b border-border/50 overflow-visible">
-        <div className="absolute inset-0 bg-gradient-to-r from-primary/[0.03] via-transparent to-primary/[0.02]" />
-        <div className="relative flex items-center justify-between px-6 py-3.5">
-          <div className="flex items-center gap-3">
+      <header className="relative shrink-0 border-b border-border/60 overflow-visible backdrop-blur-sm">
+        <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.04] via-transparent to-blue-500/[0.02]" />
+        <div className="absolute top-0 right-0 w-72 h-72 bg-primary/[0.04] rounded-full -translate-y-1/2 translate-x-1/3 blur-3xl pointer-events-none" />
+        <div className="absolute bottom-0 left-1/4 w-40 h-40 bg-violet-500/[0.03] rounded-full translate-y-1/2 blur-3xl pointer-events-none" />
+        <div className="relative flex items-center justify-between px-6 py-4">
+          <div className="flex items-center gap-4">
             <div className="relative">
-              <div className="flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/10 shadow-sm">
+              <div className="absolute inset-0 bg-primary/20 rounded-2xl blur-lg opacity-50" />
+              <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 ring-1 ring-primary/15 shadow-md shadow-primary/10">
                 <Sparkles className="h-5 w-5 text-primary" />
               </div>
-              <div className="absolute -bottom-0.5 -right-0.5 h-3 w-3 rounded-full bg-emerald-500 border-2 border-background shadow-sm">
+              <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-background shadow-md">
                 <div className="absolute inset-0 rounded-full bg-emerald-500 animate-ping opacity-40" />
               </div>
             </div>
             <div>
-              <h1 className="text-base font-semibold text-foreground tracking-tight">
+              <h1 className="text-lg font-extrabold text-foreground tracking-tight">
                 AI Assistant
               </h1>
-              <p className="text-[11px] text-muted-foreground">
+              <p className="text-[11px] text-muted-foreground/80 font-medium mt-0.5">
                 Ask anything or take actions on your emails
               </p>
             </div>
@@ -476,7 +479,7 @@ export function AiAssistant() {
                 size="sm"
                 onClick={handleRefresh}
                 disabled={isLoading}
-                className="h-8 gap-1.5 rounded-lg text-xs text-muted-foreground hover:text-foreground"
+                className="h-9 gap-1.5 rounded-xl text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60"
               >
                 <MessageSquarePlus className="h-3.5 w-3.5" />
                 <span className="hidden sm:inline">New chat</span>
@@ -486,7 +489,7 @@ export function AiAssistant() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
-                    className="flex items-center gap-2 px-3 py-2 rounded-xl border border-border/80 text-xs text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-primary/5 transition-all duration-200 outline-none focus:ring-2 focus:ring-primary/20 focus:ring-offset-2"
+                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-border/60 bg-card/70 text-xs text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-primary/5 hover:shadow-md transition-all duration-200 outline-none focus:ring-2 focus:ring-primary/20 focus:ring-offset-2 focus:ring-offset-background"
                     aria-label="Select mailbox"
                   >
                     <Inbox className="h-3.5 w-3.5" />
@@ -544,51 +547,51 @@ export function AiAssistant() {
 
       {/* ── Content ─────────────────────────────────────────────────── */}
       {!hasConversation ? (
-        <div className="flex-1 flex flex-col items-center justify-center px-6 overflow-y-auto">
-          <div className="max-w-lg w-full flex flex-col items-center">
+        <div className="flex-1 flex flex-col items-center justify-center px-6 overflow-y-auto py-8">
+          <div className="max-w-xl w-full flex flex-col items-center animate-entrance">
             {/* Animated hero icon */}
-            <div className="relative mb-6 group">
-              <div className="absolute -inset-4 rounded-full bg-gradient-to-r from-primary/20 via-primary/5 to-primary/20 blur-2xl opacity-60 animate-gradient" />
-              <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/10 shadow-lg shadow-primary/10 transition-transform duration-500 group-hover:scale-110 group-hover:rotate-3">
-                <Sparkles className="h-8 w-8 text-primary transition-transform duration-500 group-hover:scale-110" />
+            <div className="relative mb-7 group">
+              <div className="absolute -inset-6 rounded-full bg-gradient-to-r from-primary/25 via-blue-500/10 to-violet-500/15 blur-3xl opacity-70 animate-gradient" />
+              <div className="relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 ring-1 ring-primary/15 shadow-xl shadow-primary/15 transition-transform duration-500 group-hover:scale-105 group-hover:rotate-1">
+                <Sparkles className="h-9 w-9 text-primary transition-transform duration-500 group-hover:scale-105" />
               </div>
-              <div className="absolute -bottom-1 -right-1 h-5 w-5 rounded-full bg-emerald-500 border-2 border-background flex items-center justify-center shadow-md">
+              <div className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-emerald-500 border-2 border-background flex items-center justify-center shadow-lg">
                 <div className="h-2 w-2 rounded-full bg-white" />
               </div>
             </div>
 
-            <h2 className="text-xl font-semibold text-foreground mb-1.5 tracking-tight">
+            <h2 className="text-2xl font-extrabold text-foreground mb-2 tracking-tight text-center">
               Hi {firstName}, how can I help?
             </h2>
-            <p className="text-sm text-muted-foreground text-center mb-8 max-w-sm leading-relaxed">
+            <p className="text-sm text-muted-foreground/85 text-center mb-8 max-w-md leading-relaxed">
               I can search, summarize, answer questions, and take actions like sending,
               replying, and forwarding emails.
             </p>
 
             {/* Capability cards */}
-            <div className="grid grid-cols-3 gap-3 w-full mb-8">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full mb-8 briefing-stagger">
               {CAPABILITIES.map((cap, i) => (
                 <div
                   key={cap.label}
                   className={cn(
-                    "group/card relative flex flex-col items-center gap-2 rounded-2xl border border-border/60 p-4 text-center",
-                    "bg-gradient-to-b from-card to-card/80 backdrop-blur-sm",
-                    "transition-all duration-300 hover:border-primary/20 hover:shadow-lg hover:shadow-primary/5 hover:-translate-y-1",
-                    "cursor-default animate-fade-in-up"
+                    "group/card relative flex flex-col items-center gap-2.5 rounded-2xl border border-border/50 p-4 text-center",
+                    "glass-card glow-ring",
+                    "transition-all duration-300 hover:border-primary/25 hover:shadow-lg hover:shadow-primary/8 hover:-translate-y-0.5",
+                    "cursor-default"
                   )}
                   style={{ animationDelay: `${i * 100 + 200}ms` }}
                 >
                   <div
                     className={cn(
-                      "flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br ring-1 transition-all duration-300 group-hover/card:scale-110 group-hover/card:shadow-md",
+                      "flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br ring-1 transition-all duration-300 group-hover/card:scale-105 group-hover/card:shadow-md",
                       cap.gradient,
                       cap.ring
                     )}
                   >
-                    <cap.icon className={cn("h-4 w-4", cap.iconColor)} />
+                    <cap.icon className={cn("h-[18px] w-[18px]", cap.iconColor)} />
                   </div>
-                  <p className="text-xs font-semibold text-foreground">{cap.label}</p>
-                  <p className="text-[10px] text-muted-foreground leading-relaxed">
+                  <p className="text-xs font-bold text-foreground">{cap.label}</p>
+                  <p className="text-[10px] text-muted-foreground/80 leading-relaxed px-0.5">
                     {cap.desc}
                   </p>
                 </div>
@@ -603,9 +606,9 @@ export function AiAssistant() {
                   onClick={() => handleSend(q)}
                   className={cn(
                     "group/chip flex items-center gap-2 text-xs px-4 py-2.5 rounded-full",
-                    "border border-border/80 bg-card/50 backdrop-blur-sm",
-                    "text-muted-foreground hover:text-foreground",
-                    "hover:border-primary/30 hover:bg-primary/5 hover:shadow-md hover:shadow-primary/5",
+                    "border border-border/60 bg-card/70 backdrop-blur-sm",
+                    "text-muted-foreground hover:text-foreground font-medium",
+                    "hover:border-primary/35 hover:bg-primary/5 hover:shadow-md hover:shadow-primary/8",
                     "transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0",
                     "animate-fade-in-up"
                   )}
@@ -620,10 +623,10 @@ export function AiAssistant() {
         </div>
       ) : (
         <ScrollArea
-          className="flex-1 px-6 overflow-y-auto overflow-x-hidden scroll-smooth"
+          className="flex-1 px-4 sm:px-6 overflow-y-auto overflow-x-hidden scroll-smooth"
           ref={scrollRef}
         >
-          <div className="flex flex-col gap-5 py-6 max-w-2xl mx-auto">
+          <div className="flex flex-col gap-5 py-6 max-w-3xl mx-auto w-full">
             {messages.map((message, idx) => (
               <ChatMessageBubble
                 key={message.id}
@@ -641,14 +644,14 @@ export function AiAssistant() {
       )}
 
       {/* ── Input Area ──────────────────────────────────────────────── */}
-      <div className="shrink-0 border-t border-border/50 bg-gradient-to-t from-background via-background to-background/80 backdrop-blur-sm">
-        <div className="max-w-2xl mx-auto px-4 py-3">
+      <div className="shrink-0 border-t border-border/60 bg-gradient-to-t from-background via-background/95 to-muted/[0.08] backdrop-blur-md">
+        <div className="max-w-3xl mx-auto px-4 py-3.5">
           <form
             onSubmit={(e) => {
               e.preventDefault()
               handleSend(input)
             }}
-            className="relative flex items-end gap-2 rounded-2xl border border-border/80 bg-card/80 backdrop-blur-sm px-4 py-2.5 shadow-sm transition-all duration-200 focus-within:border-primary/40 focus-within:shadow-lg focus-within:shadow-primary/5 focus-within:ring-1 focus-within:ring-primary/20"
+            className="relative flex items-end gap-2 rounded-2xl border border-border/50 bg-card/85 backdrop-blur-md px-4 py-2.5 shadow-lg shadow-black/[0.03] transition-all duration-200 focus-within:border-primary/35 focus-within:shadow-xl focus-within:shadow-primary/10 focus-within:ring-2 focus-within:ring-primary/15"
           >
             <textarea
               ref={inputRef}
@@ -665,10 +668,10 @@ export function AiAssistant() {
               size="icon"
               disabled={!input.trim() || isLoading}
               className={cn(
-                "h-9 w-9 shrink-0 rounded-xl transition-all duration-300",
+                "h-10 w-10 shrink-0 rounded-xl transition-all duration-300",
                 input.trim()
-                  ? "bg-primary text-primary-foreground shadow-md shadow-primary/25 hover:shadow-lg hover:shadow-primary/30 hover:scale-105 active:scale-95"
-                  : "bg-muted text-muted-foreground"
+                  ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 hover:scale-[1.02] active:scale-[0.98]"
+                  : "bg-muted/80 text-muted-foreground"
               )}
             >
               <Send
@@ -679,7 +682,7 @@ export function AiAssistant() {
               />
             </Button>
           </form>
-          <p className="text-[10px] text-muted-foreground/50 text-center mt-2 font-medium">
+          <p className="text-[10px] text-muted-foreground/55 text-center mt-2.5 font-semibold tracking-wide">
             Press Enter to send &middot; Shift+Enter for new line
           </p>
         </div>

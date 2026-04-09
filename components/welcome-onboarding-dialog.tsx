@@ -20,6 +20,7 @@ import { Input } from "@/components/ui/input"
 import { useAuth } from "@/lib/auth-context"
 import { FRESH_SIGNUP_KEY } from "@/lib/fresh-signup"
 import { settingsApi, type AiLabelRule } from "@/lib/api"
+import { dispatchLabelsUpdated } from "@/lib/labels-events"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
@@ -144,6 +145,7 @@ export function WelcomeOnboardingDialog() {
         ai_label_rules: rules,
         onboarding_completed: true,
       })
+      dispatchLabelsUpdated(rules)
       toast.success("You're all set — welcome to Smart Mail AI Beta.")
       dismiss()
     } catch (e) {

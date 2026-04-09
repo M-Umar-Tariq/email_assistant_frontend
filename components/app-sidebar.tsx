@@ -43,6 +43,7 @@ import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { mailboxes as mailboxesApi, briefing, settingsApi, emails as emailsApi, type AiLabelRule, type FolderCountsApi } from "@/lib/api"
+import type { LabelsUpdatedDetail } from "@/lib/labels-events"
 import { useAuth } from "@/lib/auth-context"
 import { mapMailboxApi } from "@/lib/mappers"
 import type { Mailbox } from "@/lib/mock-data"
@@ -231,13 +232,25 @@ export function AppSidebar({
         unread: b.stats.unread_total,
       }))).catch(() => { })
     }
+    const onLabelsUpdated = (e: Event) => {
+      const detail = (e as CustomEvent<LabelsUpdatedDetail>).detail
+      if (detail?.rules && Array.isArray(detail.rules)) {
+        setLabelRules(detail.rules.filter((r) => r.name?.trim()))
+        return
+      }
+      settingsApi.get().then((s) => {
+        setLabelRules((s.ai_label_rules ?? []).filter((r) => r.name?.trim()))
+      }).catch(() => {})
+    }
     window.addEventListener("email:read", onEmailRead)
     window.addEventListener("email:sync", onEmailSync)
     window.addEventListener("mailbox:sync-complete", onMailboxSyncComplete)
+    window.addEventListener("labels:updated", onLabelsUpdated)
     return () => {
       window.removeEventListener("email:read", onEmailRead)
       window.removeEventListener("email:sync", onEmailSync)
       window.removeEventListener("mailbox:sync-complete", onMailboxSyncComplete)
+      window.removeEventListener("labels:updated", onLabelsUpdated)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -400,13 +413,20 @@ export function AppSidebar({
                     <button
                       type="button"
                       onClick={() => onViewChange(id)}
-                      className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-all duration-200 ${
+                      className={cn(
+                        "relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl transition-all duration-200",
                         isActive
                           ? "bg-primary/10 text-primary shadow-sm"
-                          : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
-                      }`}
+                          : "text-muted-foreground hover:text-foreground hover:bg-muted/60",
+                      )}
                     >
                       <Icon className="h-5 w-5" strokeWidth={isActive ? 2.25 : 1.75} />
+                      {id === "feedback" ? (
+                        <span
+                          className="pointer-events-none absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-red-500 shadow-sm ring-2 ring-sidebar"
+                          aria-hidden
+                        />
+                      ) : null}
                     </button>
                   </TooltipTrigger>
                   <TooltipContent side="right" sideOffset={10} className="z-[200]"><p>{tip}</p></TooltipContent>

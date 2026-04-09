@@ -49,6 +49,7 @@ export function mapEmailListApi(e: EmailListApi): Email {
     sentimentScore: e.sentiment_score ?? undefined,
     snoozedUntil: e.snoozed_until || null,
     repliedAt: e.replied_at ?? null,
+    threadCount: e.thread_count ?? undefined,
   }
 }
 

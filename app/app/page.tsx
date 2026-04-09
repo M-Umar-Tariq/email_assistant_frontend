@@ -65,6 +65,8 @@ export default function AppDashboard() {
   const [initialComposeTo, setInitialComposeTo] = useState<string | null>(null)
   const [initialComposeToName, setInitialComposeToName] = useState<string | null>(null)
   const [initialLabelFilter, setInitialLabelFilter] = useState<string | null>(null)
+  /** When opening Inbox from Mailboxes "Open inbox", scope to this mailbox id (InboxView is not mounted there, so window events are missed). */
+  const [pendingInboxMailbox, setPendingInboxMailbox] = useState<string | null>(null)
   const [activeFolder, setActiveFolder] = useState<EmailFolder>("inbox")
   const syncingRef = useRef(false)
 
@@ -104,6 +106,10 @@ export default function AppDashboard() {
   }, [])
 
   const handleSelectLabelForInbox = useCallback((labelName: string) => {
+    // Clear briefing / sender filters so inbox isn't double-filtered (empty list)
+    setInboxFilter(null)
+    setInitialSenderEmail(null)
+    setInitialSenderName(null)
     setInitialLabelFilter(labelName)
     setActiveView("inbox")
   }, [])
@@ -201,6 +207,12 @@ export default function AppDashboard() {
     [],
   )
 
+  useEffect(() => {
+    if (activeView !== "inbox") {
+      setPendingInboxMailbox(null)
+    }
+  }, [activeView])
+
   return (
     <AiChatProvider>
       <div className="flex h-svh w-full overflow-hidden bg-background">
@@ -278,10 +290,15 @@ export default function AppDashboard() {
                 onAddMailbox={() => setShowAddMailbox(true)}
                 onViewChange={handleViewChange}
                 mailboxListKey={mailboxListKey}
+                onOpenInboxWithMailbox={(id) => {
+                  setPendingInboxMailbox(id)
+                  handleViewChange("inbox")
+                }}
               />
             )}
             {activeView === "inbox" && (
               <InboxView
+                initialMailboxFilter={pendingInboxMailbox}
                 initialFilter={inboxFilter}
                 onInitialFilterConsumed={handleFilterConsumed}
                 initialEmailId={initialEmailId}

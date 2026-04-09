@@ -202,6 +202,7 @@ export type EmailListApi = {
   sentiment_score: number | null;
   snoozed_until: string | null;
   replied_at?: string | null;
+  thread_count?: number;
 };
 
 export type SentReplyApi = {
@@ -404,6 +405,8 @@ export type CalendarMeeting = {
   start: string;
   end: string;
   location?: string | null;
+  /** Zoom / Google Meet / Teams join URL */
+  meeting_link?: string | null;
   attendees?: string[];
   notes?: string;
   source: "email" | "manual";
@@ -426,6 +429,7 @@ export const calendar = {
     start: string;
     end: string;
     location?: string;
+    meeting_link?: string;
     attendees?: string[];
     notes?: string;
     mailbox_id?: string;
@@ -437,7 +441,16 @@ export const calendar = {
     ),
   update: (
     id: string,
-    data: Partial<{ title: string; start: string; end: string; location: string; attendees: string[]; notes: string }>
+    data: Partial<{
+      title: string;
+      start: string;
+      end: string;
+      location: string;
+      meeting_link: string;
+      attendees: string[];
+      notes: string;
+      mailbox_id: string | null;
+    }>
   ) => request<{ meeting: CalendarMeeting }>("PATCH", `/calendar/${id}/`, data),
   delete: (id: string) => request<void>("DELETE", `/calendar/${id}/`),
 };
@@ -464,7 +477,11 @@ export const analytics = {
     ),
   topSenders: (limit?: number) =>
     request<{ email: string; name: string; count: number }[]>("GET", limit ? `/analytics/top-senders/?limit=${limit}` : "/analytics/top-senders/"),
-  categories: () => request<{ name: string; value: number }[]>("GET", "/analytics/categories/"),
+  categories: (days?: number) =>
+    request<{ name: string; value: number }[]>(
+      "GET",
+      days != null ? `/analytics/categories/?days=${days}` : "/analytics/categories/"
+    ),
   metrics: () =>
     request<{
       total_emails: number; unread: number; active_contacts: number;

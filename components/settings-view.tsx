@@ -86,6 +86,7 @@ import {
   type SettingsApi,
   type AiLabelRule,
 } from "@/lib/api"
+import { dispatchLabelsUpdated } from "@/lib/labels-events"
 import { mapMailboxApi } from "@/lib/mappers"
 import type { Mailbox } from "@/lib/mock-data"
 
@@ -222,7 +223,9 @@ export function SettingsView({
         .filter((r) => r.name || r.instruction)
       const updated = await settingsApi.update({ ai_label_rules: cleaned })
       setUserSettings(updated)
-      setLabelRules(updated.ai_label_rules?.length ? updated.ai_label_rules : [])
+      const saved = updated.ai_label_rules?.length ? updated.ai_label_rules : []
+      setLabelRules(saved)
+      dispatchLabelsUpdated(saved)
       toast.success("Labels saved — re-classifying your emails now…")
       settingsApi.relabel()
         .then((res) => toast.success(`Done! ${res.updated} email(s) re-labelled.`))
