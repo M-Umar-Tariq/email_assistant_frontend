@@ -3,7 +3,7 @@
  * All methods require the user to be logged in (Authorization: Bearer token).
  */
 
-const API_BASE = process.env.NEXT_PUBLIC_API_URL || "/api";
+const API_BASE = (process.env.NEXT_PUBLIC_API_URL || "/api").trim().replace(/\/+$/, "");
 
 const TOKEN_KEY = "smartmailai_access_token";
 const REFRESH_KEY = "smartmailai_refresh_token";
