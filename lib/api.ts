@@ -663,6 +663,21 @@ export const agent = {
     request<{ id: string; status: string }>("POST", `/agent/reject/${actionId}/`),
   speak: (text: string) =>
     request<{ audio: string; format: string }>("POST", "/agent/speak/", { text }),
+  transcribe: async (audioBlob: Blob): Promise<{ text: string }> => {
+    const url = `${API_BASE}/agent/transcribe/`;
+    const formData = new FormData();
+    formData.append("audio", audioBlob, "recording.webm");
+    const headers: Record<string, string> = {};
+    const token = getAccessToken();
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+    const res = await fetch(url, { method: "POST", headers, body: formData, credentials: "include" });
+    if (!res.ok) {
+      const err = new Error("Transcription failed");
+      (err as Error & { status?: number }).status = res.status;
+      throw err;
+    }
+    return res.json();
+  },
 };
 
 // ── Settings ────────────────────────────────────────────────────────────────

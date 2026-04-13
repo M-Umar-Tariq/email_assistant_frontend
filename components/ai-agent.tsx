@@ -138,6 +138,9 @@ export function AiAgent() {
   const mediaStreamRef = useRef<MediaStream | null>(null)
   const animFrameRef = useRef<number | null>(null)
   const lastSpeechTimeRef = useRef<number>(0)
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null)
+  const recordedChunksRef = useRef<Blob[]>([])
+  const useWhisperFallbackRef = useRef(false)
 
   const scrollToLatest = useCallback(() => {
     requestAnimationFrame(() => {
@@ -256,7 +259,6 @@ export function AiAgent() {
 
   const speak = useCallback(async (text: string) => {
     const gen = ttsGenerationRef.current
-    startTypewriter(text)
     try {
       const res = await agentApi.speak(text.slice(0, 500))
       if (gen !== ttsGenerationRef.current) return
@@ -277,6 +279,7 @@ export function AiAgent() {
         }
         ttsPlaybackResolveRef.current = resolve
         el.onended = () => finish(); el.onerror = () => finish()
+        el.onplay = () => { if (gen === ttsGenerationRef.current) startTypewriter(text) }
         void el.play().catch(() => finish())
       })
       if (gen !== ttsGenerationRef.current) return
@@ -289,6 +292,7 @@ export function AiAgent() {
           let settled = false
           const finish = () => { if (settled) return; settled = true; ttsPlaybackResolveRef.current = null; resolve() }
           ttsPlaybackResolveRef.current = resolve
+          utterance.onstart = () => { if (gen === ttsGenerationRef.current) startTypewriter(text) }
           utterance.onend = () => finish(); utterance.onerror = () => finish()
           window.speechSynthesis.speak(utterance)
         })
@@ -417,13 +421,89 @@ export function AiAgent() {
     } finally { sendingRef.current = false }
   }, [speak, addMessage, scrollToLatest, resumeListening])
 
+  /* ── MediaRecorder fallback (Whisper STT) for non-Chrome browsers ── */
+  const stopMediaRecorder = useCallback(() => {
+    const mr = mediaRecorderRef.current
+    if (mr && mr.state !== "inactive") mr.stop()
+    mediaRecorderRef.current = null
+  }, [])
+
+  const startMediaRecorderFallback = useCallback(async () => {
+    setError(""); setLiveText("Recording..."); lastSpeechTimeRef.current = Date.now()
+    recordedChunksRef.current = []
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm"
+        : MediaRecorder.isTypeSupported("audio/mp4") ? "audio/mp4" : ""
+      const mr = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
+      mediaRecorderRef.current = mr
+      mr.ondataavailable = (e) => { if (e.data.size > 0) recordedChunksRef.current.push(e.data) }
+      mr.onstop = async () => {
+        stream.getTracks().forEach(t => t.stop())
+        stopAudioVisualization()
+        const chunks = recordedChunksRef.current
+        if (chunks.length === 0) {
+          if (pendingActionsRef.current.length > 0) setState("confirming"); else setState("idle")
+          setLiveText("")
+          return
+        }
+        const audioBlob = new Blob(chunks, { type: mr.mimeType || "audio/webm" })
+        setLiveText("Transcribing..."); setState("thinking")
+        try {
+          const result = await agentApi.transcribe(audioBlob)
+          const text = normalizeSpeechText(result.text || "")
+          setLiveText("")
+          if (text.trim()) sendToAgent(text)
+          else {
+            if (pendingActionsRef.current.length > 0) setState("confirming"); else setState("idle")
+          }
+        } catch {
+          setError("Transcription failed. Please try again.")
+          if (pendingActionsRef.current.length > 0) setState("confirming"); else setState("idle")
+          setLiveText("")
+        }
+      }
+      mr.start(250)
+      setState("listening"); startAudioVisualization()
+
+      const checkSilence = () => {
+        if (!analyserRef.current || !mediaRecorderRef.current) return
+        const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount)
+        analyserRef.current.getByteFrequencyData(dataArray)
+        const avg = dataArray.reduce((sum, v) => sum + v, 0) / dataArray.length
+        if (avg > VOLUME_SILENCE_THRESHOLD) lastSpeechTimeRef.current = Date.now()
+        else if (lastSpeechTimeRef.current > 0 && Date.now() - lastSpeechTimeRef.current > SILENCE_TIMEOUT_MS + 500) {
+          stopMediaRecorder()
+          return
+        }
+        if (mediaRecorderRef.current?.state === "recording") requestAnimationFrame(checkSilence)
+      }
+      setTimeout(checkSilence, 500)
+    } catch {
+      setError("Microphone access denied. Please allow mic permissions.")
+      if (pendingActionsRef.current.length > 0) setState("confirming"); else setState("idle")
+    }
+  }, [sendToAgent, startAudioVisualization, stopAudioVisualization, stopMediaRecorder])
+
   /* ── Speech Recognition ─────────────────────────────────────────── */
   const startListening = useCallback(() => {
     setError(""); recognizedTextRef.current = ""; lastSpeechTimeRef.current = Date.now()
+
+    if (useWhisperFallbackRef.current) {
+      startMediaRecorderFallback()
+      return
+    }
+
     const SR = typeof window !== "undefined"
       ? (window as any).SpeechRecognition || (window as unknown as { webkitSpeechRecognition: any }).webkitSpeechRecognition
       : null
-    if (!SR) { setError("Voice not supported in this browser. Try Chrome or Edge."); return }
+    if (!SR) {
+      useWhisperFallbackRef.current = true
+      startMediaRecorderFallback()
+      return
+    }
     const recognition = new SR()
     recognition.continuous = true; recognition.interimResults = true; recognition.lang = "en-US"
     recognition.onresult = (event: any) => {
@@ -442,13 +522,24 @@ export function AiAgent() {
       }
     }
     recognition.onerror = (event: any) => {
+      const errType = event?.error ?? "unknown"
+      if (errType === "network" || errType === "service-not-allowed" || errType === "not-allowed") {
+        stopAudioVisualization()
+        recognitionRef.current = null
+        if (errType === "not-allowed") {
+          setError("Microphone access denied. Please allow mic permissions.")
+          if (pendingActionsRef.current.length > 0) setState("confirming"); else setState("idle")
+          setLiveText("")
+          return
+        }
+        useWhisperFallbackRef.current = true
+        startMediaRecorderFallback()
+        return
+      }
       stopAudioVisualization()
       if (pendingActionsRef.current.length > 0) setState("confirming"); else setState("idle")
       setLiveText("")
-      const errType = event?.error ?? "unknown"
-      if (errType === "not-allowed" || errType === "service-not-allowed") setError("Microphone access denied. Please allow mic permissions.")
-      else if (errType === "network") setError("Network error during speech recognition.")
-      else if (errType !== "aborted" && errType !== "no-speech") setError(`Speech recognition error: ${errType}`)
+      if (errType !== "aborted" && errType !== "no-speech") setError(`Speech recognition error: ${errType}`)
     }
     recognition.onend = () => {
       stopAudioVisualization()
@@ -461,7 +552,7 @@ export function AiAgent() {
     }
     recognitionRef.current = recognition; recognition.start()
     setState("listening"); setLiveText(""); startAudioVisualization()
-  }, [sendToAgent, startAudioVisualization, stopAudioVisualization])
+  }, [sendToAgent, startAudioVisualization, stopAudioVisualization, startMediaRecorderFallback])
 
   startListeningRef.current = startListening
 
@@ -479,7 +570,6 @@ export function AiAgent() {
       const gen = ttsGenerationRef.current
       setState("speaking"); addMessage("assistant", greeting)
       try {
-        startTypewriter(greeting)
         const res = await agentApi.speak(greeting.slice(0, 500))
         if (gen !== ttsGenerationRef.current) return
         if (!res?.audio) throw new Error("No audio")
@@ -498,18 +588,20 @@ export function AiAgent() {
           }
           ttsPlaybackResolveRef.current = resolve
           el.onended = () => finish(); el.onerror = () => finish()
+          el.onplay = () => { if (gen === ttsGenerationRef.current) startTypewriter(greeting) }
           void el.play().catch(() => finish())
         })
         if (gen !== ttsGenerationRef.current) return
       } catch {
         if (gen !== ttsGenerationRef.current) return
         if ("speechSynthesis" in window) {
-          startTypewriter(greeting)
           const u = new SpeechSynthesisUtterance(greeting); u.rate = 1.05
           await new Promise<void>((resolve) => {
             let settled = false
             const finish = () => { if (settled) return; settled = true; ttsPlaybackResolveRef.current = null; stopTypewriter(); resolve() }
-            ttsPlaybackResolveRef.current = resolve; u.onend = () => finish(); u.onerror = () => finish()
+            ttsPlaybackResolveRef.current = resolve
+            u.onstart = () => { if (gen === ttsGenerationRef.current) startTypewriter(greeting) }
+            u.onend = () => finish(); u.onerror = () => finish()
             window.speechSynthesis.speak(u)
           })
         }
@@ -527,15 +619,20 @@ export function AiAgent() {
     if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null }
     recognizedTextRef.current = ""; sendingRef.current = false
     recognitionRef.current?.stop(); recognitionRef.current = null
+    stopMediaRecorder()
     haltTtsPlayback(); stopTypewriter(); stopAudioVisualization()
     setLiveText(""); setState("idle")
-  }, [haltTtsPlayback, stopTypewriter, stopAudioVisualization])
+  }, [haltTtsPlayback, stopTypewriter, stopAudioVisualization, stopMediaRecorder])
 
   const handleMicClick = useCallback(() => {
-    if (state === "listening") { if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current); recognitionRef.current?.stop() }
+    if (state === "listening") {
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
+      recognitionRef.current?.stop()
+      stopMediaRecorder()
+    }
     else if (state === "idle" || state === "confirming") startListening()
     else if (state === "speaking") cancel()
-  }, [state, startListening, cancel])
+  }, [state, startListening, cancel, stopMediaRecorder])
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
