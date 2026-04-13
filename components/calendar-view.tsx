@@ -24,6 +24,9 @@ import {
   AlertTriangle,
   Sparkles,
   Send,
+  ChevronLeft,
+  ChevronRight,
+  Plus,
 } from "lucide-react"
 import { toast } from "sonner"
 import {
@@ -211,6 +214,15 @@ export function CalendarView() {
   }, [anchor, view])
 
   const parsedInviteEmails = useMemo(() => parseAttendeeEmails(formAttendees), [formAttendees])
+
+  /** Inbox address for the mailbox that owns this meeting (where it was registered / received). */
+  const mailboxEmailById = useMemo(() => {
+    const m: Record<string, string> = {}
+    for (const x of mailboxList) {
+      if (x.id && x.email?.trim()) m[x.id] = x.email.trim()
+    }
+    return m
+  }, [mailboxList])
 
   useEffect(() => {
     setInviteSelection((prev) => {
@@ -727,24 +739,65 @@ export function CalendarView() {
 
   return (
     <TooltipProvider>
-      <div className="flex h-full min-h-0 flex-col bg-gradient-to-b from-background to-muted/[0.12]">
-        <header className="relative flex min-h-[3.5rem] flex-col items-center justify-center border-b border-border/60 px-6 py-3.5 shrink-0 gap-0.5 backdrop-blur-sm overflow-hidden">
+      <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-gradient-to-b from-background to-muted/[0.12]">
+        <header className="relative flex min-h-[3.5rem] shrink-0 flex-col gap-1 border-b border-border/60 px-3 py-3 backdrop-blur-sm sm:gap-0.5 sm:px-6 sm:py-3.5">
           <div className="absolute inset-0 bg-gradient-to-r from-primary/[0.04] via-transparent to-violet-500/[0.03]" />
-          <div className="absolute top-0 right-0 h-44 w-44 rounded-full bg-primary/[0.05] blur-3xl -translate-y-1/2 translate-x-1/2" />
-          <h1 className="relative text-base sm:text-lg font-extrabold text-foreground tracking-tight text-center">
-            {headerLabel}
-          </h1>
-          {mailboxFilter !== "all" && (
-            <p className="relative text-xs text-muted-foreground/80 text-center max-w-md font-medium">
-              Mailbox:{" "}
-              <span className="font-medium text-foreground/90">
-                {mailboxNameById[mailboxFilter] ?? "Selected account"}
-              </span>
-            </p>
-          )}
+          <div className="absolute right-0 top-0 h-44 w-44 -translate-y-1/2 translate-x-1/2 rounded-full bg-primary/[0.05] blur-3xl" />
+          <div className="relative flex w-full max-w-5xl mx-auto items-start gap-1.5 sm:items-center sm:gap-2">
+            <Button
+              type="button"
+              variant="outline"
+              size="icon"
+              className="h-9 w-9 shrink-0 rounded-xl border-border/60 bg-card/80 shadow-sm"
+              aria-label="Previous period"
+              onClick={() => window.dispatchEvent(new CustomEvent("calendar:goPrev"))}
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <div className="min-w-0 flex-1 text-center">
+              <h1 className="truncate px-0.5 text-base font-extrabold tracking-tight text-foreground sm:text-lg">
+                {headerLabel}
+              </h1>
+              <button
+                type="button"
+                className="mt-0.5 text-[11px] font-semibold text-primary hover:underline"
+                onClick={() => window.dispatchEvent(new CustomEvent("calendar:goToday"))}
+              >
+                Today
+              </button>
+              {mailboxFilter !== "all" && (
+                <p className="mt-0.5 text-xs font-medium text-muted-foreground/80">
+                  Mailbox:{" "}
+                  <span className="text-foreground/90">{mailboxNameById[mailboxFilter] ?? "Selected account"}</span>
+                </p>
+              )}
+            </div>
+            <div className="flex shrink-0 items-center gap-1">
+              <Button
+                type="button"
+                variant="default"
+                size="icon"
+                className="h-9 w-9 rounded-xl shadow-sm"
+                aria-label="Add event"
+                onClick={() => window.dispatchEvent(new CustomEvent("calendar:openCreate"))}
+              >
+                <Plus className="h-4 w-4" />
+              </Button>
+              <Button
+                type="button"
+                variant="outline"
+                size="icon"
+                className="h-9 w-9 rounded-xl border-border/60 bg-card/80 shadow-sm"
+                aria-label="Next period"
+                onClick={() => window.dispatchEvent(new CustomEvent("calendar:goNext"))}
+              >
+                <ChevronRight className="h-4 w-4" />
+              </Button>
+            </div>
+          </div>
         </header>
 
-        <div className="flex-1 min-h-0 relative">
+        <div className="relative min-h-0 min-w-0 flex-1">
           {loading && (
             <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/65 backdrop-blur-[1px]">
               <div className="flex items-center gap-2.5 rounded-xl border border-border/50 bg-card/80 px-4 py-2 shadow-sm">
@@ -755,14 +808,14 @@ export function CalendarView() {
           )}
 
           {view === "month" && (
-            <ScrollArea className="h-full">
-              <div className="px-6 py-4 max-w-5xl mx-auto">
-                <div className="grid grid-cols-7 gap-px text-center text-[11px] font-semibold text-muted-foreground mb-2">
+            <ScrollArea className="h-full min-h-0 min-w-0">
+              <div className="mx-auto max-w-5xl px-4 pb-24 pt-4 sm:px-6 sm:pb-6">
+                <div className="mb-2 grid grid-cols-7 gap-px text-center text-[10px] font-semibold text-muted-foreground sm:text-[11px]">
                   {["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"].map((d) => (
                     <div key={d}>{d}</div>
                   ))}
                 </div>
-                <div className="grid grid-cols-7 gap-px rounded-xl border border-border/70 overflow-hidden bg-border/60 shadow-sm">
+                <div className="grid grid-cols-7 gap-px overflow-hidden rounded-xl border border-border/70 bg-border/60 shadow-sm">
                   {monthGridDays.map((day) => {
                     const key = format(day, "yyyy-MM-dd")
                     const dayMeetings = (meetingsByDay.get(key) ?? []).filter(
@@ -787,9 +840,9 @@ export function CalendarView() {
                           }
                         }}
                         className={cn(
-                          "min-h-[92px] bg-card/80 p-1.5 text-left transition-all hover:bg-muted/40 cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-primary/40 focus-visible:ring-inset",
+                          "min-h-[100px] cursor-pointer bg-card/80 p-1 text-left outline-none transition-all hover:bg-muted/40 focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/40 sm:min-h-[92px] sm:p-1.5",
                           !inMonth && "opacity-40",
-                          isToday && "ring-1 ring-inset ring-primary/50 bg-primary/[0.03]",
+                          isToday && "bg-primary/[0.03] ring-1 ring-inset ring-primary/50",
                         )}
                       >
                         <span className={cn("text-xs font-semibold", isToday && "text-primary")}>{format(day, "d")}</span>
@@ -820,8 +873,8 @@ export function CalendarView() {
           )}
 
           {view === "week" && (
-            <ScrollArea className="h-full">
-              <div className="flex min-w-[720px] px-6 py-4">
+            <ScrollArea className="h-full min-h-0 min-w-0">
+              <div className="flex min-w-[720px] px-4 pb-24 pt-4 sm:px-6 sm:pb-6">
                 <div className="w-12 shrink-0 pt-8 text-[10px] text-muted-foreground text-right pr-1 space-y-0" style={{ height: HOURS.length * pxPerHour + 32 }}>
                   {HOURS.map((h) => (
                     <div key={h} style={{ height: pxPerHour }} className="border-t border-transparent">
@@ -881,8 +934,8 @@ export function CalendarView() {
           )}
 
           {view === "day" && (
-            <ScrollArea className="h-full">
-              <div className="flex max-w-3xl mx-auto px-6 py-4">
+            <ScrollArea className="h-full min-h-0 min-w-0">
+              <div className="mx-auto flex max-w-3xl px-4 pb-24 pt-4 sm:px-6 sm:pb-6">
                 <div className="w-14 shrink-0 text-[10px] text-muted-foreground text-right pr-2">
                   {HOURS.map((h) => (
                     <div key={h} style={{ height: pxPerHour }} className="border-t border-border/30 pt-0.5">
@@ -955,6 +1008,17 @@ export function CalendarView() {
                     </p>
                   </div>
                 )}
+                {selectedMeeting.mailbox_id &&
+                  mailboxEmailById[selectedMeeting.mailbox_id] && (
+                    <div className="rounded-lg border border-primary/20 bg-primary/[0.06] dark:bg-primary/10 px-3 py-2.5">
+                      <span className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                        Meeting registered with
+                      </span>
+                      <p className="mt-1 text-sm font-medium text-foreground break-all">
+                        {mailboxEmailById[selectedMeeting.mailbox_id]}
+                      </p>
+                    </div>
+                  )}
                 {selectedMeeting.location && (
                   <div>
                     <span className="text-xs text-muted-foreground">Location</span>
@@ -1339,6 +1403,9 @@ function MeetingPill({
   onOpen: () => void
 }) {
   const others = meetingOverlapTitles(meeting, meetings)
+  const start = parseISO(meeting.start)
+  const timeCompact = format(start, "p")
+  const timeFull = format(start, "h:mm a")
   const inner = (
     <button
       type="button"
@@ -1346,16 +1413,29 @@ function MeetingPill({
         e.stopPropagation()
         onOpen()
       }}
+      title={compact ? `${timeFull} — ${meeting.title}` : undefined}
       className={cn(
-        "w-full truncate rounded-md px-1.5 py-1 text-left text-[10px] font-semibold transition-all",
+        "w-full rounded-md text-left text-[10px] font-semibold transition-all",
+        compact
+          ? "flex flex-col items-stretch gap-0.5 px-1 py-0.5"
+          : "truncate px-1.5 py-1",
         isLive
-          ? "bg-emerald-500/15 text-emerald-900 dark:text-emerald-100 border border-emerald-500/40 hover:bg-emerald-500/25"
+          ? "border border-emerald-500/40 bg-emerald-500/15 text-emerald-900 hover:bg-emerald-500/25 dark:text-emerald-100"
           : meeting.conflict
-            ? "bg-destructive/12 text-destructive border border-destructive/25"
-            : "bg-primary/12 text-primary border border-primary/20 hover:bg-primary/20",
+            ? "border border-destructive/25 bg-destructive/12 text-destructive"
+            : "border border-primary/20 bg-primary/12 text-primary hover:bg-primary/20",
       )}
     >
-      {format(parseISO(meeting.start), "h:mm a")} {meeting.title}
+      {compact ? (
+        <>
+          <span className="shrink-0 text-[9px] font-bold tabular-nums leading-none opacity-90">{timeCompact}</span>
+          <span className="line-clamp-2 break-words text-[9px] font-semibold leading-snug">{meeting.title}</span>
+        </>
+      ) : (
+        <>
+          {timeFull} {meeting.title}
+        </>
+      )}
     </button>
   )
   if (compact && (meeting.conflict || others.length > 0)) {

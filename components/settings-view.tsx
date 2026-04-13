@@ -345,16 +345,18 @@ export function SettingsView({
 
   return (
     <TooltipProvider>
-      <div className="flex h-full flex-col bg-background">
+      <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-background">
         {/* Header */}
-        <header className="border-b border-border px-6 py-5">
-          <div className="flex items-center gap-4 max-w-5xl">
-            <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/10">
+        <header className="shrink-0 border-b border-border px-4 py-4 sm:px-6 sm:py-5">
+          <div className="mx-auto flex max-w-5xl min-w-0 items-center gap-3 sm:gap-4">
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/10 sm:h-11 sm:w-11">
               <Settings className="h-5 w-5 text-primary" />
             </div>
-            <div>
-              <h1 className="text-xl font-bold text-foreground tracking-tight">Settings</h1>
-              <p className="text-sm text-muted-foreground">Manage your mailboxes, preferences, and integrations</p>
+            <div className="min-w-0">
+              <h1 className="text-lg font-bold tracking-tight text-foreground sm:text-xl">Settings</h1>
+              <p className="text-pretty text-xs text-muted-foreground sm:text-sm">
+                Manage your mailboxes, preferences, and integrations
+              </p>
             </div>
           </div>
         </header>
@@ -367,64 +369,66 @@ export function SettingsView({
             </div>
           </div>
         ) : (
-          <ScrollArea className="flex-1">
-            <div className="p-8 max-w-5xl">
-              <Tabs defaultValue="mailboxes">
-                <TabsList className="bg-muted/50 border border-border p-1 mb-8 h-auto gap-1">
+          <ScrollArea className="min-h-0 min-w-0 flex-1">
+            <div className="mx-auto min-w-0 max-w-full px-4 pb-28 pt-4 sm:max-w-5xl sm:px-8 sm:pb-10 sm:pt-8">
+              <Tabs defaultValue="mailboxes" className="min-w-0">
+                <div className="-mx-4 mb-6 overflow-x-auto overscroll-x-contain px-4 pb-1 [-ms-overflow-style:none] [scrollbar-width:none] sm:mx-0 sm:mb-8 sm:overflow-visible sm:px-0 sm:pb-0 [&::-webkit-scrollbar]:hidden">
+                  <TabsList className="mb-0 inline-flex h-auto w-max min-w-0 flex-nowrap gap-1 rounded-lg border border-border bg-muted/50 p-1 sm:mb-0 sm:flex sm:w-full sm:flex-wrap sm:justify-start">
                   <TabsTrigger
                     value="mailboxes"
-                    className="text-sm gap-2 px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm rounded-lg transition-all"
+                    className="shrink-0 gap-1.5 rounded-lg px-2.5 py-2 text-xs transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm"
                   >
-                    <Inbox className="h-4 w-4" />
+                    <Inbox className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     Mailboxes
                   </TabsTrigger>
                   <TabsTrigger
                     value="notifications"
-                    className="text-sm gap-2 px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm rounded-lg transition-all"
+                    className="shrink-0 gap-1.5 rounded-lg px-2.5 py-2 text-xs transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm"
                   >
-                    <Bell className="h-4 w-4" />
+                    <Bell className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     Notifications
                   </TabsTrigger>
                   <TabsTrigger
                     value="ai"
-                    className="text-sm gap-2 px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm rounded-lg transition-all"
+                    className="shrink-0 gap-1.5 rounded-lg px-2.5 py-2 text-xs transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm"
                   >
-                    <Sparkles className="h-4 w-4" />
+                    <Sparkles className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     AI Settings
                   </TabsTrigger>
                   <TabsTrigger
                     value="account"
-                    className="text-sm gap-2 px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm rounded-lg transition-all"
+                    className="shrink-0 gap-1.5 rounded-lg px-2.5 py-2 text-xs transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm"
                   >
-                    <UserCircle className="h-4 w-4" />
+                    <UserCircle className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     Account
                   </TabsTrigger>
                   <TabsTrigger
                     value="appearance"
-                    className="text-sm gap-2 px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm rounded-lg transition-all"
+                    className="shrink-0 gap-1.5 rounded-lg px-2.5 py-2 text-xs transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm"
                   >
-                    <Palette className="h-4 w-4" />
+                    <Palette className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     Appearance
                   </TabsTrigger>
                   <TabsTrigger
                     value="security"
-                    className="text-sm gap-2 px-4 py-2.5 data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm rounded-lg transition-all"
+                    className="shrink-0 gap-1.5 rounded-lg px-2.5 py-2 text-xs transition-all data-[state=active]:bg-background data-[state=active]:text-foreground data-[state=active]:shadow-sm sm:gap-2 sm:px-4 sm:py-2.5 sm:text-sm"
                   >
-                    <Lock className="h-4 w-4" />
+                    <Lock className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
                     Security
                   </TabsTrigger>
-                </TabsList>
+                  </TabsList>
+                </div>
 
                 {/* ────── Mailboxes Tab ────── */}
-                <TabsContent value="mailboxes" className="animate-fade-in-up flex flex-col gap-6">
-                  <Card className="bg-card border-border shadow-sm">
+                <TabsContent value="mailboxes" className="animate-fade-in-up flex min-w-0 flex-col gap-6">
+                  <Card className="min-w-0 overflow-hidden border-border bg-card shadow-sm">
                     <CardHeader className="pb-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-primary/10">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10">
                             <Mail className="h-4.5 w-4.5 text-primary" />
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <CardTitle className="text-base font-semibold text-foreground">Connected Mailboxes</CardTitle>
                             <CardDescription className="text-sm text-muted-foreground">
                               {mailboxes.length} mailbox{mailboxes.length !== 1 ? "es" : ""} connected
@@ -433,7 +437,7 @@ export function SettingsView({
                         </div>
                         <Button
                           size="sm"
-                          className="bg-primary text-primary-foreground hover:bg-primary/90 gap-2 shadow-sm"
+                          className="w-full shrink-0 gap-2 bg-primary text-primary-foreground shadow-sm hover:bg-primary/90 sm:w-auto"
                           onClick={onAddMailboxClick}
                         >
                           <Plus className="h-4 w-4" />
@@ -441,7 +445,7 @@ export function SettingsView({
                         </Button>
                       </div>
                     </CardHeader>
-                    <CardContent className="flex flex-col gap-3">
+                    <CardContent className="flex min-w-0 flex-col gap-3">
                       {mailboxes.length === 0 && (
                         <div className="flex flex-col items-center justify-center py-12 gap-3">
                           <div className="flex h-14 w-14 items-center justify-center rounded-2xl bg-muted">
@@ -457,34 +461,34 @@ export function SettingsView({
                       {mailboxes.map((mb, idx) => (
                         <div
                           key={mb.id}
-                          className="group relative flex items-center justify-between rounded-xl border border-border hover:border-primary/20 p-4 transition-all duration-200 hover:shadow-md hover:bg-accent/30"
+                          className="group relative flex flex-col gap-3 rounded-xl border border-border p-3 transition-all duration-200 hover:border-primary/20 hover:bg-accent/30 hover:shadow-md sm:flex-row sm:items-center sm:justify-between sm:p-4"
                           style={{ animationDelay: `${idx * 60}ms` }}
                         >
-                          <div className="flex items-center gap-4">
-                            <div className={`flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br ${providerColors[mb.provider] || "from-gray-500/20 to-gray-400/20"} ring-1 ring-black/5 dark:ring-white/5`}>
+                          <div className="flex min-w-0 flex-1 items-center gap-3 sm:gap-4">
+                            <div className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br sm:h-11 sm:w-11 ${providerColors[mb.provider] || "from-gray-500/20 to-gray-400/20"} ring-1 ring-black/5 dark:ring-white/5`}>
                               <Mail className="h-5 w-5" style={{ color: mb.color }} />
                             </div>
-                            <div className="flex flex-col gap-0.5">
-                              <div className="flex items-center gap-2.5">
-                                <p className="text-sm font-semibold text-foreground">{mb.name}</p>
-                                <Badge variant="outline" className="text-[10px] font-medium border-border text-muted-foreground px-2 py-0">
+                            <div className="min-w-0 flex flex-col gap-0.5">
+                              <div className="flex min-w-0 flex-wrap items-center gap-2">
+                                <p className="truncate text-sm font-semibold text-foreground">{mb.name}</p>
+                                <Badge variant="outline" className="shrink-0 border-border px-2 py-0 text-[10px] font-medium text-muted-foreground">
                                   {providerIcons[mb.provider]}
                                 </Badge>
                               </div>
-                              <p className="text-xs text-muted-foreground">{mb.email}</p>
+                              <p className="truncate text-xs text-muted-foreground">{mb.email}</p>
                               {mb.totalEmails != null && (
-                                <div className="flex items-center gap-1.5 mt-0.5">
-                                  <Database className="h-3 w-3 text-muted-foreground/60" />
-                                  <p className="text-[11px] text-muted-foreground">
+                                <div className="mt-0.5 flex min-w-0 items-center gap-1.5">
+                                  <Database className="h-3 w-3 shrink-0 text-muted-foreground/60" />
+                                  <p className="min-w-0 truncate text-[11px] text-muted-foreground">
                                     {mb.totalEmails.toLocaleString()} email{mb.totalEmails !== 1 ? "s" : ""} stored
                                   </p>
                                 </div>
                               )}
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex w-full min-w-0 flex-wrap items-center gap-2 border-t border-border/50 pt-3 sm:w-auto sm:flex-nowrap sm:justify-end sm:border-t-0 sm:pt-0">
                             {/* Sync status */}
-                            <div className="flex items-center gap-2 mr-2">
+                            <div className="flex shrink-0 flex-wrap items-center gap-2 sm:mr-2">
                               {mb.syncStatus === "synced" ? (
                                 <div className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1">
                                   <span className="relative flex h-2 w-2">
@@ -530,11 +534,11 @@ export function SettingsView({
                                 <Button
                                   variant="ghost"
                                   size="sm"
-                                  className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground"
+                                  className="h-8 gap-1.5 text-xs text-muted-foreground hover:text-foreground max-sm:px-2"
                                 >
-                                  <History className="h-3.5 w-3.5" />
-                                  Fetch more
-                                  <ChevronDown className="h-3 w-3" />
+                                  <History className="h-3.5 w-3.5 shrink-0" />
+                                  <span className="hidden sm:inline">Fetch more</span>
+                                  <ChevronDown className="hidden h-3 w-3 sm:inline" />
                                 </Button>
                               </DropdownMenuTrigger>
                               <DropdownMenuContent align="end" className="min-w-[180px]">
@@ -566,14 +570,14 @@ export function SettingsView({
                 </TabsContent>
 
                 {/* ────── Notifications & Preferences Tab ────── */}
-                <TabsContent value="notifications" className="animate-fade-in-up flex flex-col gap-6">
-                  <Card className="bg-card border-border shadow-sm">
+                <TabsContent value="notifications" className="animate-fade-in-up flex min-w-0 flex-col gap-6">
+                  <Card className="min-w-0 border-border bg-card shadow-sm">
                     <CardHeader className="pb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500/20 to-yellow-500/10">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500/20 to-yellow-500/10">
                           <BellRing className="h-4.5 w-4.5 text-amber-500" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <CardTitle className="text-base font-semibold text-foreground">Notifications & Alerts</CardTitle>
                           <CardDescription className="text-sm text-muted-foreground">
                             Choose what notifications and alerts you want to receive
@@ -581,19 +585,19 @@ export function SettingsView({
                         </div>
                       </div>
                     </CardHeader>
-                    <CardContent className="flex flex-col gap-1">
+                    <CardContent className="flex min-w-0 flex-col gap-1">
                       {settingsLoading ? (
                         <div className="flex items-center justify-center py-8">
                           <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                         </div>
                       ) : (
                         <>
-                          <div className="flex items-center justify-between rounded-xl p-4 hover:bg-accent/40 transition-colors">
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
+                          <div className="flex min-w-0 items-center justify-between gap-3 rounded-xl p-4 hover:bg-accent/40 transition-colors">
+                            <div className="flex min-w-0 flex-1 items-center gap-3">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-500/10">
                                 <FileText className="h-5 w-5 text-blue-500" />
                               </div>
-                              <div>
+                              <div className="min-w-0">
                                 <p className="text-sm font-medium text-foreground">Daily Briefing</p>
                                 <p className="text-xs text-muted-foreground">Get a daily summary of your inbox activity</p>
                               </div>
@@ -605,12 +609,12 @@ export function SettingsView({
                           </div>
                           <Separator />
 
-                          <div className="flex items-center justify-between rounded-xl p-4 hover:bg-accent/40 transition-colors">
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-500/10">
+                          <div className="flex min-w-0 items-center justify-between gap-3 rounded-xl p-4 hover:bg-accent/40 transition-colors">
+                            <div className="flex min-w-0 flex-1 items-center gap-3">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-500/10">
                                 <AlertTriangle className="h-5 w-5 text-red-500" />
                               </div>
-                              <div>
+                              <div className="min-w-0">
                                 <p className="text-sm font-medium text-foreground">Critical Alerts</p>
                                 <p className="text-xs text-muted-foreground">Get notified about urgent and high-priority emails</p>
                               </div>
@@ -622,12 +626,12 @@ export function SettingsView({
                           </div>
                           <Separator />
 
-                          <div className="flex items-center justify-between rounded-xl p-4 hover:bg-accent/40 transition-colors">
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10">
+                          <div className="flex min-w-0 items-center justify-between gap-3 rounded-xl p-4 hover:bg-accent/40 transition-colors">
+                            <div className="flex min-w-0 flex-1 items-center gap-3">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-500/10">
                                 <MessageSquare className="h-5 w-5 text-violet-500" />
                               </div>
-                              <div>
+                              <div className="min-w-0">
                                 <p className="text-sm font-medium text-foreground">Slack Digest</p>
                                 <p className="text-xs text-muted-foreground">Receive inbox digest via Slack integration</p>
                               </div>
@@ -642,13 +646,13 @@ export function SettingsView({
                     </CardContent>
                   </Card>
 
-                  <Card className="bg-card border-border shadow-sm">
+                  <Card className="min-w-0 border-border bg-card shadow-sm">
                     <CardHeader className="pb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500/20 to-blue-500/10">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-cyan-500/20 to-blue-500/10">
                           <Sparkles className="h-4.5 w-4.5 text-cyan-500" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <CardTitle className="text-base font-semibold text-foreground">AI Features</CardTitle>
                           <CardDescription className="text-sm text-muted-foreground">
                             Control how the AI assistant works with your emails
@@ -656,19 +660,19 @@ export function SettingsView({
                         </div>
                       </div>
                     </CardHeader>
-                    <CardContent className="flex flex-col gap-1">
+                    <CardContent className="flex min-w-0 flex-col gap-1">
                       {settingsLoading ? (
                         <div className="flex items-center justify-center py-8">
                           <div className="h-6 w-6 animate-spin rounded-full border-2 border-primary border-t-transparent" />
                         </div>
                       ) : (
                         <>
-                          <div className="flex items-center justify-between rounded-xl p-4 hover:bg-accent/40 transition-colors">
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-purple-500/10">
+                          <div className="flex min-w-0 items-center justify-between gap-3 rounded-xl p-4 hover:bg-accent/40 transition-colors">
+                            <div className="flex min-w-0 flex-1 items-center gap-3">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-purple-500/10">
                                 <Sparkles className="h-5 w-5 text-purple-500" />
                               </div>
-                              <div>
+                              <div className="min-w-0">
                                 <p className="text-sm font-medium text-foreground">AI Suggestions</p>
                                 <p className="text-xs text-muted-foreground">Smart reply suggestions and action recommendations</p>
                               </div>
@@ -680,12 +684,12 @@ export function SettingsView({
                           </div>
                           <Separator />
 
-                          <div className="flex items-center justify-between rounded-xl p-4 hover:bg-accent/40 transition-colors">
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
+                          <div className="flex min-w-0 items-center justify-between gap-3 rounded-xl p-4 hover:bg-accent/40 transition-colors">
+                            <div className="flex min-w-0 flex-1 items-center gap-3">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10">
                                 <Tag className="h-5 w-5 text-emerald-500" />
                               </div>
-                              <div>
+                              <div className="min-w-0">
                                 <p className="text-sm font-medium text-foreground">Auto Labeling</p>
                                 <p className="text-xs text-muted-foreground">Automatically categorize and label incoming emails</p>
                               </div>
@@ -697,12 +701,12 @@ export function SettingsView({
                           </div>
                           <Separator />
 
-                          <div className="flex items-center justify-between rounded-xl p-4 hover:bg-accent/40 transition-colors">
-                            <div className="flex items-center gap-3">
-                              <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-teal-500/10">
+                          <div className="flex min-w-0 items-center justify-between gap-3 rounded-xl p-4 hover:bg-accent/40 transition-colors">
+                            <div className="flex min-w-0 flex-1 items-center gap-3">
+                              <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-teal-500/10">
                                 <ListCollapse className="h-5 w-5 text-teal-500" />
                               </div>
-                              <div>
+                              <div className="min-w-0">
                                 <p className="text-sm font-medium text-foreground">Thread Summaries</p>
                                 <p className="text-xs text-muted-foreground">Auto-generate summaries for long email threads</p>
                               </div>
@@ -717,13 +721,13 @@ export function SettingsView({
                     </CardContent>
                   </Card>
 
-                  <Card className="bg-card border-border shadow-sm">
+                  <Card className="min-w-0 border-border bg-card shadow-sm">
                     <CardHeader className="pb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500/20 to-blue-500/10">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-indigo-500/20 to-blue-500/10">
                           <CalendarRange className="h-4.5 w-4.5 text-indigo-500" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <CardTitle className="text-base font-semibold text-foreground">Sync Preferences</CardTitle>
                           <CardDescription className="text-sm text-muted-foreground">
                             Configure how far back your emails are synced
@@ -731,13 +735,13 @@ export function SettingsView({
                         </div>
                       </div>
                     </CardHeader>
-                    <CardContent>
-                      <div className="flex items-center justify-between rounded-xl p-4 hover:bg-accent/40 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-indigo-500/10">
+                    <CardContent className="min-w-0">
+                      <div className="flex min-w-0 flex-col gap-3 rounded-xl p-4 hover:bg-accent/40 sm:flex-row sm:items-center sm:justify-between sm:gap-3">
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-indigo-500/10">
                             <History className="h-5 w-5 text-indigo-500" />
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <p className="text-sm font-medium text-foreground">Sync Range</p>
                             <p className="text-xs text-muted-foreground">How many months of email history to sync</p>
                           </div>
@@ -746,7 +750,7 @@ export function SettingsView({
                           value={String(userSettings?.sync_range_months ?? 12)}
                           onValueChange={handleSyncRangeChange}
                         >
-                          <SelectTrigger className="w-[140px] h-9 text-sm">
+                          <SelectTrigger className="h-9 w-full text-sm sm:w-[140px] sm:shrink-0">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -765,15 +769,15 @@ export function SettingsView({
                 </TabsContent>
 
                 {/* ────── AI Settings Tab ────── */}
-                <TabsContent value="ai" className="animate-fade-in-up flex flex-col gap-6">
-                  <Card className="bg-card border-border shadow-sm overflow-hidden">
+                <TabsContent value="ai" className="animate-fade-in-up flex min-w-0 flex-col gap-6">
+                  <Card className="min-w-0 overflow-hidden border-border bg-card shadow-sm">
                     <CardHeader className="pb-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500/20 to-purple-500/10">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-violet-500/20 to-purple-500/10">
                             <Brain className="h-4.5 w-4.5 text-violet-500" />
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <CardTitle className="text-base font-semibold text-foreground">
                               AI Personality Profile
                             </CardTitle>
@@ -782,7 +786,7 @@ export function SettingsView({
                             </CardDescription>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex shrink-0 flex-wrap items-center justify-start gap-2 sm:justify-end">
                           {!profile && !profileLoading && (
                             <Button
                               size="sm"
@@ -820,7 +824,7 @@ export function SettingsView({
                         </div>
                       </div>
                     </CardHeader>
-                    <CardContent>
+                    <CardContent className="min-w-0">
                       {profileLoading && (
                         <div className="flex flex-col items-center justify-center py-12 gap-3">
                           <div className="relative">
@@ -1011,14 +1015,14 @@ export function SettingsView({
                   </Card>
 
                   {/* ── Your Preferences ── */}
-                  <Card className="bg-card border-border shadow-sm">
+                  <Card className="min-w-0 border-border bg-card shadow-sm">
                     <CardHeader className="pb-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500/20 to-orange-500/10">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-amber-500/20 to-orange-500/10">
                             <Briefcase className="h-4.5 w-4.5 text-amber-500" />
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <CardTitle className="text-base font-semibold text-foreground">Your Preferences</CardTitle>
                             <CardDescription className="text-sm text-muted-foreground">
                               These shape how AI drafts, prioritizes, and summarizes for you
@@ -1026,11 +1030,11 @@ export function SettingsView({
                           </div>
                         </div>
                         {!prefsEditing ? (
-                          <Button size="sm" variant="outline" className="gap-2" onClick={() => setPrefsEditing(true)}>
+                          <Button size="sm" variant="outline" className="w-full shrink-0 gap-2 sm:w-auto" onClick={() => setPrefsEditing(true)}>
                             <Pencil className="h-3.5 w-3.5" /> Edit
                           </Button>
                         ) : (
-                          <Button size="sm" className="gap-2" disabled={prefsSaving} onClick={handleSavePreferences}>
+                          <Button size="sm" className="w-full shrink-0 gap-2 sm:w-auto" disabled={prefsSaving} onClick={handleSavePreferences}>
                             {prefsSaving ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                             {prefsSaving ? "Saving…" : "Save"}
                           </Button>
@@ -1110,21 +1114,21 @@ export function SettingsView({
                   </Card>
 
                   {/* ── AI Label Rules ── */}
-                  <Card className="bg-card border-border shadow-sm">
+                  <Card className="min-w-0 border-border bg-card shadow-sm">
                     <CardHeader className="pb-4">
-                      <div className="flex items-center justify-between">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500/20 to-teal-500/10">
+                      <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500/20 to-teal-500/10">
                             <Tag className="h-4.5 w-4.5 text-emerald-500" />
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <CardTitle className="text-base font-semibold text-foreground">AI Label Rules</CardTitle>
                             <CardDescription className="text-sm text-muted-foreground">
                               Plain-English rules that guide auto-labeling and prioritization
                             </CardDescription>
                           </div>
                         </div>
-                        <Button size="sm" className="gap-2" disabled={labelsSaving} onClick={handleSaveLabels}>
+                        <Button size="sm" className="w-full shrink-0 gap-2 sm:w-auto" disabled={labelsSaving} onClick={handleSaveLabels}>
                           {labelsSaving ? <RefreshCw className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
                           {labelsSaving ? "Saving…" : "Save Labels"}
                         </Button>
@@ -1185,14 +1189,14 @@ export function SettingsView({
                 </TabsContent>
 
                 {/* ────── Account Tab ────── */}
-                <TabsContent value="account" className="animate-fade-in-up flex flex-col gap-6">
-                  <Card className="bg-card border-border shadow-sm">
+                <TabsContent value="account" className="animate-fade-in-up flex min-w-0 flex-col gap-6">
+                  <Card className="min-w-0 border-border bg-card shadow-sm">
                     <CardHeader className="pb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500/20 to-indigo-500/10">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-blue-500/20 to-indigo-500/10">
                           <UserCircle className="h-4.5 w-4.5 text-blue-500" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <CardTitle className="text-base font-semibold text-foreground">Profile Information</CardTitle>
                           <CardDescription className="text-sm text-muted-foreground">
                             Your account details and preferences
@@ -1200,11 +1204,11 @@ export function SettingsView({
                         </div>
                       </div>
                     </CardHeader>
-                    <CardContent className="flex flex-col gap-4">
+                    <CardContent className="flex min-w-0 flex-col gap-4">
                       {userProfile ? (
                         <>
-                          <div className="flex items-center gap-5 rounded-xl border border-border p-5">
-                            <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/10 shrink-0">
+                          <div className="flex min-w-0 items-center gap-4 rounded-xl border border-border p-4 sm:gap-5 sm:p-5">
+                            <div className="flex h-14 w-14 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/10 sm:h-16 sm:w-16">
                               <span className="text-lg font-bold text-primary">
                                 {(userProfile.name || userProfile.email).slice(0, 2).toUpperCase()}
                               </span>
@@ -1258,13 +1262,13 @@ export function SettingsView({
                     </CardContent>
                   </Card>
 
-                  <Card className="bg-card border-border shadow-sm">
+                  <Card className="min-w-0 border-border bg-card shadow-sm">
                     <CardHeader className="pb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500/20 to-green-500/10">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500/20 to-green-500/10">
                           <Download className="h-4.5 w-4.5 text-emerald-500" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <CardTitle className="text-base font-semibold text-foreground">Data & Export</CardTitle>
                           <CardDescription className="text-sm text-muted-foreground">
                             Download or manage your email data
@@ -1272,13 +1276,13 @@ export function SettingsView({
                         </div>
                       </div>
                     </CardHeader>
-                    <CardContent className="flex flex-col gap-3">
-                      <div className="flex items-center justify-between rounded-xl border border-border p-4 hover:bg-accent/30 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
+                    <CardContent className="flex min-w-0 flex-col gap-3">
+                      <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-border p-4 hover:bg-accent/30 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10">
                             <Download className="h-5 w-5 text-emerald-500" />
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <p className="text-sm font-medium text-foreground">Export Emails</p>
                             <p className="text-xs text-muted-foreground">Download all your synced email data as JSON</p>
                           </div>
@@ -1286,7 +1290,7 @@ export function SettingsView({
                         <Button
                           variant="outline"
                           size="sm"
-                          className="gap-2 shrink-0"
+                          className="w-full shrink-0 gap-2 sm:w-auto"
                           disabled={exporting}
                           onClick={handleExportData}
                         >
@@ -1301,13 +1305,13 @@ export function SettingsView({
                     </CardContent>
                   </Card>
 
-                  <Card className="bg-card border-border shadow-sm">
+                  <Card className="min-w-0 border-border bg-card shadow-sm">
                     <CardHeader className="pb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-slate-500/20 to-gray-500/10">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-slate-500/20 to-gray-500/10">
                           <Keyboard className="h-4.5 w-4.5 text-slate-500" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <CardTitle className="text-base font-semibold text-foreground">Keyboard Shortcuts</CardTitle>
                           <CardDescription className="text-sm text-muted-foreground">
                             Quick actions to boost your productivity
@@ -1329,9 +1333,9 @@ export function SettingsView({
                           { keys: ["U"], action: "Mark as unread" },
                           { keys: ["?"], action: "Show shortcuts" },
                         ].map(({ keys, action }) => (
-                          <div key={action} className="flex items-center justify-between rounded-lg border border-border px-4 py-2.5 hover:bg-accent/30 transition-colors">
-                            <span className="text-sm text-muted-foreground">{action}</span>
-                            <div className="flex items-center gap-1">
+                          <div key={action} className="flex min-w-0 items-center justify-between gap-2 rounded-lg border border-border px-3 py-2.5 hover:bg-accent/30 sm:px-4">
+                            <span className="min-w-0 flex-1 truncate text-sm text-muted-foreground">{action}</span>
+                            <div className="flex shrink-0 items-center gap-1">
                               {keys.map((key) => (
                                 <kbd
                                   key={key}
@@ -1349,14 +1353,14 @@ export function SettingsView({
                 </TabsContent>
 
                 {/* ────── Appearance Tab ────── */}
-                <TabsContent value="appearance" className="animate-fade-in-up flex flex-col gap-6">
-                  <Card className="bg-card border-border shadow-sm">
+                <TabsContent value="appearance" className="animate-fade-in-up flex min-w-0 flex-col gap-6">
+                  <Card className="min-w-0 border-border bg-card shadow-sm">
                     <CardHeader className="pb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-pink-500/20 to-orange-500/10">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-pink-500/20 to-orange-500/10">
                           <Palette className="h-4.5 w-4.5 text-pink-500" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <CardTitle className="text-base font-semibold text-foreground">Theme</CardTitle>
                           <CardDescription className="text-sm text-muted-foreground">
                             Customize the look and feel of the application
@@ -1432,14 +1436,14 @@ export function SettingsView({
                 </TabsContent>
 
                 {/* ────── Security Tab ────── */}
-                <TabsContent value="security" className="animate-fade-in-up flex flex-col gap-6">
-                  <Card className="bg-card border-border shadow-sm">
+                <TabsContent value="security" className="animate-fade-in-up flex min-w-0 flex-col gap-6">
+                  <Card className="min-w-0 border-border bg-card shadow-sm">
                     <CardHeader className="pb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500/20 to-teal-500/10">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-emerald-500/20 to-teal-500/10">
                           <ShieldCheck className="h-4.5 w-4.5 text-emerald-500" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <CardTitle className="text-base font-semibold text-foreground">Security & Privacy</CardTitle>
                           <CardDescription className="text-sm text-muted-foreground">
                             Data protection and access controls
@@ -1447,61 +1451,61 @@ export function SettingsView({
                         </div>
                       </div>
                     </CardHeader>
-                    <CardContent className="flex flex-col gap-4">
-                      <div className="flex items-center justify-between rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-emerald-500/10">
+                    <CardContent className="flex min-w-0 flex-col gap-4">
+                      <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-emerald-500/20 bg-emerald-500/5 p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-emerald-500/10">
                             <Lock className="h-5 w-5 text-emerald-500" />
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <p className="text-sm font-medium text-foreground">End-to-End Encryption</p>
                             <p className="text-xs text-muted-foreground">All data encrypted at rest and in transit</p>
                           </div>
                         </div>
-                        <Badge className="bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/10">
+                        <Badge className="w-fit shrink-0 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-500/20 hover:bg-emerald-500/10">
                           Active
                         </Badge>
                       </div>
 
-                      <div className="flex items-center justify-between rounded-xl border border-border p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-500/10">
+                      <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-border p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-blue-500/10">
                             <KeyRound className="h-5 w-5 text-blue-500" />
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <p className="text-sm font-medium text-foreground">Secure Authentication</p>
                             <p className="text-xs text-muted-foreground">Token-based session management</p>
                           </div>
                         </div>
-                        <Badge className="bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/10">
+                        <Badge className="w-fit shrink-0 bg-blue-500/10 text-blue-600 dark:text-blue-400 border-blue-500/20 hover:bg-blue-500/10">
                           Active
                         </Badge>
                       </div>
 
-                      <div className="flex items-center justify-between rounded-xl border border-border p-4">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-violet-500/10">
+                      <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-border p-4 sm:flex-row sm:items-center sm:justify-between sm:gap-4">
+                        <div className="flex min-w-0 flex-1 items-center gap-3">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-violet-500/10">
                             <Eye className="h-5 w-5 text-violet-500" />
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <p className="text-sm font-medium text-foreground">Privacy Controls</p>
                             <p className="text-xs text-muted-foreground">Your email data never leaves your account</p>
                           </div>
                         </div>
-                        <Badge className="bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20 hover:bg-violet-500/10">
+                        <Badge className="w-fit shrink-0 bg-violet-500/10 text-violet-600 dark:text-violet-400 border-violet-500/20 hover:bg-violet-500/10">
                           Active
                         </Badge>
                       </div>
                     </CardContent>
                   </Card>
 
-                  <Card className="bg-card border-red-500/20 shadow-sm">
+                  <Card className="min-w-0 border-red-500/20 bg-card shadow-sm">
                     <CardHeader className="pb-4">
-                      <div className="flex items-center gap-3">
-                        <div className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-500/10">
+                      <div className="flex min-w-0 items-center gap-3">
+                        <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-red-500/10">
                           <AlertTriangle className="h-4.5 w-4.5 text-red-500" />
                         </div>
-                        <div>
+                        <div className="min-w-0">
                           <CardTitle className="text-base font-semibold text-red-600 dark:text-red-400">Danger Zone</CardTitle>
                           <CardDescription className="text-sm text-muted-foreground">
                             These actions are irreversible. Please proceed with caution.
@@ -1509,15 +1513,15 @@ export function SettingsView({
                         </div>
                       </div>
                     </CardHeader>
-                    <CardContent className="flex flex-col gap-4">
-                      <div className="flex items-center justify-between rounded-xl border border-red-500/10 p-4 hover:bg-red-500/5 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-500/10">
+                    <CardContent className="flex min-w-0 flex-col gap-4">
+                      <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-red-500/10 p-4 transition-colors hover:bg-red-500/5 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-500/10">
                             <Trash2 className="h-5 w-5 text-red-500/70" />
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <p className="text-sm font-medium text-foreground">Delete all emails</p>
-                            <p className="text-xs text-muted-foreground max-w-md">
+                            <p className="max-w-md text-xs text-muted-foreground">
                               Remove all synced emails from this dashboard. Mailboxes stay connected.
                             </p>
                           </div>
@@ -1525,7 +1529,7 @@ export function SettingsView({
                         <Button
                           variant="outline"
                           size="sm"
-                          className="border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10 hover:border-red-500/50 transition-all shrink-0"
+                          className="w-full shrink-0 border-red-500/30 text-red-600 transition-all hover:border-red-500/50 hover:bg-red-500/10 dark:text-red-400 sm:w-auto"
                           disabled={deletingAll}
                           onClick={() => {
                             if (!window.confirm("Delete all emails from this dashboard? This cannot be undone. Mailboxes will remain connected.")) return
@@ -1549,19 +1553,19 @@ export function SettingsView({
                         </Button>
                       </div>
 
-                      <div className="flex items-center justify-between rounded-xl border border-red-500/10 p-4 hover:bg-red-500/5 transition-colors">
-                        <div className="flex items-center gap-3">
-                          <div className="flex h-10 w-10 items-center justify-center rounded-lg bg-red-500/10">
+                      <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-red-500/10 p-4 transition-colors hover:bg-red-500/5 sm:flex-row sm:items-center sm:justify-between">
+                        <div className="flex min-w-0 flex-1 items-start gap-3 sm:items-center">
+                          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-red-500/10">
                             <XCircle className="h-5 w-5 text-red-500/70" />
                           </div>
-                          <div>
+                          <div className="min-w-0">
                             <p className="text-sm font-medium text-foreground">Delete account</p>
-                            <p className="text-xs text-muted-foreground max-w-md">
+                            <p className="max-w-md text-xs text-muted-foreground">
                               Permanently delete your Smart Mail AI Beta account and all associated data
                             </p>
                           </div>
                         </div>
-                        <Button variant="outline" size="sm" className="border-red-500/30 text-red-600 dark:text-red-400 hover:bg-red-500/10 hover:border-red-500/50 transition-all shrink-0">
+                        <Button variant="outline" size="sm" className="w-full shrink-0 border-red-500/30 text-red-600 transition-all hover:border-red-500/50 hover:bg-red-500/10 dark:text-red-400 sm:w-auto">
                           Delete Account
                         </Button>
                       </div>

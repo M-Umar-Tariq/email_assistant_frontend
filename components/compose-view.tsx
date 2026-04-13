@@ -426,7 +426,7 @@ export function ComposeView({
             </div>
           </div>
 
-          {/* ─── AI Copilot Panel ──────────────────────── */}
+          {/* ─── AI compose assist panel ──────────────────────── */}
           {showAiPanel && (
             <div className="hidden lg:flex w-[320px] flex-col border-l border-border bg-gradient-to-b from-muted/20 to-background">
               {/* Panel header */}

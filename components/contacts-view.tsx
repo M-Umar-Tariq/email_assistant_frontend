@@ -100,84 +100,102 @@ function ContactRow({
   return (
     <div
       className={cn(
-        "group flex w-full items-center gap-3.5 rounded-xl border border-border/40 bg-card/60 px-3.5 py-3 transition-all duration-200",
-        "hover:bg-muted/40 hover:border-border/70 hover:shadow-md",
+        "group box-border flex w-full min-w-0 max-w-full flex-col gap-2.5 rounded-xl border border-border/40 bg-card/60 px-2.5 py-2.5 transition-all duration-200 sm:flex-row sm:items-center sm:gap-3 sm:px-3.5 sm:py-3",
+        "hover:border-border/70 hover:bg-muted/40 hover:shadow-md",
         index === 0 && "mt-0"
       )}
     >
-      {onToggleSelect && (
-        <Checkbox
-          checked={selected}
-          onCheckedChange={(checked) => onToggleSelect(sender, checked === true)}
-          onClick={(e) => e.stopPropagation()}
-          className="shrink-0"
-        />
-      )}
-      <button
-        type="button"
-        onClick={() => onContactClick?.(sender)}
-        className="flex min-w-0 flex-1 items-center gap-3.5 text-left cursor-pointer"
-      >
-        <Avatar className="h-10 w-10 shrink-0 shadow-md ring-2 ring-transparent transition-all duration-200 group-hover:ring-primary/10">
-          <AvatarFallback
-            className={cn(
-              "bg-gradient-to-br text-white text-[11px] font-semibold",
-              gradient
-            )}
-          >
-            {initials}
-          </AvatarFallback>
-        </Avatar>
+      <div className="flex min-w-0 flex-1 items-start gap-2 sm:items-center sm:gap-2.5">
+        {onToggleSelect && (
+          <Checkbox
+            checked={selected}
+            onCheckedChange={(checked) => onToggleSelect(sender, checked === true)}
+            onClick={(e) => e.stopPropagation()}
+            className="mt-1 shrink-0 sm:mt-0"
+          />
+        )}
+        <div
+          role="button"
+          tabIndex={0}
+          onClick={() => onContactClick?.(sender)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault()
+              onContactClick?.(sender)
+            }
+          }}
+          className="flex min-w-0 flex-1 cursor-pointer items-start gap-2.5 rounded-lg text-left outline-none ring-offset-2 focus-visible:ring-2 focus-visible:ring-primary/30 sm:items-center sm:gap-3"
+        >
+          <Avatar className="h-9 w-9 shrink-0 shadow-md ring-2 ring-transparent transition-all duration-200 group-hover:ring-primary/10 sm:h-10 sm:w-10">
+            <AvatarFallback
+              className={cn(
+                "bg-gradient-to-br text-[11px] font-semibold text-white",
+                gradient
+              )}
+            >
+              {initials}
+            </AvatarFallback>
+          </Avatar>
 
-        <div className="min-w-0 flex-1">
-          <p className="text-sm font-medium text-foreground truncate leading-tight">
-            {displayName}
-          </p>
-          <p className="text-xs text-muted-foreground/70 truncate mt-0.5">
-            {sender.from_email}
-          </p>
-          {lastReceived && (
-            <p className="text-[10px] text-muted-foreground/60 mt-0.5">
-              Last received: {lastReceived}
-            </p>
-          )}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-medium leading-tight text-foreground">{displayName}</p>
+            <p className="mt-0.5 truncate text-xs text-muted-foreground/70">{sender.from_email}</p>
+            <div className="mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1">
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <span
+                    className="inline-flex max-w-full items-center gap-1 rounded-full bg-muted/80 px-2 py-0.5 text-[10px] font-semibold tabular-nums text-muted-foreground ring-1 ring-border/40"
+                    onClick={(e) => e.stopPropagation()}
+                    onKeyDown={(e) => e.stopPropagation()}
+                  >
+                    <Mail className="h-3 w-3 shrink-0 text-primary/70" aria-hidden />
+                    <span>
+                      {sender.count} {sender.count === 1 ? "email" : "emails"}
+                    </span>
+                  </span>
+                </TooltipTrigger>
+                <TooltipContent side="top" className="max-w-[240px]">
+                  <p className="text-xs">
+                    {sender.count} email{sender.count !== 1 ? "s" : ""} from this contact — tap the row to open in inbox
+                  </p>
+                </TooltipContent>
+              </Tooltip>
+              {lastReceived && (
+                <span
+                  className="text-[10px] text-muted-foreground/65"
+                  title={`Last email: ${lastReceived}`}
+                >
+                  <span className="hidden sm:inline">Last: </span>
+                  {lastReceived}
+                </span>
+              )}
+            </div>
+          </div>
         </div>
+      </div>
 
+      <div className="w-full min-w-0 max-w-full sm:w-auto sm:shrink-0">
         <Tooltip>
           <TooltipTrigger asChild>
-            <div className="flex items-center gap-1.5 shrink-0">
-              <div className="flex items-center gap-1 rounded-full bg-muted/70 px-2.5 py-1 text-xs text-muted-foreground font-semibold tabular-nums">
-                <Mail className="h-3 w-3" />
-                {sender.count}
-              </div>
-            </div>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-9 w-full min-w-0 max-w-full gap-2 rounded-xl border-primary/30 text-primary shadow-sm hover:bg-primary/10 hover:text-primary sm:h-8 sm:w-auto sm:min-w-[7.5rem] sm:max-w-none sm:px-3"
+              onClick={(e) => {
+                e.stopPropagation()
+                onSendEmail?.(sender)
+              }}
+            >
+              <Send className="h-3.5 w-3.5 shrink-0" />
+              Send email
+            </Button>
           </TooltipTrigger>
-          <TooltipContent side="left">
-            <p className="text-xs">{sender.count} email{sender.count !== 1 ? "s" : ""} received — click to view in inbox</p>
+          <TooltipContent side="top" align="end" className="max-sm:max-w-[min(100vw-2rem,280px)]">
+            <p className="text-xs">Open compose to email this contact</p>
           </TooltipContent>
         </Tooltip>
-      </button>
-
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="h-8 shrink-0 gap-1.5 text-xs rounded-xl border-primary/30 text-primary hover:bg-primary/10 hover:text-primary shadow-sm"
-            onClick={(e) => {
-              e.stopPropagation()
-              onSendEmail?.(sender)
-            }}
-          >
-            <Send className="h-3.5 w-3.5" />
-            Send email
-          </Button>
-        </TooltipTrigger>
-        <TooltipContent side="left">
-          <p className="text-xs">Open Compose with this contact&apos;s email</p>
-        </TooltipContent>
-      </Tooltip>
+      </div>
     </div>
   )
 }
@@ -233,30 +251,30 @@ function MailboxSection({
   if (searchQuery && filtered.length === 0) return null
 
   return (
-    <Card className="border-border/40 bg-card/70 shadow-sm overflow-hidden transition-all duration-200 hover:shadow-lg hover:border-border/70">
+    <Card className="w-full min-w-0 max-w-full overflow-hidden border-border/40 bg-card/70 shadow-sm transition-all duration-200 hover:border-border/70 hover:shadow-lg">
       <button
         type="button"
         onClick={() => setOpen((p) => !p)}
-        className="flex w-full items-center gap-3 px-5 py-4 text-left hover:bg-muted/30 transition-colors"
+        className="flex w-full min-w-0 max-w-full items-center gap-2 px-4 py-3 text-left transition-colors hover:bg-muted/30 sm:gap-2.5 sm:px-5 sm:py-4"
       >
-        {icon}
-        <span className="text-sm font-semibold text-foreground flex-1 truncate">{title}</span>
+        <span className="shrink-0">{icon}</span>
+        <span className="min-w-0 flex-1 truncate text-sm font-semibold tracking-tight text-foreground">{title}</span>
         <Badge
           variant="secondary"
-          className="text-[10px] font-semibold tabular-nums px-2 py-0.5"
+          className="shrink-0 text-[10px] font-semibold tabular-nums px-2 py-0.5"
         >
           {searchQuery ? filtered.length : totalContacts}
         </Badge>
         <ChevronDown
           className={cn(
-            "h-4 w-4 text-muted-foreground/60 transition-transform duration-200",
+            "h-4 w-4 shrink-0 text-muted-foreground/60 transition-transform duration-200",
             !open && "-rotate-90"
           )}
         />
       </button>
 
       {open && (
-        <CardContent className="px-2 pb-2 pt-0">
+        <CardContent className="min-w-0 max-w-full px-1.5 pb-2 pt-0 sm:px-2">
           {filtered.length === 0 ? (
             <div className="flex flex-col items-center justify-center py-6 text-muted-foreground/60">
               <Users className="h-8 w-8 mb-2" />
@@ -264,7 +282,7 @@ function MailboxSection({
             </div>
           ) : (
             <>
-              <div className="space-y-2 pt-1">
+              <div className="min-w-0 space-y-2 pt-1">
                 {visible.map((s, i) => (
                   <ContactRow
                     key={s.from_email + i}
@@ -388,7 +406,7 @@ export function ContactsView({ onAddMailboxClick }: { onAddMailboxClick?: () => 
             key: "all",
             title: "All Mailboxes",
             icon: (
-              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gradient-to-br from-primary/20 to-primary/5">
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 shadow-sm ring-1 ring-primary/10">
                 <Inbox className="h-4 w-4 text-primary" />
               </div>
             ),
@@ -404,11 +422,11 @@ export function ContactsView({ onAddMailboxClick }: { onAddMailboxClick?: () => 
             title: m.mailboxName,
             icon: (
               <div
-                className="h-8 w-8 shrink-0 rounded-lg flex items-center justify-center"
+                className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl ring-1 ring-border/40 shadow-sm"
                 style={{ backgroundColor: (m.color || "#6366f1") + "22" }}
               >
                 <div
-                  className="h-3 w-3 rounded-full"
+                  className="h-3 w-3 rounded-full ring-2 ring-background"
                   style={{ backgroundColor: m.color || "#6366f1" }}
                 />
               </div>
@@ -420,37 +438,39 @@ export function ContactsView({ onAddMailboxClick }: { onAddMailboxClick?: () => 
 
   return (
     <TooltipProvider delayDuration={300}>
-      <div className="flex h-full flex-col bg-gradient-to-b from-background to-muted/[0.12]">
+      <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-gradient-to-b from-background to-muted/[0.12]">
         {/* Header */}
-        <div className="border-b border-border/60 bg-gradient-to-r from-background via-background to-primary/[0.03] backdrop-blur-sm">
-          <div className="px-6 py-4">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-3 shrink-0">
-                <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 shadow-md shadow-primary/10 ring-1 ring-primary/10">
+        <div className="min-w-0 shrink-0 border-b border-border/60 bg-gradient-to-r from-background via-background to-primary/[0.03] backdrop-blur-sm">
+          <div className="px-4 py-3 sm:px-6 sm:py-4">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+              <div className="flex min-w-0 items-center gap-2.5 sm:gap-3 md:shrink-0">
+                <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 shadow-md shadow-primary/10 ring-1 ring-primary/10 sm:h-11 sm:w-11">
                   <Users className="h-5 w-5 text-primary" />
                 </div>
-                <div>
-                  <h1 className="text-lg font-extrabold text-foreground leading-tight tracking-tight">Contacts</h1>
-                  <p className="text-[11px] text-muted-foreground/70 mt-0.5">
-                    {allSenders?.unique_senders_count ?? 0} people across {mailboxes.length} mailbox{mailboxes.length !== 1 ? "es" : ""}
+                <div className="min-w-0">
+                  <h1 className="text-base font-extrabold leading-tight tracking-tight text-foreground sm:text-lg">
+                    Contacts
+                  </h1>
+                  <p className="mt-0.5 text-[11px] text-muted-foreground/75">
+                    {allSenders?.unique_senders_count ?? 0} people · {mailboxes.length} mailbox
+                    {mailboxes.length !== 1 ? "es" : ""}
                   </p>
                 </div>
               </div>
 
-              {/* Search */}
-              <div className="relative flex-1 max-w-sm">
-                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50 pointer-events-none" />
+              <div className="relative min-w-0 w-full flex-1 md:max-w-sm">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
                 <Input
-                  placeholder="Search contacts…"
+                  placeholder="Search name or email"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-9 h-10 rounded-xl bg-card/75 border border-border/60 text-foreground placeholder:text-muted-foreground/50 text-sm focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary/30 transition-all duration-200 shadow-sm hover:border-border"
+                  className="h-10 w-full min-w-0 rounded-xl border border-border/60 bg-card/75 pl-10 pr-9 text-sm text-foreground shadow-sm transition-all duration-200 placeholder:text-muted-foreground/50 hover:border-border focus-visible:border-primary/30 focus-visible:ring-2 focus-visible:ring-primary/20"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-foreground transition-colors p-0.5 rounded-md hover:bg-muted"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
@@ -459,17 +479,16 @@ export function ContactsView({ onAddMailboxClick }: { onAddMailboxClick?: () => 
             </div>
           </div>
 
-          {/* Total contacts stat */}
-          <div className="px-6 pb-4">
-            <div className="flex items-center gap-2 rounded-xl border border-blue-500/20 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 text-blue-600 dark:text-blue-400 px-3.5 py-2 w-fit shadow-sm">
-              <Users className="h-3.5 w-3.5 shrink-0" />
+          {/* Total + tabs — one compact row on mobile */}
+          <div className="flex flex-col gap-2.5 px-4 pb-3 sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-6">
+            <div className="flex w-fit items-center gap-2 rounded-xl border border-blue-500/20 bg-gradient-to-r from-blue-500/10 to-cyan-500/10 px-3 py-1.5 text-blue-700 shadow-sm dark:text-blue-400">
+              <Users className="h-3.5 w-3.5 shrink-0 opacity-80" />
               <span className="text-sm font-bold tabular-nums">{allSenders?.unique_senders_count ?? 0}</span>
-              <span className="text-[10px] font-medium opacity-70">Total contacts</span>
+              <span className="text-[10px] font-medium opacity-80">total</span>
             </div>
-          </div>
 
           {/* Tabs: All | By Mailbox (dropdown) */}
-          <div className="px-6 pb-3 flex items-center gap-1.5">
+          <div className="flex flex-wrap items-center gap-1.5">
             <Button
               variant={activeTab === "all" ? "default" : "ghost"}
               size="sm"
@@ -532,29 +551,31 @@ export function ContactsView({ onAddMailboxClick }: { onAddMailboxClick?: () => 
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+          </div>
         </div>
 
         {/* Send to selected bar */}
         {selectedEmails.size > 0 && (
-          <div className="border-b border-border/60 bg-primary/5 px-6 py-2.5 flex items-center justify-between gap-3 backdrop-blur-sm">
-            <span className="text-sm text-foreground font-medium">
-              {selectedEmails.size} contact{selectedEmails.size !== 1 ? "s" : ""} selected
+          <div className="flex min-w-0 shrink-0 flex-col gap-2 border-b border-border/60 bg-primary/5 px-4 py-2.5 backdrop-blur-sm sm:flex-row sm:items-center sm:justify-between sm:gap-3 sm:px-6">
+            <span className="text-sm font-medium text-foreground">
+              {selectedEmails.size} selected
             </span>
             <div className="flex items-center gap-2">
-              <Button variant="ghost" size="sm" className="text-xs rounded-xl" onClick={() => setSelectedEmails(new Set())}>
+              <Button variant="ghost" size="sm" className="h-9 rounded-xl text-xs sm:h-8" onClick={() => setSelectedEmails(new Set())}>
                 Clear
               </Button>
-              <Button size="sm" className="gap-1.5 text-xs rounded-xl shadow-sm" onClick={handleSendToSelected}>
-                <Send className="h-3.5 w-3.5" />
-                Send email to selected
+              <Button size="sm" className="h-9 gap-1.5 rounded-xl text-xs shadow-sm sm:h-8" onClick={handleSendToSelected}>
+                <Send className="h-3.5 w-3.5 shrink-0" />
+                <span className="hidden min-[400px]:inline">Send to selected</span>
+                <span className="min-[400px]:hidden">Send</span>
               </Button>
             </div>
           </div>
         )}
 
         {/* Content */}
-        <ScrollArea className="flex-1">
-          <div className="px-6 py-5 space-y-4 pb-10 max-w-4xl mx-auto w-full">
+        <ScrollArea className="min-h-0 min-w-0 flex-1">
+          <div className="box-border mx-auto w-full min-w-0 max-w-4xl space-y-3 overflow-x-hidden px-4 py-4 pb-28 sm:space-y-4 sm:px-6 sm:py-5 sm:pb-12 md:pb-10">
             {mailboxes.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20 text-center">
                 <div className="flex h-16 w-16 items-center justify-center rounded-2xl bg-muted/50 border border-border/50 mb-4 shadow-sm">

@@ -102,6 +102,13 @@ function getGreetingIcon(hour: number) {
   return Moon
 }
 
+/** Fixes common calendar/title typos for display only */
+function normalizeMeetingTitle(title: string): string {
+  const t = title.trim()
+  if (/^metting$/i.test(t)) return "Meeting"
+  return title
+}
+
 /* ─── Sub-components ────────────────────────────────────────────────── */
 
 function StatCard({
@@ -131,22 +138,29 @@ function StatCard({
     >
       <div className={cn("absolute inset-0 opacity-[0.04] transition-opacity duration-300 group-hover/stat:opacity-[0.08]", `bg-gradient-to-br ${gradientFrom} ${gradientTo}`)} />
       <div className={cn("absolute -top-10 -right-10 h-28 w-28 rounded-full opacity-[0.06] blur-2xl transition-all duration-500 group-hover/stat:opacity-[0.12] group-hover/stat:scale-110", `bg-gradient-to-br ${gradientFrom} ${gradientTo}`)} />
-      <CardContent className="relative p-5">
-        <div className="flex items-center justify-between mb-4">
-          <p className="text-[11px] font-semibold text-muted-foreground/80 uppercase tracking-[0.1em]">{label}</p>
-          <div className={cn("flex h-10 w-10 items-center justify-center rounded-xl shadow-lg transition-transform duration-300 group-hover/stat:scale-105", `bg-gradient-to-br ${gradientFrom} ${gradientTo}`)}>
-            <Icon className="h-[18px] w-[18px] text-white drop-shadow-sm" />
+      <CardContent className="relative p-4 sm:p-5">
+        <div className="mb-3 flex items-start justify-between gap-2 sm:mb-4">
+          <p className="min-w-0 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground sm:text-[11px]">
+            {label}
+          </p>
+          <div
+            className={cn(
+              "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-md ring-1 ring-white/10 transition-transform duration-300 group-hover/stat:scale-105 sm:h-10 sm:w-10 sm:shadow-lg dark:ring-white/5",
+              `bg-gradient-to-br ${gradientFrom} ${gradientTo}`,
+            )}
+          >
+            <Icon className="h-4 w-4 text-white drop-shadow-sm sm:h-[18px] sm:w-[18px]" />
           </div>
         </div>
-        <div className="flex items-end justify-between">
-          <div className="flex items-baseline gap-2">
-            <span className="text-3xl font-extrabold tracking-tight text-foreground tabular-nums">{value}</span>
-            <span className="text-[10px] font-semibold text-muted-foreground/50 uppercase tracking-wider">today</span>
+        <div className="grid grid-cols-[1fr_auto] items-end gap-x-3 gap-y-1">
+          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
+            <span className="text-2xl font-extrabold tabular-nums tracking-tight text-foreground sm:text-3xl">{value}</span>
+            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">today</span>
           </div>
           {totalValue !== undefined && (
-            <div className="text-right flex items-baseline gap-1.5">
-              <span className="text-lg font-bold text-muted-foreground/60 tabular-nums">{totalValue}</span>
-              <span className="text-[9px] font-semibold text-muted-foreground/40 uppercase tracking-wider">total</span>
+            <div className="flex items-baseline justify-end gap-1.5 text-right">
+              <span className="text-base font-bold tabular-nums text-muted-foreground/80 sm:text-lg">{totalValue}</span>
+              <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/60">total</span>
             </div>
           )}
         </div>
@@ -262,23 +276,25 @@ function AiSummaryBanner() {
     return (
       <div className="relative rounded-2xl overflow-hidden animate-entrance">
         <div className="absolute inset-0 rounded-2xl bg-gradient-to-r from-primary/20 via-blue-500/20 to-violet-500/20 p-[1px]" />
-        <div className="relative rounded-2xl bg-background/90 backdrop-blur-md m-[1px]">
-          <div className="flex items-center justify-between px-5 py-5">
-            <div className="flex items-center gap-4">
-              <div className="relative">
-                <div className="absolute inset-0 bg-primary/20 rounded-xl blur-md opacity-60" />
-                <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/25 to-blue-500/15 ring-1 ring-primary/10">
-                  <Sparkles className="h-5 w-5 text-primary" />
+        <div className="relative m-[1px] rounded-2xl bg-background/90 backdrop-blur-md">
+          <div className="flex flex-col gap-4 px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5 sm:py-5">
+            <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+              <div className="relative shrink-0">
+                <div className="absolute inset-0 rounded-xl bg-primary/20 blur-md opacity-60" />
+                <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary/25 to-blue-500/15 ring-1 ring-primary/10 sm:h-11 sm:w-11">
+                  <Sparkles className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
                 </div>
               </div>
-              <div>
+              <div className="min-w-0">
                 <h3 className="text-sm font-bold text-foreground">AI Snapshot</h3>
-                <p className="text-xs text-muted-foreground/70 mt-0.5">Get a smart summary of today&apos;s emails</p>
+                <p className="mt-0.5 text-xs leading-snug text-muted-foreground/80">
+                  Get a smart summary of today&apos;s emails
+                </p>
               </div>
             </div>
             <Button
               size="sm"
-              className="gap-2 rounded-xl px-5 shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0"
+              className="w-full shrink-0 gap-2 rounded-xl px-5 shadow-lg shadow-primary/25 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/30 active:translate-y-0 sm:w-auto"
               onClick={fetchSummary}
             >
               <Sparkles className="h-3.5 w-3.5" />
@@ -573,7 +589,7 @@ function TodaysMeetingsCard({
   let nextTime = ""
   let nextTitle = ""
   if (next) {
-    nextTitle = next.title || "Meeting"
+    nextTitle = normalizeMeetingTitle(next.title || "Meeting")
     try {
       nextTime = format(parseISO(next.start), "p")
     } catch {
@@ -617,31 +633,31 @@ function TodaysMeetingsCard({
         }}
       />
 
-      <CardContent className="relative p-5 pl-4">
+      <CardContent className="relative p-4 pl-3.5 sm:p-5 sm:pl-4">
         <div className="flex flex-col gap-4 sm:flex-row sm:items-stretch sm:justify-between sm:gap-6">
           {/* Left: icon + stats */}
-          <div className="flex min-w-0 gap-4">
+          <div className="flex min-w-0 gap-3 sm:gap-4">
             <div className="relative shrink-0">
               <div className="absolute -inset-1 rounded-2xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 blur-md opacity-70 transition-opacity group-hover/meet:opacity-100" />
-              <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/25 via-purple-500/15 to-fuchsia-500/10 ring-1 ring-white/10 shadow-inner dark:ring-white/5">
-                <CalendarDays className="h-7 w-7 text-violet-300" strokeWidth={1.5} />
+              <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/25 via-purple-500/15 to-fuchsia-500/10 shadow-inner ring-1 ring-white/10 sm:h-14 sm:w-14 dark:ring-white/5">
+                <CalendarDays className="h-6 w-6 text-violet-300 sm:h-7 sm:w-7" strokeWidth={1.5} />
               </div>
             </div>
 
             <div className="min-w-0 flex-1 pt-0.5">
               <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground/90">
+                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
                   Today&apos;s schedule
                 </span>
                 {count > 0 && (
-                  <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-semibold text-violet-300 ring-1 ring-violet-500/20">
+                  <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-semibold text-violet-600 ring-1 ring-violet-500/20 dark:text-violet-300">
                     {count} {count === 1 ? "event" : "events"}
                   </span>
                 )}
               </div>
 
-              <div className="mt-2 flex items-baseline gap-2">
-                <span className="text-4xl font-black tabular-nums tracking-tight text-foreground sm:text-5xl">
+              <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                <span className="text-3xl font-black tabular-nums tracking-tight text-foreground sm:text-4xl md:text-5xl">
                   {count}
                 </span>
                 <span className="text-sm font-medium text-muted-foreground">
@@ -663,15 +679,15 @@ function TodaysMeetingsCard({
           {/* Right: next meeting or empty */}
           <div className="flex min-w-0 flex-1 flex-col justify-center sm:max-w-[min(100%,20rem)] sm:border-l sm:border-border/40 sm:pl-6">
             {next ? (
-              <div className="rounded-xl border border-border/60 bg-muted/30 p-3.5 backdrop-blur-sm transition-colors group-hover/meet:bg-muted/45 dark:bg-muted/20">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/80">
+              <div className="rounded-xl border border-border/60 bg-muted/40 p-3.5 backdrop-blur-sm transition-colors group-hover/meet:bg-muted/50 dark:bg-muted/25">
+                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
                   Next up
                 </p>
                 <p className="mt-1 line-clamp-2 text-sm font-semibold leading-snug text-foreground">
                   {nextTitle}
                 </p>
                 {nextTime && (
-                  <div className="mt-2 flex items-center gap-1.5 text-xs font-medium text-violet-300/90">
+                  <div className="mt-2 flex items-center gap-1.5 text-xs font-medium text-violet-700 dark:text-violet-300/90">
                     <Clock className="h-3.5 w-3.5 shrink-0 opacity-80" />
                     {nextTime}
                   </div>
@@ -1357,44 +1373,56 @@ export function DailyBriefing({
         <div className="absolute top-0 right-0 w-80 h-80 bg-primary/[0.04] rounded-full -translate-y-1/2 translate-x-1/3 blur-3xl animate-float-slow" />
         <div className="absolute bottom-0 left-1/4 w-48 h-48 bg-blue-500/[0.03] rounded-full translate-y-1/2 blur-3xl animate-float-slow" style={{ animationDelay: "-3s" }} />
         <div className="absolute top-1/2 right-1/4 w-32 h-32 bg-violet-500/[0.03] rounded-full blur-2xl animate-float-slow" style={{ animationDelay: "-1.5s" }} />
-        <div className="relative px-6 py-6">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-4">
-              <div className="relative">
-                <div className="absolute inset-0 bg-primary/20 rounded-2xl blur-xl opacity-50 animate-float-slow" />
-                <div className="relative flex h-13 w-13 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/25 to-primary/10 ring-1 ring-primary/15 shadow-lg shadow-primary/10">
-                  <GreetingIcon className="h-6 w-6 text-primary" />
+        <div className="relative px-4 py-5 sm:px-6 sm:py-6">
+          <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between sm:gap-6">
+            <div className="flex min-w-0 items-start gap-3 sm:gap-4">
+              <div className="relative shrink-0">
+                <div className="absolute inset-0 rounded-2xl bg-primary/20 blur-xl opacity-50 animate-float-slow" />
+                <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/25 to-primary/10 shadow-lg shadow-primary/10 ring-1 ring-primary/15 sm:h-14 sm:w-14">
+                  <GreetingIcon className="h-5 w-5 text-primary sm:h-6 sm:w-6" />
                 </div>
               </div>
-              <div>
-                <h1 className="text-2xl font-extrabold text-foreground tracking-tight">
-                  {greeting}, <span className="bg-gradient-to-r from-primary via-blue-500 to-primary bg-[length:200%_auto] animate-gradient bg-clip-text text-transparent">{user?.name || "there"}</span>
+              <div className="min-w-0 flex-1">
+                <h1 className="text-balance text-xl font-extrabold tracking-tight text-foreground sm:text-2xl">
+                  {greeting},{" "}
+                  <span className="bg-gradient-to-r from-primary via-blue-500 to-primary bg-[length:200%_auto] bg-clip-text text-transparent animate-gradient">
+                    {user?.name || "there"}
+                  </span>
                 </h1>
-                <div className="flex items-center gap-2 mt-1">
-                  <div className="h-1 w-1 rounded-full bg-primary/40" />
-                  <p className="text-sm text-muted-foreground/80 font-medium">{formattedDate}</p>
+                <div className="mt-1.5 flex items-center gap-2">
+                  <div className="h-1 w-1 shrink-0 rounded-full bg-primary/40" />
+                  <p className="text-xs font-medium text-muted-foreground sm:text-sm">{formattedDate}</p>
                 </div>
               </div>
             </div>
-            <div className="flex items-center gap-2.5">
+            <div className="flex flex-wrap items-center gap-2 sm:shrink-0 sm:justify-end sm:gap-2.5 sm:pt-1">
               {noMailboxConnected ? (
-                <Badge variant="outline" className="gap-1.5 border-amber-500/30 bg-amber-500/10 font-semibold text-amber-800 dark:text-amber-300 px-3 py-1 rounded-full">
-                  <Inbox className="h-3 w-3" />
+                <Badge
+                  variant="outline"
+                  className="gap-1.5 rounded-full border-amber-500/30 bg-amber-500/10 px-3 py-1.5 text-xs font-semibold text-amber-800 dark:text-amber-300"
+                >
+                  <Inbox className="h-3 w-3 shrink-0" />
                   No mailbox connected
                 </Badge>
               ) : (
                 <>
                   {stats.highPriority > 0 && (
-                    <Badge variant="outline" className="border-red-400/25 text-red-400 bg-red-400/5 gap-1.5 font-semibold px-3 py-1 rounded-full shadow-sm shadow-red-400/10">
-                      <span className="relative flex h-2 w-2">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-50" />
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-400" />
+                    <Badge
+                      variant="outline"
+                      className="gap-1.5 rounded-full border-red-400/25 bg-red-400/5 px-3 py-1.5 text-xs font-semibold text-red-600 shadow-sm shadow-red-400/10 dark:text-red-400"
+                    >
+                      <span className="relative flex h-2 w-2 shrink-0">
+                        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-50" />
+                        <span className="relative inline-flex h-2 w-2 rounded-full bg-red-400" />
                       </span>
                       {stats.highPriority} urgent
                     </Badge>
                   )}
-                  <Badge variant="outline" className="border-primary/25 text-primary bg-primary/5 gap-1.5 font-semibold px-3 py-1 rounded-full shadow-sm shadow-primary/10">
-                    <Mail className="h-3 w-3" />
+                  <Badge
+                    variant="outline"
+                    className="gap-1.5 rounded-full border-primary/25 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary shadow-sm shadow-primary/10"
+                  >
+                    <Mail className="h-3 w-3 shrink-0" />
                     {stats.unreadTotal} unread
                   </Badge>
                 </>
@@ -1406,13 +1434,13 @@ export function DailyBriefing({
 
       <ScrollArea className="flex-1">
         {noMailboxConnected ? (
-          <div className="p-6">
+          <div className="p-4 pb-8 sm:p-6 sm:pb-6">
             <ConnectMailboxCta onConnect={onConnectMailbox} variant="hero" />
           </div>
         ) : (
-        <div className="p-6 space-y-6">
+        <div className="space-y-5 p-4 pb-24 sm:space-y-6 sm:p-6 sm:pb-20 md:pb-8">
           {/* Row 1: Stats */}
-          <div className="grid grid-cols-2 gap-3 sm:grid-cols-4 briefing-stagger">
+          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3 briefing-stagger">
             <StatCard
               label="Emails"
               value={todayTotal}

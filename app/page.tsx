@@ -67,15 +67,15 @@ const features = [
   },
   {
     icon: Mic,
-    title: "Voice agent",
+    title: "Voice agent (Pro)",
     description:
-      "Use the in-app voice agent when you want to work hands-free—another way to move through mail and tasks without living inside a keyboard.",
+      "On the Pro plan, use the in-app voice agent for hands-free navigation and mail tasks—without living inside the keyboard.",
   },
   {
     icon: Shield,
-    title: "Security-minded beta",
+    title: "Security-minded setup",
     description:
-      "Provider OAuth, encrypted credentials, and sensible defaults for a solo or small-team deployment. Enterprise controls (SSO, audit exports) are roadmap items—tell us what you need via Feedback.",
+      "Encrypted mailbox credentials, OAuth where the provider supports it, and JWT-backed sessions for the app—aligned with how this codebase connects and syncs mail today.",
   },
 ]
 
@@ -96,86 +96,99 @@ const steps = [
     step: "03",
     title: "Work from one command center",
     description:
-      "Use the daily briefing, unified inbox, analytics, compose, assistant, calendar, and voice agent from a single dashboard—and send Feedback when something should work differently.",
+      "Triage from a unified inbox; unlock deeper AI, agent automation, and analytics as you move up tiers—with voice only on Pro. Send Feedback anytime when something should work differently.",
   },
 ]
 
 const plans = [
   {
-    name: "Beta access",
-    price: "Free",
-    description: "Everything shipping in the product today while we iterate with early users.",
+    name: "Core",
+    tagline: "Inbox / Essential",
+    mailboxLine: "Up to 3 mailboxes",
+    price: "$0",
+    description:
+      "A full email workspace—sync, triage, and search—plus light AI helpers. No full AI compose suite, autonomous agent, or voice.",
     features: [
-      "Unlimited mailboxes (fair use)",
-      "Daily briefing, inbox, labels & follow-ups",
-      "Natural language search over synced mail",
-      "Compose, AI assistant & floating chat",
-      "Analytics, contacts & calendar",
-      "Voice agent & in-app feedback",
+      "Up to 3 connected mailboxes (Gmail, Outlook, or IMAP)",
+      "Background sync, per-mailbox colors, unified inbox, and account settings",
+      "Read, send, reply, and forward; archive, trash, spam, and snooze; attachments",
+      "Natural-language search over synced mail (indexed in-app)",
+      "Basic AI: suggested questions on a thread and short reply hints",
+      "In-app feedback",
     ],
     cta: "Create free account",
     highlighted: true,
   },
   {
-    name: "Team (roadmap)",
-    price: "TBD",
-    description: "Shared workspaces, roles, and usage controls for small teams—planned next.",
+    name: "Smart",
+    tagline: "Smart AI",
+    mailboxLine: "4–15 mailboxes",
+    price: "$29",
+    description:
+      "Everything in Core, scaled for more mailboxes, with the full AI layer—Q&A, briefings, and compose tools. Agent automation and voice stay on Pro.",
     features: [
-      "Shared mailboxes or delegated access patterns",
-      "Team-wide label templates & briefing defaults",
-      "Usage dashboards for admins",
-      "Webhooks / Slack-style digests (under consideration)",
+      "4–15 connected mailboxes with the same sync and security model",
+      "Everything in Core",
+      "Ask AI across your mail; deep Q&A on a single email",
+      "Rich suggested questions and instant replies",
+      "AI-assisted compose: generate, rewrite, and proofread; contact intelligence",
+      "Daily briefing and AI briefing across connected accounts",
     ],
-    cta: "Join the waitlist",
+    cta: "Get started",
     highlighted: false,
   },
   {
-    name: "Enterprise (roadmap)",
-    price: "Let’s talk",
-    description: "For orgs that need SSO, retention policies, and deployment options we don’t ship yet.",
+    name: "Pro",
+    tagline: "Agent + Ops",
+    mailboxLine: "15+ mailboxes",
+    price: "$79",
+    description:
+      "For agencies and high-volume teams: every Smart-tier AI capability, plus the agent, operations tooling, analytics, admin—and the only tier with voice.",
     features: [
-      "SSO / directory integration (roadmap)",
-      "Stricter data residency & export tooling",
-      "Dedicated onboarding & priority support",
-      "Custom integrations on request",
+      "15+ connected mailboxes (agency, support, or multi-brand inboxes)",
+      "Everything in Smart: full AI search, compose, and briefings",
+      "AI agent: chat, suggestions, profile, and approved execution",
+      "Voice agent (speak)—hands-free navigation and mail tasks",
+      "Follow-ups, calendar, email analytics, admin dashboard, and smart relabel",
+      "Encrypted credentials and OAuth where the provider supports it",
     ],
-    cta: "Contact us",
+    cta: "Get started",
     highlighted: false,
   },
 ]
 
 const testimonials = [
   {
-    id: "beta-1",
+    id: "wf-1",
     quote:
-      "I start from the briefing, then drill into the inbox. Having Gmail and Outlook in one column with the same AI labels is what kept me in the beta.",
-    name: "Early beta tester",
-    role: "Product & ops lead",
+      "Connect mailboxes, run sync, then use the daily briefing and unified inbox—filter by account or AI labels applied after messages are indexed.",
+    name: "Typical flow",
+    role: "What the app is built for",
     rating: 5,
   },
   {
-    id: "beta-2",
+    id: "wf-2",
     quote:
-      "Search is the feature I didn’t know I needed—asking ‘what did they say about the contract?’ beats digging through threads manually.",
-    name: "Early beta tester",
-    role: "Consultant",
+      "Ask natural-language questions over synced mail; results point back to real threads. Compose and reply with the in-app AI assistant when you need a draft or tone pass.",
+    name: "Search & compose",
+    role: "Shipped in the product",
     rating: 5,
   },
   {
-    id: "beta-3",
+    id: "wf-3",
     quote:
-      "Compose plus the assistant means I’m not context-switching to another tab. Calendar surfacing meetings from email is a nice bonus.",
-    name: "Early beta tester",
-    role: "Founder",
+      "On Pro, track follow-ups, calendar, and analytics; use the voice agent for hands-free work—then send feedback from inside the app.",
+    name: "Ops & voice (Pro)",
+    role: "Same codebase you run locally",
     rating: 5,
   },
 ]
 
 const stats = [
-  { value: "60%", label: "less time in email" },
-  { value: "3.2x", label: "faster response times" },
-  { value: "10K+", label: "teams using Smart Mail AI Beta" },
-  { value: "99.9%", label: "uptime guaranteed" },
+  { value: "IMAP", label: "Gmail, Outlook & IMAP mailboxes" },
+  { value: "Sync", label: "Background sync & per-mailbox inbox" },
+  { value: "AI", label: "Tiered: essentials → smart AI → agent" },
+  { value: "Beta", label: "Features match the live app" },
 ]
 
 function Navbar() {
@@ -335,8 +348,8 @@ function FeaturesSection() {
             Built around how this app actually works
           </h2>
           <p className="mx-auto mt-4 max-w-xl text-pretty text-muted-foreground">
-            Below is what you get in the live product today—multi-mailbox sync, AI briefing and search, compose tools, analytics, calendar context, and a
-            voice agent—not a slide-deck wish list.
+            Below is what the product is built for—multi-mailbox sync, tiered AI from light hints to full writing & Q&A, agent and ops on Pro, and voice only on the
+            top tier—not a slide-deck wish list.
           </p>
         </div>
 
@@ -398,12 +411,12 @@ function TestimonialsSection() {
     <section className="px-6 py-20 md:py-28">
       <div className="mx-auto max-w-6xl">
         <div className="mb-14 text-center">
-          <p className="mb-3 text-sm font-medium text-primary">From beta users</p>
+          <p className="mb-3 text-sm font-medium text-primary">How it fits together</p>
           <h2 className="text-balance text-3xl font-bold text-foreground md:text-4xl">
-            What people are doing with it
+            Workflows the app actually supports
           </h2>
           <p className="mx-auto mt-4 max-w-lg text-pretty text-sm text-muted-foreground">
-            Paraphrased feedback from early testers—illustrative of real workflows, not paid endorsements.
+            Short descriptions of what you can do with sync, briefing, search, and compose—not paid testimonials.
           </p>
         </div>
 
@@ -437,10 +450,11 @@ function PricingSection() {
         <div className="mb-14 text-center">
           <p className="mb-3 text-sm font-medium text-primary">Pricing</p>
           <h2 className="text-balance text-3xl font-bold text-foreground md:text-4xl">
-            Pricing that matches beta reality
+            Plans by feature tier—and mailbox scale
           </h2>
-          <p className="mx-auto mt-4 max-w-md text-pretty text-muted-foreground">
-            Use the full app on the house while we harden features. Paid tiers will arrive when team billing and enterprise controls are ready.
+          <p className="mx-auto mt-4 max-w-xl text-pretty text-muted-foreground">
+            Each tier adds stronger AI and automation; higher tiers also raise how many mailboxes you can connect. Paid checkout is not wired yet—sign up free
+            while billing is off. Voice agent is exclusive to Pro; listed items match what this repo is built to support.
           </p>
         </div>
 
@@ -461,11 +475,11 @@ function PricingSection() {
               )}
               <div className="mb-5">
                 <h3 className="text-base font-semibold text-foreground">{plan.name}</h3>
+                <p className="mt-0.5 text-xs font-medium uppercase tracking-wide text-muted-foreground">{plan.tagline}</p>
+                <p className="mt-1 text-sm font-medium text-primary">{plan.mailboxLine}</p>
                 <div className="mt-2 flex items-baseline gap-1">
                   <span className="text-3xl font-bold text-foreground">{plan.price}</span>
-                  {plan.price !== "Let’s talk" && plan.price !== "TBD" && plan.price !== "Free" && (
-                    <span className="text-sm text-muted-foreground">/month</span>
-                  )}
+                  {plan.price !== "$0" && <span className="text-sm text-muted-foreground">/month</span>}
                 </div>
                 <p className="mt-2 text-sm text-muted-foreground">{plan.description}</p>
               </div>

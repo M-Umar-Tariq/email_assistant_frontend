@@ -444,34 +444,48 @@ export function AiAssistant() {
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`
   }
 
+  const openCompose = () => {
+    window.dispatchEvent(new CustomEvent("compose:openWith", { detail: {} }))
+  }
+
   return (
-    <div className="flex h-full flex-col bg-gradient-to-b from-background to-muted/[0.12]">
+    <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden bg-gradient-to-b from-background to-muted/[0.12]">
       {/* ── Header ──────────────────────────────────────────────────── */}
-      <header className="relative shrink-0 border-b border-border/60 overflow-visible backdrop-blur-sm">
+      <header className="relative min-w-0 shrink-0 overflow-visible border-b border-border/60 backdrop-blur-sm">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.04] via-transparent to-blue-500/[0.02]" />
-        <div className="absolute top-0 right-0 w-72 h-72 bg-primary/[0.04] rounded-full -translate-y-1/2 translate-x-1/3 blur-3xl pointer-events-none" />
-        <div className="absolute bottom-0 left-1/4 w-40 h-40 bg-violet-500/[0.03] rounded-full translate-y-1/2 blur-3xl pointer-events-none" />
-        <div className="relative flex items-center justify-between px-6 py-4">
-          <div className="flex items-center gap-4">
-            <div className="relative">
-              <div className="absolute inset-0 bg-primary/20 rounded-2xl blur-lg opacity-50" />
-              <div className="relative flex h-11 w-11 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 ring-1 ring-primary/15 shadow-md shadow-primary/10">
+        <div className="pointer-events-none absolute right-0 top-0 h-72 w-72 translate-x-1/3 -translate-y-1/2 rounded-full bg-primary/[0.04] blur-3xl" />
+        <div className="pointer-events-none absolute bottom-0 left-1/4 h-40 w-40 translate-y-1/2 rounded-full bg-violet-500/[0.03] blur-3xl" />
+        <div className="relative flex flex-col gap-3 px-4 py-3 sm:flex-row sm:items-center sm:justify-between sm:gap-4 sm:px-6 sm:py-4">
+          <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+            <div className="relative shrink-0">
+              <div className="absolute inset-0 rounded-2xl bg-primary/20 opacity-50 blur-lg" />
+              <div className="relative flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 shadow-md shadow-primary/10 ring-1 ring-primary/15 sm:h-11 sm:w-11">
                 <Sparkles className="h-5 w-5 text-primary" />
               </div>
-              <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full bg-emerald-500 border-2 border-background shadow-md">
-                <div className="absolute inset-0 rounded-full bg-emerald-500 animate-ping opacity-40" />
+              <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-background bg-emerald-500 shadow-md">
+                <div className="absolute inset-0 animate-ping rounded-full bg-emerald-500 opacity-40" />
               </div>
             </div>
-            <div>
-              <h1 className="text-lg font-extrabold text-foreground tracking-tight">
+            <div className="min-w-0">
+              <h1 className="text-base font-extrabold tracking-tight text-foreground sm:text-lg">
                 AI Assistant
               </h1>
-              <p className="text-[11px] text-muted-foreground/80 font-medium mt-0.5">
+              <p className="mt-0.5 text-[11px] font-medium text-muted-foreground/80">
                 Ask anything or take actions on your emails
               </p>
             </div>
           </div>
-          <div className="flex items-center gap-2">
+          <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:shrink-0">
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={openCompose}
+              className="h-9 gap-1.5 rounded-xl border-primary/25 text-xs font-medium text-primary hover:bg-primary/10"
+            >
+              <Pencil className="h-3.5 w-3.5 shrink-0" />
+              Compose
+            </Button>
             {hasConversation && (
               <Button
                 type="button"
@@ -479,9 +493,9 @@ export function AiAssistant() {
                 size="sm"
                 onClick={handleRefresh}
                 disabled={isLoading}
-                className="h-9 gap-1.5 rounded-xl text-xs text-muted-foreground hover:text-foreground hover:bg-muted/60"
+                className="h-9 gap-1.5 rounded-xl text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground"
               >
-                <MessageSquarePlus className="h-3.5 w-3.5" />
+                <MessageSquarePlus className="h-3.5 w-3.5 shrink-0" />
                 <span className="hidden sm:inline">New chat</span>
               </Button>
             )}
@@ -489,16 +503,36 @@ export function AiAssistant() {
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <button
-                    className="flex items-center gap-2 px-3.5 py-2 rounded-xl border border-border/60 bg-card/70 text-xs text-muted-foreground hover:text-foreground hover:border-primary/30 hover:bg-primary/5 hover:shadow-md transition-all duration-200 outline-none focus:ring-2 focus:ring-primary/20 focus:ring-offset-2 focus:ring-offset-background"
-                    aria-label="Select mailbox"
+                    type="button"
+                    className="flex max-w-full min-w-0 items-center gap-1.5 rounded-xl border border-border/60 bg-card/70 px-2.5 py-2 text-xs text-muted-foreground outline-none transition-all duration-200 hover:border-primary/30 hover:bg-primary/5 hover:text-foreground hover:shadow-md focus:ring-2 focus:ring-primary/20 focus:ring-offset-2 focus:ring-offset-background sm:gap-2 sm:px-3.5"
+                    aria-label={
+                      selectedMailbox === "all"
+                        ? `Search all mailboxes, ${mailboxList.length} account${mailboxList.length !== 1 ? "s" : ""} linked`
+                        : "Select mailbox"
+                    }
+                    title={
+                      selectedMailbox === "all"
+                        ? `${mailboxList.length} mailbox${mailboxList.length !== 1 ? "es" : ""} linked — not your inbox email count`
+                        : undefined
+                    }
                   >
-                    <Inbox className="h-3.5 w-3.5" />
-                    <span className="max-w-[140px] truncate font-medium">
-                      {selectedMailbox === "all"
-                        ? `All Mailboxes (${mailboxList.length})`
-                        : mailboxList.find((m) => m.id === selectedMailbox)?.name ?? "Mailbox"}
+                    <Inbox className="h-3.5 w-3.5 shrink-0" />
+                    <span className="min-w-0 truncate text-left font-medium text-foreground">
+                      {selectedMailbox === "all" ? (
+                        <>
+                          <span className="sm:hidden">All · {mailboxList.length} acct</span>
+                          <span className="hidden sm:inline">
+                            All mailboxes
+                            <span className="ml-1 font-normal text-muted-foreground">
+                              · {mailboxList.length} account{mailboxList.length !== 1 ? "s" : ""}
+                            </span>
+                          </span>
+                        </>
+                      ) : (
+                        mailboxList.find((m) => m.id === selectedMailbox)?.name ?? "Mailbox"
+                      )}
                     </span>
-                    <ChevronDown className="h-3 w-3 shrink-0" />
+                    <ChevronDown className="h-3 w-3 shrink-0 opacity-70" />
                   </button>
                 </DropdownMenuTrigger>
                 <DropdownMenuContent
@@ -509,12 +543,17 @@ export function AiAssistant() {
                   <DropdownMenuItem
                     onClick={() => setSelectedMailbox("all")}
                     className={cn(
-                      "flex items-center gap-2.5 px-3.5 py-2.5 cursor-pointer",
+                      "flex cursor-pointer flex-col items-stretch gap-0.5 px-3.5 py-2.5",
                       selectedMailbox === "all" && "bg-primary/10 text-primary font-medium"
                     )}
                   >
-                    <Inbox className="h-3.5 w-3.5" />
-                    All Mailboxes
+                    <span className="flex items-center gap-2.5">
+                      <Inbox className="h-3.5 w-3.5 shrink-0" />
+                      <span className="font-medium">All mailboxes</span>
+                    </span>
+                    <span className="pl-7 text-[10px] font-normal leading-snug text-muted-foreground">
+                      Search across every linked account ({mailboxList.length} connected)
+                    </span>
                   </DropdownMenuItem>
                   {mailboxList.map((mb) => (
                     <DropdownMenuItem
@@ -547,51 +586,50 @@ export function AiAssistant() {
 
       {/* ── Content ─────────────────────────────────────────────────── */}
       {!hasConversation ? (
-        <div className="flex-1 flex flex-col items-center justify-center px-6 overflow-y-auto py-8">
-          <div className="max-w-xl w-full flex flex-col items-center animate-entrance">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-5 sm:px-6 sm:py-8">
+          <div className="animate-entrance flex w-full max-w-xl flex-col items-center">
             {/* Animated hero icon */}
-            <div className="relative mb-7 group">
-              <div className="absolute -inset-6 rounded-full bg-gradient-to-r from-primary/25 via-blue-500/10 to-violet-500/15 blur-3xl opacity-70 animate-gradient" />
-              <div className="relative flex h-[4.5rem] w-[4.5rem] items-center justify-center rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 ring-1 ring-primary/15 shadow-xl shadow-primary/15 transition-transform duration-500 group-hover:scale-105 group-hover:rotate-1">
-                <Sparkles className="h-9 w-9 text-primary transition-transform duration-500 group-hover:scale-105" />
+            <div className="group relative mb-4 sm:mb-7">
+              <div className="absolute -inset-4 animate-gradient rounded-full bg-gradient-to-r from-primary/25 via-blue-500/10 to-violet-500/15 opacity-70 blur-3xl sm:-inset-6" />
+              <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 shadow-xl shadow-primary/15 ring-1 ring-primary/15 transition-transform duration-500 group-hover:rotate-1 group-hover:scale-105 sm:h-[4.5rem] sm:w-[4.5rem]">
+                <Sparkles className="h-8 w-8 text-primary transition-transform duration-500 group-hover:scale-105 sm:h-9 sm:w-9" />
               </div>
-              <div className="absolute -bottom-1 -right-1 h-6 w-6 rounded-full bg-emerald-500 border-2 border-background flex items-center justify-center shadow-lg">
-                <div className="h-2 w-2 rounded-full bg-white" />
+              <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-background bg-emerald-500 shadow-lg sm:h-6 sm:w-6">
+                <div className="h-1.5 w-1.5 rounded-full bg-white sm:h-2 sm:w-2" />
               </div>
             </div>
 
-            <h2 className="text-2xl font-extrabold text-foreground mb-2 tracking-tight text-center">
+            <h2 className="mb-1.5 text-center text-xl font-extrabold tracking-tight text-foreground sm:mb-2 sm:text-2xl">
               Hi {firstName}, how can I help?
             </h2>
-            <p className="text-sm text-muted-foreground/85 text-center mb-8 max-w-md leading-relaxed">
+            <p className="mb-4 max-w-md text-center text-sm leading-relaxed text-muted-foreground/85 sm:mb-8">
               I can search, summarize, answer questions, and take actions like sending,
               replying, and forwarding emails.
             </p>
 
-            {/* Capability cards */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 w-full mb-8 briefing-stagger">
+            {/* Capability cards — desktop only (hidden on mobile) */}
+            <div className="briefing-stagger mb-5 hidden w-full gap-3 sm:mb-8 sm:grid sm:grid-cols-3">
               {CAPABILITIES.map((cap, i) => (
                 <div
                   key={cap.label}
                   className={cn(
-                    "group/card relative flex flex-col items-center gap-2.5 rounded-2xl border border-border/50 p-4 text-center",
+                    "group/card relative flex flex-col items-center gap-2 rounded-2xl border border-border/50 p-3 text-center sm:gap-2.5 sm:p-4",
                     "glass-card glow-ring",
-                    "transition-all duration-300 hover:border-primary/25 hover:shadow-lg hover:shadow-primary/8 hover:-translate-y-0.5",
-                    "cursor-default"
+                    "cursor-default transition-all duration-300 hover:-translate-y-0.5 hover:border-primary/25 hover:shadow-lg hover:shadow-primary/8",
                   )}
                   style={{ animationDelay: `${i * 100 + 200}ms` }}
                 >
                   <div
                     className={cn(
-                      "flex h-11 w-11 items-center justify-center rounded-xl bg-gradient-to-br ring-1 transition-all duration-300 group-hover/card:scale-105 group-hover/card:shadow-md",
+                      "flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br ring-1 transition-all duration-300 group-hover/card:scale-105 group-hover/card:shadow-md sm:h-11 sm:w-11",
                       cap.gradient,
                       cap.ring
                     )}
                   >
-                    <cap.icon className={cn("h-[18px] w-[18px]", cap.iconColor)} />
+                    <cap.icon className={cn("h-4 w-4 sm:h-[18px] sm:w-[18px]", cap.iconColor)} />
                   </div>
                   <p className="text-xs font-bold text-foreground">{cap.label}</p>
-                  <p className="text-[10px] text-muted-foreground/80 leading-relaxed px-0.5">
+                  <p className="px-0.5 text-[10px] leading-relaxed text-muted-foreground/80">
                     {cap.desc}
                   </p>
                 </div>
@@ -599,18 +637,15 @@ export function AiAssistant() {
             </div>
 
             {/* Suggestion chips */}
-            <div className="flex flex-wrap gap-2 w-full justify-center">
+            <div className="flex w-full flex-wrap justify-center gap-2">
               {suggestedQuestions.slice(0, 4).map((q, i) => (
                 <button
                   key={q}
                   onClick={() => handleSend(q)}
                   className={cn(
-                    "group/chip flex items-center gap-2 text-xs px-4 py-2.5 rounded-full",
-                    "border border-border/60 bg-card/70 backdrop-blur-sm",
-                    "text-muted-foreground hover:text-foreground font-medium",
-                    "hover:border-primary/35 hover:bg-primary/5 hover:shadow-md hover:shadow-primary/8",
-                    "transition-all duration-200 hover:-translate-y-0.5 active:translate-y-0",
-                    "animate-fade-in-up"
+                    "group/chip flex items-center gap-2 rounded-full border border-border/60 bg-card/70 px-3 py-2 text-xs font-medium text-muted-foreground backdrop-blur-sm",
+                    "transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/35 hover:bg-primary/5 hover:text-foreground hover:shadow-md hover:shadow-primary/8 active:translate-y-0",
+                    "animate-fade-in-up sm:px-4 sm:py-2.5",
                   )}
                   style={{ animationDelay: `${i * 80 + 500}ms` }}
                 >
@@ -623,10 +658,10 @@ export function AiAssistant() {
         </div>
       ) : (
         <ScrollArea
-          className="flex-1 px-4 sm:px-6 overflow-y-auto overflow-x-hidden scroll-smooth"
+          className="min-h-0 min-w-0 flex-1 px-4 sm:px-6"
           ref={scrollRef}
         >
-          <div className="flex flex-col gap-5 py-6 max-w-3xl mx-auto w-full">
+          <div className="mx-auto flex w-full min-w-0 max-w-3xl flex-col gap-5 py-6 pb-4">
             {messages.map((message, idx) => (
               <ChatMessageBubble
                 key={message.id}
@@ -645,13 +680,13 @@ export function AiAssistant() {
 
       {/* ── Input Area ──────────────────────────────────────────────── */}
       <div className="shrink-0 border-t border-border/60 bg-gradient-to-t from-background via-background/95 to-muted/[0.08] backdrop-blur-md">
-        <div className="max-w-3xl mx-auto px-4 py-3.5">
+        <div className="mx-auto w-full max-w-3xl px-4 pb-6 pt-3 sm:pb-3.5">
           <form
             onSubmit={(e) => {
               e.preventDefault()
               handleSend(input)
             }}
-            className="relative flex items-end gap-2 rounded-2xl border border-border/50 bg-card/85 backdrop-blur-md px-4 py-2.5 shadow-lg shadow-black/[0.03] transition-all duration-200 focus-within:border-primary/35 focus-within:shadow-xl focus-within:shadow-primary/10 focus-within:ring-2 focus-within:ring-primary/15"
+            className="relative mx-auto flex w-full max-w-lg items-end gap-2 rounded-2xl border border-border/50 bg-card/85 px-4 py-2.5 shadow-lg shadow-black/[0.03] backdrop-blur-md transition-all duration-200 focus-within:border-primary/35 focus-within:shadow-xl focus-within:shadow-primary/10 focus-within:ring-2 focus-within:ring-primary/15 sm:max-w-none"
           >
             <textarea
               ref={inputRef}
@@ -682,7 +717,7 @@ export function AiAssistant() {
               />
             </Button>
           </form>
-          <p className="text-[10px] text-muted-foreground/55 text-center mt-2.5 font-semibold tracking-wide">
+          <p className="mx-auto mt-2.5 max-w-lg text-center text-[10px] font-semibold tracking-wide text-muted-foreground/55 sm:max-w-none">
             Press Enter to send &middot; Shift+Enter for new line
           </p>
         </div>

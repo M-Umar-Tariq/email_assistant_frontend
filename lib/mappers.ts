@@ -1,6 +1,58 @@
 import type { Email, EmailCategory, Mailbox, BriefingItem } from "@/lib/mock-data"
 import type { EmailListApi, EmailDetailApi, MailboxApi, BriefingApi, FollowUpApi } from "@/lib/api"
 
+const PREVIEW_MAX_LEN = 240
+
+/**
+ * Turn API preview/snippet text into plain, list-safe text (strips HTML/CSS noise from HTML emails).
+ */
+export function sanitizeEmailPreview(raw: string | null | undefined): string {
+  if (raw == null) return ""
+  let s = String(raw)
+  if (!s.trim()) return ""
+
+  s = s.replace(/<style\b[^>]*>[\s\S]*?<\/style>/gi, " ")
+  s = s.replace(/<script\b[^>]*>[\s\S]*?<\/script>/gi, " ")
+  s = s.replace(/<!--[\s\S]*?-->/g, " ")
+  s = s.replace(/<[^>]+>/g, " ")
+  s = s
+    .replace(/&nbsp;/gi, " ")
+    .replace(/&#(\d+);/g, (_, n) => {
+      const code = parseInt(n, 10)
+      return code > 0 && code < 0x110000 ? String.fromCharCode(code) : " "
+    })
+    .replace(/&#x([0-9a-f]+);/gi, (_, h) => String.fromCharCode(parseInt(h, 16)))
+    .replace(/&amp;/gi, "&")
+    .replace(/&lt;/gi, "<")
+    .replace(/&gt;/gi, ">")
+    .replace(/&quot;/gi, '"')
+    .replace(/&apos;/gi, "'")
+
+  const lines = s
+    .split(/\n+/)
+    .map((l) => l.trim())
+    .filter((l) => {
+      if (!l) return false
+      if (/^[@#.][\s\S]*/.test(l) && (l.includes("{") || l.includes("}"))) return false
+      if (/\b@font-face\b|font-family\s*:|#outlook\s+a\b|^\s*\{\s*$|!important/i.test(l)) return false
+      return true
+    })
+  s = lines.join(" ").replace(/[ \t\f\v]+/g, " ").trim()
+
+  const letters = s.replace(/[^a-zA-Z]/g, "").length
+  if (s.length > 48 && letters / Math.max(s.length, 1) < 0.12) {
+    return ""
+  }
+
+  if (s.length > PREVIEW_MAX_LEN) {
+    s = s.slice(0, PREVIEW_MAX_LEN).trim()
+    const lastSpace = s.lastIndexOf(" ")
+    if (lastSpace > PREVIEW_MAX_LEN * 0.55) s = s.slice(0, lastSpace)
+    return `${s}…`
+  }
+  return s
+}
+
 export type FollowUpItem = {
   id: string
   emailId: string
@@ -33,7 +85,7 @@ export function mapEmailListApi(e: EmailListApi): Email {
     from: { name: e.from_name || "", email: e.from_email || "" },
     to: Array.isArray(e.to) ? e.to.map((t) => ({ name: (t as { name?: string }).name ?? "", email: (t as { email?: string }).email ?? "" })) : [],
     subject: e.subject || "",
-    preview: e.preview || "",
+    preview: sanitizeEmailPreview(e.preview || ""),
     body: "",
     date: typeof e.date === "string" ? e.date : new Date(e.date).toISOString(),
     read: e.read,

@@ -144,12 +144,10 @@ export default function AppDashboard() {
 
   useEffect(() => {
     const onComposeOpenWith = (e: Event) => {
-      const detail = (e as CustomEvent).detail as { to?: string; toName?: string }
-      if (detail?.to) {
-        setInitialComposeTo(detail.to)
-        setInitialComposeToName(detail.toName ?? null)
-        setActiveView("compose")
-      }
+      const detail = ((e as CustomEvent).detail ?? {}) as { to?: string; toName?: string }
+      setInitialComposeTo(detail.to ?? null)
+      setInitialComposeToName(detail.toName ?? null)
+      setActiveView("compose")
     }
     window.addEventListener("compose:openWith", onComposeOpenWith as EventListener)
     return () => window.removeEventListener("compose:openWith", onComposeOpenWith as EventListener)
@@ -258,24 +256,29 @@ export default function AppDashboard() {
 
         {/* ── Main content area ── */}
         <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
-          {/* Mobile top bar */}
-          <div className="flex items-center gap-3 border-b border-border px-4 py-2.5 md:hidden">
+          {/* Mobile top bar — menu left, title centered (matches phone shell) */}
+          <div className="relative flex h-[3.25rem] items-center border-b border-border px-3 md:hidden">
             <button
+              type="button"
               onClick={() => setMobileOpen(true)}
-              className="flex h-8 w-8 items-center justify-center rounded-lg text-foreground hover:bg-muted/60 transition-colors"
+              className="z-10 flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-foreground transition-colors hover:bg-muted/60 active:bg-muted/80"
+              aria-label="Open menu"
             >
               <Menu className="h-5 w-5" />
             </button>
-            <span className="flex min-w-0 items-center text-lg font-bold text-foreground">
-              <span className="truncate">
-                Smart Mail <span className="text-primary">AI</span>
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center px-14">
+              <span className="flex max-w-full items-center justify-center gap-1.5 text-base font-bold tracking-tight text-foreground">
+                <span className="truncate">
+                  Smart Mail <span className="text-primary">AI</span>
+                </span>
+                <BetaLabel className="shrink-0 scale-95 text-[10px] px-2 py-0.5" />
               </span>
-              <BetaLabel className="ml-1.5 text-[10px] px-2 py-0.5" />
-            </span>
+            </div>
+            <div className="z-10 ml-auto h-9 w-9 shrink-0" aria-hidden />
           </div>
 
           {/* Views */}
-          <div className="flex-1 overflow-hidden">
+          <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
             {activeView === "dashboard" && (
               <DailyBriefing
                 onViewChange={handleViewChange}

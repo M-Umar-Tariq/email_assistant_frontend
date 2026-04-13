@@ -180,6 +180,11 @@ function formatReceivedDate(dateStr: string) {
   }
 }
 
+/** Display-only fix for common “metting” → “meeting” typo */
+function fixMettingTypo(text: string) {
+  return text.replace(/\bmetting\b/gi, (word) => (word === "Metting" ? "Meeting" : "meeting"))
+}
+
 const categoryConfig: Record<EmailCategory, { label: string; icon: React.ElementType; color: string }> = {
   important: { label: "Important", icon: ShieldCheck, color: "text-primary" },
   updates: { label: "Updates", icon: TrendingUp, color: "text-amber-400" },
@@ -229,7 +234,7 @@ function EmailListItem({
     <button
       type="button"
       onClick={onSelect}
-      className={`email-list-item group relative grid w-full min-w-0 max-w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-3 px-4 py-3.5 text-left transition-all duration-300 rounded-xl border shadow-sm overflow-hidden ${
+      className={`email-list-item group relative grid w-full min-w-0 max-w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 px-3 py-2.5 text-left transition-all duration-300 rounded-xl border shadow-sm overflow-hidden sm:gap-3 sm:px-4 sm:py-3.5 ${
         isSelected
           ? "bg-primary/[0.07] border-primary/35 shadow-[0_6px_24px_hsl(var(--primary)/0.08)]"
           : email.read
@@ -245,7 +250,7 @@ function EmailListItem({
       )}
 
       <div className="relative shrink-0">
-        <Avatar className="h-10 w-10 shrink-0 mt-0.5 ring-2 ring-transparent group-hover:ring-primary/10 transition-all duration-200">
+        <Avatar className="mt-0.5 h-9 w-9 shrink-0 ring-2 ring-transparent transition-all duration-200 group-hover:ring-primary/10 sm:h-10 sm:w-10">
           <AvatarFallback
             className="text-xs font-semibold"
             style={{
@@ -281,7 +286,7 @@ function EmailListItem({
 
           <div className="flex items-center gap-2 mt-0.5">
             <span className={`text-[13px] truncate ${!email.read ? "font-medium text-foreground" : "text-foreground/65"}`}>
-              {email.subject}
+              {fixMettingTypo(email.subject)}
             </span>
           </div>
 
@@ -292,9 +297,13 @@ function EmailListItem({
             </p>
           )}
 
-          <p className="text-xs text-muted-foreground/60 truncate mt-0.5 leading-relaxed">{email.preview}</p>
+          {email.preview ? (
+            <p className="mt-0.5 line-clamp-2 text-[11px] leading-snug text-muted-foreground/75 sm:text-xs sm:line-clamp-1">
+              {email.preview}
+            </p>
+          ) : null}
 
-          <div className="flex items-center gap-1.5 mt-2 flex-wrap">
+          <div className="mt-1.5 flex flex-wrap items-center gap-1 sm:mt-2 sm:gap-1.5">
           <SentimentDot score={email.sentimentScore} />
           {email.starred && <Star className="h-3 w-3 text-amber-400 fill-amber-400 drop-shadow-[0_0_3px_rgba(251,191,36,0.4)]" />}
           {email.hasAttachment && (
@@ -332,17 +341,32 @@ function EmailListItem({
               {email.threadCount}
             </span>
           )}
-          {/* User-defined label badges */}
-          {email.labels.slice(0, 3).map((label) => (
-            <Badge key={label} variant="secondary" className="text-[9px] px-1.5 py-0 bg-primary/8 text-primary border border-primary/15 font-medium">
+          {/* User-defined label badges — fewer on narrow screens */}
+          {email.labels.slice(0, 2).map((label) => (
+            <Badge key={label} variant="secondary" className="text-[9px] px-1.5 py-0 bg-primary/8 text-primary border border-primary/15 font-medium max-w-[7rem] truncate sm:max-w-none">
               {label}
             </Badge>
           ))}
+          {email.labels.length > 2 && (
+            <Badge variant="secondary" className="text-[9px] px-1.5 py-0 font-medium text-muted-foreground md:hidden">
+              +{email.labels.length - 2}
+            </Badge>
+          )}
+          {email.labels.length > 2 &&
+            email.labels.slice(2, 3).map((label) => (
+              <Badge
+                key={label}
+                variant="secondary"
+                className="hidden text-[9px] px-1.5 py-0 font-medium md:inline-flex bg-primary/8 text-primary border border-primary/15"
+              >
+                {label}
+              </Badge>
+            ))}
         </div>
       </div>
 
       {/* Received date — dedicated grid column so it is never pushed off-screen by long subject/preview */}
-      <div className="flex w-[5.25rem] shrink-0 flex-col items-end justify-start gap-0.5 border-l border-border/50 pl-2 text-right sm:w-[6.75rem] sm:pl-3">
+      <div className="flex w-[4.5rem] shrink-0 flex-col items-end justify-start gap-0.5 border-l border-border/50 pl-1.5 text-right sm:w-[6.75rem] sm:pl-3">
         <div className="flex items-center justify-end gap-0.5">
           <span className="text-[11px] font-semibold tabular-nums text-foreground">
             {receivedAt ? formatTime(receivedAt) : "—"}
@@ -1385,19 +1409,26 @@ function EmailDetail({
   return (
     <TooltipProvider delayDuration={300}>
     <div className="flex h-full flex-col">
-      <div className="flex items-center justify-between border-b border-border/60 px-4 py-2.5 bg-gradient-to-r from-background to-muted/20">
-        <Button variant="ghost" size="sm" onClick={onBack} className="text-muted-foreground hover:text-foreground gap-1.5 rounded-lg h-8 transition-all duration-200">
-          <ArrowLeft className="h-4 w-4" />
+      <div className="flex flex-col gap-2 border-b border-border/60 bg-gradient-to-r from-background to-muted/20 px-2 py-2 sm:flex-row sm:items-center sm:justify-between sm:gap-0 sm:px-4 sm:py-2.5">
+        <Button
+          variant="ghost"
+          size="sm"
+          onClick={onBack}
+          aria-label="Back to Inbox"
+          className="h-10 shrink-0 gap-2 rounded-lg text-muted-foreground transition-all duration-200 hover:text-foreground sm:h-8"
+        >
+          <ArrowLeft className="h-4 w-4 shrink-0" />
           <span className="text-xs">Back to Inbox</span>
         </Button>
-        <div className="flex items-center gap-0.5">
+        <div className="flex min-w-0 flex-wrap items-center justify-end gap-1 sm:justify-start sm:gap-0.5">
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className={`h-8 w-8 rounded-lg transition-all duration-200 ${composeMode === "reply" ? "bg-primary/15 text-primary shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-muted/60"}`}
+                className={`h-10 w-10 min-h-11 min-w-11 rounded-lg transition-all duration-200 sm:h-8 sm:w-8 sm:min-h-0 sm:min-w-0 ${composeMode === "reply" ? "bg-primary/15 text-primary shadow-sm" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
                 onClick={() => setComposeMode(composeMode === "reply" ? null : "reply")}
+                aria-label="Reply"
               >
                 <Reply className="h-4 w-4" />
               </Button>
@@ -1410,8 +1441,9 @@ function EmailDetail({
               <Button
                 variant="ghost"
                 size="icon"
-                className={`h-8 w-8 rounded-lg transition-all duration-200 ${composeMode === "forward" ? "bg-violet-500/15 text-violet-600 dark:text-violet-400 shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-muted/60"}`}
+                className={`h-10 w-10 min-h-11 min-w-11 rounded-lg transition-all duration-200 sm:h-8 sm:w-8 sm:min-h-0 sm:min-w-0 ${composeMode === "forward" ? "bg-violet-500/15 text-violet-600 shadow-sm dark:text-violet-400" : "text-muted-foreground hover:bg-muted/60 hover:text-foreground"}`}
                 onClick={() => setComposeMode(composeMode === "forward" ? null : "forward")}
+                aria-label="Forward"
               >
                 <Forward className="h-4 w-4" />
               </Button>
@@ -1419,15 +1451,16 @@ function EmailDetail({
             <TooltipContent side="bottom"><p className="text-xs">Forward</p></TooltipContent>
           </Tooltip>
 
-          <Separator orientation="vertical" className="mx-1.5 h-5" />
+          <Separator orientation="vertical" className="mx-0.5 hidden h-5 sm:mx-1.5 sm:block" />
 
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all duration-200"
+                className="h-10 w-10 min-h-11 min-w-11 rounded-lg text-muted-foreground transition-all duration-200 hover:bg-muted/60 hover:text-foreground sm:h-8 sm:w-8 sm:min-h-0 sm:min-w-0"
                 onClick={() => onArchive(email.id)}
+                aria-label="Archive"
               >
                 <Archive className="h-4 w-4" />
               </Button>
@@ -1440,8 +1473,9 @@ function EmailDetail({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 transition-all duration-200"
+                className="h-10 w-10 min-h-11 min-w-11 rounded-lg text-muted-foreground transition-all duration-200 hover:bg-destructive/10 hover:text-destructive sm:h-8 sm:w-8 sm:min-h-0 sm:min-w-0"
                 onClick={() => onTrash(email.id)}
+                aria-label="Delete"
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -1454,27 +1488,29 @@ function EmailDetail({
               <Button
                 variant="ghost"
                 size="icon"
-                className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all duration-200"
+                className="h-10 w-10 min-h-11 min-w-11 rounded-lg text-muted-foreground transition-all duration-200 hover:bg-muted/60 hover:text-foreground sm:h-8 sm:w-8 sm:min-h-0 sm:min-w-0"
                 onClick={handleToggleStar}
+                aria-label={email.starred ? "Remove star" : "Star"}
               >
-                <Star className={`h-4 w-4 transition-all duration-200 ${email.starred ? "text-amber-400 fill-amber-400 drop-shadow-[0_0_4px_rgba(251,191,36,0.5)]" : ""}`} />
+                <Star className={`h-4 w-4 transition-all duration-200 ${email.starred ? "fill-amber-400 text-amber-400 drop-shadow-[0_0_4px_rgba(251,191,36,0.5)]" : ""}`} />
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom"><p className="text-xs">{email.starred ? "Remove star" : "Star"}</p></TooltipContent>
           </Tooltip>
 
-          <Separator orientation="vertical" className="mx-1.5 h-5" />
+          <Separator orientation="vertical" className="mx-0.5 hidden h-5 sm:mx-1.5 sm:block" />
 
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
                 variant={showAiChat ? "default" : "ghost"}
                 size="sm"
-                className={`h-8 gap-1.5 text-xs rounded-lg transition-all duration-200 ${showAiChat ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" : "text-muted-foreground hover:text-primary hover:bg-primary/10"}`}
+                aria-label={showAiChat ? "Close AI Chat" : "Open AI Chat"}
+                className={`h-10 gap-1.5 rounded-lg px-3 text-xs transition-all duration-200 sm:h-8 ${showAiChat ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" : "text-muted-foreground hover:bg-primary/10 hover:text-primary"}`}
                 onClick={() => setShowAiChat(!showAiChat)}
               >
-                <Sparkles className={`h-3.5 w-3.5 ${showAiChat ? "" : "text-primary/70"}`} />
-                AI Chat
+                <Sparkles className={`h-3.5 w-3.5 shrink-0 ${showAiChat ? "" : "text-primary/70"}`} />
+                <span className="hidden sm:inline">AI Chat</span>
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
@@ -1488,8 +1524,9 @@ function EmailDetail({
                 <Button
                   variant="ghost"
                   size="icon"
-                  className="h-8 w-8 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/60 transition-all duration-200"
+                  className="h-10 w-10 min-h-11 min-w-11 rounded-lg text-muted-foreground transition-all duration-200 hover:bg-muted/60 hover:text-foreground sm:h-8 sm:w-8 sm:min-h-0 sm:min-w-0"
                   onClick={() => { setShowMore(!showMore); setShowSnooze(false); setShowTags(false) }}
+                  aria-label="More actions"
                 >
                   <MoreHorizontal className="h-4 w-4" />
                 </Button>
@@ -1526,10 +1563,12 @@ function EmailDetail({
         <div className={`flex flex-col ${showAiChat ? "flex-1" : "w-full"} overflow-hidden`}>
           <ScrollArea className="flex-1">
             <div className="w-full min-w-0">
-              <div className="p-6 max-w-4xl mx-auto">
-              <div className="flex items-start justify-between mb-5 animate-fade-in-up">
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-xl font-bold text-foreground leading-snug tracking-tight">{email.subject}</h2>
+              <div className="mx-auto max-w-4xl px-4 py-4 pb-24 sm:p-6 sm:pb-8">
+              <div className="mb-4 flex animate-fade-in-up items-start justify-between gap-3 sm:mb-5">
+                <div className="min-w-0 flex-1">
+                  <h2 className="text-lg font-bold leading-snug tracking-tight text-foreground sm:text-xl">
+                    {fixMettingTypo(email.subject)}
+                  </h2>
                   <div className="flex items-center gap-2 mt-2.5 flex-wrap">
                     {email.category && (() => {
                       const cat = categoryConfig[email.category]
@@ -1609,12 +1648,16 @@ function EmailDetail({
                   </AvatarFallback>
                 </Avatar>
                 <div className="flex-1 min-w-0">
-                  <div className="flex items-center justify-between gap-2">
+                  <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between sm:gap-2">
                     <div className="min-w-0">
                       <span className="text-sm font-semibold text-foreground">{email.from.name}</span>
-                      <span className="text-xs text-muted-foreground/60 ml-2">{"<"}{email.from.email}{">"}</span>
+                      <span className="ml-0 mt-0.5 block text-xs text-muted-foreground/70 sm:ml-2 sm:mt-0 sm:inline">
+                        {"<"}
+                        {email.from.email}
+                        {">"}
+                      </span>
                     </div>
-                    <span className="text-[11px] text-muted-foreground/60 shrink-0 tabular-nums">
+                    <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/70">
                       {new Date(email.date).toLocaleDateString("en-US", {
                         month: "short",
                         day: "numeric",
@@ -1624,9 +1667,18 @@ function EmailDetail({
                       })}
                     </span>
                   </div>
-                  <p className="text-xs text-muted-foreground/50 mt-0.5">
-                    To: {email.to.map((t) => t.name).join(", ")}
-                  </p>
+                  {(() => {
+                    const toLine = email.to
+                      .map((t) => (t.name || "").trim() || (t.email || "").trim())
+                      .filter(Boolean)
+                      .join(", ")
+                    if (!toLine) return null
+                    return (
+                      <p className="mt-1 text-xs text-muted-foreground/70">
+                        To: {toLine}
+                      </p>
+                    )
+                  })()}
                 </div>
               </div>
 
@@ -1639,7 +1691,7 @@ function EmailDetail({
                   <div className="prose prose-sm prose-invert max-w-none">
                     {email.body.split("\n").map((line, i) => (
                       <p key={i} className={`leading-relaxed ${line === "" ? "mt-4" : "mt-1"}`}>
-                        {line || "\u00A0"}
+                        {line ? fixMettingTypo(line) : "\u00A0"}
                       </p>
                     ))}
                   </div>
@@ -1971,6 +2023,7 @@ export function InboxView({
       setSelectedEmail(null)
       setSearchQuery("")
       setHasMore(true)
+      setFilterLabel(null)
     }
   }, [folder])
 
@@ -2317,118 +2370,124 @@ export function InboxView({
     ? unreadCountFromApi
     : unreadCountFromList
 
+  const syncMailboxControl = refreshing ? (
+    <Button
+      variant="outline"
+      size="sm"
+      onClick={handleStopSync}
+      className="h-9 shrink-0 gap-1.5 rounded-xl border-red-400/30 text-xs text-red-400 shadow-sm hover:bg-red-400/10 hover:text-red-400"
+    >
+      <Square className="h-3 w-3 fill-current" />
+      <span className="md:hidden">Stop</span>
+      <span className="hidden md:inline">Stop Sync</span>
+    </Button>
+  ) : (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          className="h-9 shrink-0 gap-1.5 rounded-xl border-border/60 bg-card/70 text-xs text-foreground/80 shadow-sm transition-all duration-200 hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
+        >
+          <RefreshCw className="h-3.5 w-3.5 shrink-0" />
+          <span className="hidden min-[380px]:inline">Sync</span>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom">
+        <p className="text-xs">Fetch new emails from your mailbox</p>
+      </TooltipContent>
+    </Tooltip>
+  )
+
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex h-full flex-col bg-gradient-to-b from-background to-muted/[0.12]">
         {/* Header */}
         <div className="border-b border-border/60 bg-gradient-to-r from-background via-background to-primary/[0.03] backdrop-blur-sm">
-          <div className="px-6 py-4 md:py-4.5">
-            <div className="flex items-center gap-4">
-              <div className="flex items-center gap-3 shrink-0 min-w-0">
-                <div className="relative flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 shadow-md shadow-primary/10 ring-1 ring-primary/10">
-                  {(() => {
-                    const folderIcons: Record<string, React.ElementType> = {
-                      inbox: Inbox,
-                      sent: Send,
-                      trash: Trash2,
-                      archive: Archive,
-                      star: Star,
-                      spam: ShieldAlert,
-                      snoozed: Clock,
-                    }
-                    const FolderIcon = folderIcons[folder] ?? Inbox
-                    return <FolderIcon className="h-5 w-5 text-primary" />
-                  })()}
-                  {unreadCount > 0 && folder === "inbox" && (
-                    <div className="absolute -top-1 -right-1 h-4.5 min-w-[18px] px-1 flex items-center justify-center rounded-full bg-primary text-[9px] font-bold text-primary-foreground shadow-sm">
-                      {unreadCount > 99 ? "99+" : unreadCount}
-                    </div>
-                  )}
+          <div className="px-4 py-3 sm:px-6 sm:py-4 md:py-4.5">
+            <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
+              <div className="flex min-w-0 items-start justify-between gap-3 md:contents">
+                <div className="flex min-w-0 items-center gap-3 md:shrink-0">
+                  <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 shadow-md shadow-primary/10 ring-1 ring-primary/10 sm:h-11 sm:w-11">
+                    {(() => {
+                      const folderIcons: Record<string, React.ElementType> = {
+                        inbox: Inbox,
+                        sent: Send,
+                        trash: Trash2,
+                        archive: Archive,
+                        star: Star,
+                        spam: ShieldAlert,
+                        snoozed: Clock,
+                      }
+                      const FolderIcon = folderIcons[folder] ?? Inbox
+                      return <FolderIcon className="h-5 w-5 text-primary" />
+                    })()}
+                    {unreadCount > 0 && folder === "inbox" && (
+                      <div className="absolute -right-1 -top-1 flex h-4.5 min-w-[18px] items-center justify-center rounded-full bg-primary px-1 text-[9px] font-bold text-primary-foreground shadow-sm">
+                        {unreadCount > 99 ? "99+" : unreadCount}
+                      </div>
+                    )}
+                  </div>
+                  <div className="min-w-0">
+                    <h1 className="text-base font-extrabold leading-tight tracking-tight text-foreground sm:text-lg">
+                      {INBOX_FOLDER_TITLE[folder] ?? folder}
+                    </h1>
+                    {filterLabel && (
+                      <p className="mt-0.5 flex items-center gap-1 text-[11px] font-medium text-primary">
+                        <Tag className="h-3 w-3 shrink-0" />
+                        <span>Label: {filterLabel}</span>
+                      </p>
+                    )}
+                    {!loading && mailboxesList.length === 0 ? (
+                      <p className="mt-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400/90">
+                        No mailbox connected — connect one to load messages.
+                      </p>
+                    ) : (
+                      <p className="mt-0.5 flex flex-wrap items-center gap-x-1 gap-y-0.5 text-[11px] text-muted-foreground/80">
+                        <span>{allCount} email{allCount !== 1 ? "s" : ""}</span>
+                        {unreadCount > 0 && (
+                          <span className="font-medium text-primary/80">· {unreadCount} unread</span>
+                        )}
+                        {uniqueSenders != null && (
+                          <>
+                            <span>·</span>
+                            <button
+                              type="button"
+                              onClick={() => setShowUniqueSendersDialog(true)}
+                              className="font-medium text-muted-foreground/80 transition-colors hover:text-foreground hover:underline"
+                            >
+                              {uniqueSenders.unique_senders_count} unique sender{uniqueSenders.unique_senders_count !== 1 ? "s" : ""}
+                            </button>
+                          </>
+                        )}
+                      </p>
+                    )}
+                  </div>
                 </div>
-                <div className="min-w-0">
-                  <h1 className="text-lg font-extrabold text-foreground leading-tight tracking-tight">
-                    {INBOX_FOLDER_TITLE[folder] ?? folder}
-                  </h1>
-                  {filterLabel && (
-                    <p className="text-[11px] font-medium text-primary mt-0.5 flex items-center gap-1">
-                      <Tag className="h-3 w-3 shrink-0" />
-                      <span>Label: {filterLabel}</span>
-                    </p>
-                  )}
-                  {!loading && mailboxesList.length === 0 ? (
-                    <p className="mt-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-400/90">
-                      No mailbox connected — connect one to load messages.
-                    </p>
-                  ) : (
-                    <p className="text-[11px] text-muted-foreground/70 mt-0.5 flex items-center gap-1 flex-wrap">
-                      <span>{allCount} email{allCount !== 1 ? "s" : ""}</span>
-                      {unreadCount > 0 && <span className="text-primary/80 font-medium"> · {unreadCount} unread</span>}
-                      {uniqueSenders != null && (
-                        <>
-                          <span> · </span>
-                          <button
-                            type="button"
-                            onClick={() => setShowUniqueSendersDialog(true)}
-                            className="text-muted-foreground/70 hover:text-foreground hover:underline font-medium transition-colors"
-                          >
-                            {uniqueSenders.unique_senders_count} unique sender{uniqueSenders.unique_senders_count !== 1 ? "s" : ""}
-                          </button>
-                        </>
-                      )}
-                    </p>
-                  )}
-                </div>
+                <div className="shrink-0 md:hidden">{syncMailboxControl}</div>
               </div>
 
-              <div className="relative flex-1 min-w-0 max-w-lg">
-                <Search className="absolute left-3.5 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50 pointer-events-none" />
+              <div className="relative min-w-0 flex-1 md:max-w-lg">
+                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
                 <Input
-                  placeholder="Search by name, subject, or content..."
+                  placeholder="Search mail…"
                   value={searchQuery}
                   onChange={(e) => setSearchQuery(e.target.value)}
-                  className="w-full pl-10 pr-9 h-10 rounded-xl bg-card/75 border border-border/60 text-foreground placeholder:text-muted-foreground/50 text-sm focus-visible:ring-2 focus-visible:ring-primary/20 focus-visible:border-primary/30 transition-all duration-200 shadow-sm hover:border-border"
+                  className="h-10 w-full rounded-xl border border-border/60 bg-card/75 pl-10 pr-9 text-sm text-foreground shadow-sm transition-all duration-200 placeholder:text-muted-foreground/50 hover:border-border focus-visible:border-primary/30 focus-visible:ring-2 focus-visible:ring-primary/20"
                 />
                 {searchQuery && (
                   <button
                     type="button"
                     onClick={() => setSearchQuery("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground/50 hover:text-foreground transition-colors p-0.5 rounded-md hover:bg-muted"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground"
                   >
                     <X className="h-3.5 w-3.5" />
                   </button>
                 )}
               </div>
 
-              <div className="flex items-center gap-2 shrink-0">
-                {refreshing ? (
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleStopSync}
-                    className="shrink-0 border-red-400/30 text-red-400 hover:bg-red-400/10 hover:text-red-400 gap-1.5 h-9 text-xs rounded-xl shadow-sm"
-                  >
-                    <Square className="h-3 w-3 fill-current" />
-                    Stop Sync
-                  </Button>
-                ) : (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={handleRefresh}
-                        className="shrink-0 bg-card/70 hover:bg-primary/10 hover:text-primary hover:border-primary/30 border-border/60 text-foreground/80 gap-1.5 h-9 text-xs rounded-xl transition-all duration-200 shadow-sm"
-                      >
-                        <RefreshCw className="h-3.5 w-3.5" />
-                        Sync
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      <p className="text-xs">Fetch new emails from your mailbox</p>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
-              </div>
+              <div className="hidden shrink-0 md:flex md:items-center">{syncMailboxControl}</div>
             </div>
           </div>
         </div>
@@ -2458,7 +2517,7 @@ export function InboxView({
         ) : (
           <>
             {/* Mailbox Tabs */}
-            <div className="flex items-center gap-1.5 border-b border-border/60 px-6 py-3 overflow-x-auto bg-card/40">
+            <div className="flex items-center gap-1.5 overflow-x-auto border-b border-border/60 bg-card/40 px-4 py-2.5 sm:px-6 sm:py-3">
               <Button
                 variant={filterMailbox === "all" ? "default" : "ghost"}
                 size="sm"
@@ -2499,7 +2558,7 @@ export function InboxView({
 
             {/* Label Filter Tabs */}
             {userLabels.length > 0 && (
-              <div className="flex items-center gap-1.5 border-b border-border/60 px-6 py-2.5 overflow-x-auto bg-card/30">
+              <div className="flex items-center gap-1.5 overflow-x-auto border-b border-border/60 bg-card/30 px-4 py-2 sm:px-6 sm:py-2.5">
                 <Tag className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0 mr-1" />
                 <Button
                   variant={filterLabel === null ? "default" : "ghost"}
@@ -2535,7 +2594,7 @@ export function InboxView({
             )}
 
             {/* Filter Bar */}
-            <div className="relative flex items-center justify-between gap-2 border-b border-border/60 px-6 py-2.5 overflow-visible bg-background/90 backdrop-blur-sm">
+            <div className="relative flex items-center justify-between gap-2 overflow-visible border-b border-border/60 bg-background/90 px-4 py-2 backdrop-blur-sm sm:px-6 sm:py-2.5">
               <div className="flex items-center gap-2 shrink-0">
                 <DropdownMenu open={showFilterDropdown} onOpenChange={setShowFilterDropdown}>
                   <DropdownMenuTrigger asChild>
@@ -2605,7 +2664,7 @@ export function InboxView({
                 <EmailListSkeleton />
               ) : (
                 <>
-                  <div className="space-y-2 px-3 py-3">
+                  <div className="space-y-2 px-2 py-2 pb-24 sm:px-3 sm:py-3 sm:pb-8 md:pb-10">
                     {filteredEmails.map((email, idx) => (
                       <EmailListItem
                         key={email.id}
