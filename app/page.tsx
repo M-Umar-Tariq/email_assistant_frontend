@@ -1,7 +1,9 @@
 "use client"
 
 import Link from "next/link"
-import { useState } from "react"
+import { useState, useRef } from "react"
+import { useGSAP } from "@gsap/react"
+import { gsap, registerScrollTrigger } from "@/lib/gsap-ui"
 import {
   Mail,
   Sparkles,
@@ -193,11 +195,42 @@ const stats = [
 
 function Navbar() {
   const [mobileOpen, setMobileOpen] = useState(false)
+  const navRef = useRef<HTMLElement>(null)
+  const mobileMenuRef = useRef<HTMLDivElement>(null)
+
+  useGSAP(
+    () => {
+      const items = navRef.current?.querySelectorAll("[data-gsap='nav-item']")
+      if (!items?.length) return
+      gsap.from(items, {
+        y: -14,
+        opacity: 0,
+        duration: 0.48,
+        stagger: 0.07,
+        ease: "power2.out",
+      })
+    },
+    { scope: navRef },
+  )
+
+  useGSAP(
+    () => {
+      if (!mobileOpen || !mobileMenuRef.current) return
+      gsap.from(mobileMenuRef.current.querySelectorAll("[data-gsap='nav-mobile']"), {
+        opacity: 0,
+        x: -14,
+        duration: 0.24,
+        stagger: 0.045,
+        ease: "power2.out",
+      })
+    },
+    { dependencies: [mobileOpen] },
+  )
 
   return (
-    <nav className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
+    <nav ref={navRef} className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
-        <Link href="/" className="flex items-center gap-2.5">
+        <Link href="/" data-gsap="nav-item" className="flex items-center gap-2.5">
           <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
             <Mail className="h-4 w-4 text-primary-foreground" />
           </div>
@@ -208,7 +241,7 @@ function Navbar() {
           </span>
         </Link>
 
-        <div className="hidden items-center gap-8 md:flex">
+        <div data-gsap="nav-item" className="hidden items-center gap-8 md:flex">
           {navLinks.map((link) => (
             <a
               key={link.label}
@@ -220,7 +253,7 @@ function Navbar() {
           ))}
         </div>
 
-        <div className="hidden items-center gap-3 md:flex">
+        <div data-gsap="nav-item" className="hidden items-center gap-3 md:flex">
           <Button variant="ghost" size="sm" asChild className="text-muted-foreground hover:text-foreground">
             <Link href="/login">Log in</Link>
           </Button>
@@ -233,6 +266,7 @@ function Navbar() {
         </div>
 
         <button
+          data-gsap="nav-item"
           className="flex h-9 w-9 items-center justify-center rounded-md text-foreground md:hidden"
           onClick={() => setMobileOpen(!mobileOpen)}
           aria-label="Toggle navigation menu"
@@ -242,11 +276,12 @@ function Navbar() {
       </div>
 
       {mobileOpen && (
-        <div className="border-t border-border bg-background px-6 py-4 md:hidden">
+        <div ref={mobileMenuRef} className="border-t border-border bg-background px-6 py-4 md:hidden">
           <div className="flex flex-col gap-4">
             {navLinks.map((link) => (
               <a
                 key={link.label}
+                data-gsap="nav-mobile"
                 href={link.href}
                 className="text-sm text-muted-foreground"
                 onClick={() => setMobileOpen(false)}
@@ -254,7 +289,7 @@ function Navbar() {
                 {link.label}
               </a>
             ))}
-            <div className="flex flex-col gap-2 pt-2">
+            <div data-gsap="nav-mobile" className="flex flex-col gap-2 pt-2">
               <Button variant="outline" size="sm" asChild className="border-border text-foreground">
                 <Link href="/login">Log in</Link>
               </Button>
@@ -270,29 +305,65 @@ function Navbar() {
 }
 
 function HeroSection() {
+  const root = useRef<HTMLElement>(null)
+  const glowRef = useRef<HTMLDivElement>(null)
+  useGSAP(
+    () => {
+      const items = root.current?.querySelectorAll("[data-gsap='hero']")
+      if (!items?.length) return
+      gsap.from(items, {
+        opacity: 0,
+        y: 28,
+        duration: 0.55,
+        stagger: 0.09,
+        ease: "power2.out",
+      })
+    },
+    { scope: root },
+  )
+
+  useGSAP(
+    () => {
+      const glow = glowRef.current
+      if (!glow) return
+      gsap.to(glow, {
+        y: 14,
+        scale: 1.05,
+        duration: 5.5,
+        repeat: -1,
+        yoyo: true,
+        ease: "sine.inOut",
+      })
+    },
+    { scope: root },
+  )
+
   return (
-    <section className="relative flex flex-col items-center px-6 pb-20 pt-32 md:pt-40">
+    <section ref={root} className="relative flex flex-col items-center px-6 pb-20 pt-32 md:pt-40">
       <div className="absolute inset-0 overflow-hidden">
-        <div className="absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 rounded-full bg-primary/5 blur-3xl" />
+        <div
+          ref={glowRef}
+          className="absolute left-1/2 top-0 h-[600px] w-[800px] -translate-x-1/2 rounded-full bg-primary/5 blur-3xl will-change-transform"
+        />
       </div>
 
       <div className="relative flex max-w-3xl flex-col items-center text-center">
-        <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-1.5">
+        <div data-gsap="hero" className="mb-6 inline-flex items-center gap-2 rounded-full border border-primary/20 bg-primary/5 px-4 py-1.5">
           <Zap className="h-3.5 w-3.5 text-primary" />
           <span className="text-xs font-medium text-primary">AI-powered Email Workspace</span>
         </div>
 
-        <h1 className="text-balance text-4xl font-bold leading-tight tracking-tight text-foreground md:text-6xl">
+        <h1 data-gsap="hero" className="text-balance text-4xl font-bold leading-tight tracking-tight text-foreground md:text-6xl">
           Your inbox, understood
           <br />
           <span className="text-primary">by AI</span>
         </h1>
 
-        <p className="mt-6 max-w-xl text-pretty text-base leading-relaxed text-muted-foreground md:text-lg">
+        <p data-gsap="hero" className="mt-6 max-w-xl text-pretty text-base leading-relaxed text-muted-foreground md:text-lg">
           Connect all your mailboxes. Get daily briefings, search with natural language, compose with AI, and turn email chaos into actionable clarity.
         </p>
 
-        <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row">
+        <div data-gsap="hero" className="mt-8 flex flex-col items-center gap-3 sm:flex-row">
           <Button size="lg" asChild className="bg-primary text-primary-foreground hover:bg-primary/90 h-12 px-8 text-sm">
             <Link href="/signup">
               Create free account
@@ -304,21 +375,40 @@ function HeroSection() {
           </Button>
         </div>
 
-        <p className="mt-4 text-xs text-muted-foreground">No credit card to sign up. Beta features evolve weekly—your feedback shapes the roadmap.</p>
+        <p data-gsap="hero" className="mt-4 text-xs text-muted-foreground">No credit card to sign up. Beta features evolve weekly—your feedback shapes the roadmap.</p>
       </div>
     </section>
   )
 }
 
 function StatsBar() {
+  const root = useRef<HTMLElement>(null)
+  useGSAP(
+    () => {
+      registerScrollTrigger()
+      const cells = root.current?.querySelectorAll("[data-gsap='stat']")
+      if (!cells?.length) return
+      gsap.from(cells, {
+        scrollTrigger: { trigger: root.current, start: "top 88%" },
+        opacity: 0,
+        y: 16,
+        duration: 0.4,
+        stagger: 0.07,
+        ease: "power2.out",
+      })
+    },
+    { scope: root },
+  )
+
   return (
-    <section className="border-y border-border bg-card/50">
+    <section ref={root} className="border-y border-border bg-card/50">
       <div className="mx-auto grid max-w-6xl grid-cols-2 gap-0 divide-x divide-border md:grid-cols-4">
         {stats.map((stat) => {
           const isBeta = stat.value === "Beta"
           return (
             <div
               key={stat.label}
+              data-gsap="stat"
               className={cn(
                 "flex flex-col items-center gap-2 px-6 py-8",
                 isBeta && "bg-amber-500/[0.08] dark:bg-amber-500/10",
@@ -339,15 +429,41 @@ function StatsBar() {
 }
 
 function FeaturesSection() {
+  const root = useRef<HTMLElement>(null)
+  useGSAP(
+    () => {
+      if (!root.current) return
+      registerScrollTrigger()
+      const st = { trigger: root.current, start: "top 82%" }
+      gsap.from(root.current.querySelectorAll("[data-gsap='feature-head']"), {
+        scrollTrigger: st,
+        opacity: 0,
+        y: 20,
+        duration: 0.5,
+        stagger: 0.07,
+        ease: "power2.out",
+      })
+      gsap.from(root.current.querySelectorAll("[data-gsap='feature-card']"), {
+        scrollTrigger: st,
+        opacity: 0,
+        y: 22,
+        duration: 0.42,
+        stagger: 0.05,
+        ease: "power2.out",
+      })
+    },
+    { scope: root },
+  )
+
   return (
-    <section id="features" className="px-6 py-20 md:py-28">
+    <section ref={root} id="features" className="px-6 py-20 md:py-28">
       <div className="mx-auto max-w-6xl">
         <div className="mb-14 text-center">
-          <p className="mb-3 text-sm font-medium text-primary">Features</p>
-          <h2 className="text-balance text-3xl font-bold text-foreground md:text-4xl">
+          <p data-gsap="feature-head" className="mb-3 text-sm font-medium text-primary">Features</p>
+          <h2 data-gsap="feature-head" className="text-balance text-3xl font-bold text-foreground md:text-4xl">
             Built around how this app actually works
           </h2>
-          <p className="mx-auto mt-4 max-w-xl text-pretty text-muted-foreground">
+          <p data-gsap="feature-head" className="mx-auto mt-4 max-w-xl text-pretty text-muted-foreground">
             Below is what the product is built for—multi-mailbox sync, tiered AI from light hints to full writing & Q&A, agent and ops on Pro, and voice only on the
             top tier—not a slide-deck wish list.
           </p>
@@ -357,6 +473,7 @@ function FeaturesSection() {
           {features.map((feature) => (
             <div
               key={feature.title}
+              data-gsap="feature-card"
               className="group rounded-xl border border-border bg-card p-6 transition-colors hover:border-primary/20"
             >
               <div className="mb-4 flex h-10 w-10 items-center justify-center rounded-lg bg-primary/10 transition-colors group-hover:bg-primary/15">
@@ -375,19 +492,45 @@ function FeaturesSection() {
 }
 
 function HowItWorksSection() {
+  const root = useRef<HTMLElement>(null)
+  useGSAP(
+    () => {
+      if (!root.current) return
+      registerScrollTrigger()
+      const st = { trigger: root.current, start: "top 82%" }
+      gsap.from(root.current.querySelectorAll("[data-gsap='how-head']"), {
+        scrollTrigger: st,
+        opacity: 0,
+        y: 18,
+        duration: 0.45,
+        stagger: 0.08,
+        ease: "power2.out",
+      })
+      gsap.from(root.current.querySelectorAll("[data-gsap='how-step']"), {
+        scrollTrigger: st,
+        opacity: 0,
+        y: 24,
+        duration: 0.45,
+        stagger: 0.12,
+        ease: "power2.out",
+      })
+    },
+    { scope: root },
+  )
+
   return (
-    <section id="how-it-works" className="border-y border-border bg-card/30 px-6 py-20 md:py-28">
+    <section ref={root} id="how-it-works" className="border-y border-border bg-card/30 px-6 py-20 md:py-28">
       <div className="mx-auto max-w-6xl">
         <div className="mb-14 text-center">
-          <p className="mb-3 text-sm font-medium text-primary">How it works</p>
-          <h2 className="text-balance text-3xl font-bold text-foreground md:text-4xl">
+          <p data-gsap="how-head" className="mb-3 text-sm font-medium text-primary">How it works</p>
+          <h2 data-gsap="how-head" className="text-balance text-3xl font-bold text-foreground md:text-4xl">
             Up and running in minutes
           </h2>
         </div>
 
         <div className="grid grid-cols-1 gap-8 md:grid-cols-3">
           {steps.map((step, i) => (
-            <div key={step.step} className="relative flex flex-col items-center text-center">
+            <div key={step.step} data-gsap="how-step" className="relative flex flex-col items-center text-center">
               <div className="mb-5 flex h-14 w-14 items-center justify-center rounded-2xl border border-border bg-card text-lg font-bold text-primary">
                 {step.step}
               </div>
@@ -407,22 +550,48 @@ function HowItWorksSection() {
 }
 
 function TestimonialsSection() {
+  const root = useRef<HTMLElement>(null)
+  useGSAP(
+    () => {
+      if (!root.current) return
+      registerScrollTrigger()
+      const st = { trigger: root.current, start: "top 82%" }
+      gsap.from(root.current.querySelectorAll("[data-gsap='testimonial-head']"), {
+        scrollTrigger: st,
+        opacity: 0,
+        y: 18,
+        duration: 0.45,
+        stagger: 0.07,
+        ease: "power2.out",
+      })
+      gsap.from(root.current.querySelectorAll("[data-gsap='testimonial-card']"), {
+        scrollTrigger: st,
+        opacity: 0,
+        y: 20,
+        duration: 0.42,
+        stagger: 0.1,
+        ease: "power2.out",
+      })
+    },
+    { scope: root },
+  )
+
   return (
-    <section className="px-6 py-20 md:py-28">
+    <section ref={root} className="px-6 py-20 md:py-28">
       <div className="mx-auto max-w-6xl">
         <div className="mb-14 text-center">
-          <p className="mb-3 text-sm font-medium text-primary">How it fits together</p>
-          <h2 className="text-balance text-3xl font-bold text-foreground md:text-4xl">
+          <p data-gsap="testimonial-head" className="mb-3 text-sm font-medium text-primary">How it fits together</p>
+          <h2 data-gsap="testimonial-head" className="text-balance text-3xl font-bold text-foreground md:text-4xl">
             Workflows the app actually supports
           </h2>
-          <p className="mx-auto mt-4 max-w-lg text-pretty text-sm text-muted-foreground">
+          <p data-gsap="testimonial-head" className="mx-auto mt-4 max-w-lg text-pretty text-sm text-muted-foreground">
             Short descriptions of what you can do with sync, briefing, search, and compose—not paid testimonials.
           </p>
         </div>
 
         <div className="grid grid-cols-1 gap-5 md:grid-cols-3">
           {testimonials.map((t) => (
-            <div key={t.id} className="rounded-xl border border-border bg-card p-6">
+            <div key={t.id} data-gsap="testimonial-card" className="rounded-xl border border-border bg-card p-6">
               <div className="mb-3 flex gap-0.5">
                 {Array.from({ length: t.rating }).map((_, i) => (
                   <Star key={i} className="h-4 w-4 fill-primary text-primary" />
@@ -444,15 +613,41 @@ function TestimonialsSection() {
 }
 
 function PricingSection() {
+  const root = useRef<HTMLElement>(null)
+  useGSAP(
+    () => {
+      if (!root.current) return
+      registerScrollTrigger()
+      const st = { trigger: root.current, start: "top 82%" }
+      gsap.from(root.current.querySelectorAll("[data-gsap='pricing-head']"), {
+        scrollTrigger: st,
+        opacity: 0,
+        y: 18,
+        duration: 0.45,
+        stagger: 0.06,
+        ease: "power2.out",
+      })
+      gsap.from(root.current.querySelectorAll("[data-gsap='pricing-card']"), {
+        scrollTrigger: st,
+        opacity: 0,
+        y: 24,
+        duration: 0.45,
+        stagger: 0.1,
+        ease: "power2.out",
+      })
+    },
+    { scope: root },
+  )
+
   return (
-    <section id="pricing" className="border-y border-border bg-card/30 px-6 py-20 md:py-28">
+    <section ref={root} id="pricing" className="border-y border-border bg-card/30 px-6 py-20 md:py-28">
       <div className="mx-auto max-w-6xl">
         <div className="mb-14 text-center">
-          <p className="mb-3 text-sm font-medium text-primary">Pricing</p>
-          <h2 className="text-balance text-3xl font-bold text-foreground md:text-4xl">
+          <p data-gsap="pricing-head" className="mb-3 text-sm font-medium text-primary">Pricing</p>
+          <h2 data-gsap="pricing-head" className="text-balance text-3xl font-bold text-foreground md:text-4xl">
             Plans by feature tier—and mailbox scale
           </h2>
-          <p className="mx-auto mt-4 max-w-xl text-pretty text-muted-foreground">
+          <p data-gsap="pricing-head" className="mx-auto mt-4 max-w-xl text-pretty text-muted-foreground">
             Each tier adds stronger AI and automation; higher tiers also raise how many mailboxes you can connect. Paid checkout is not wired yet—sign up free
             while billing is off. Voice agent is exclusive to Pro; listed items match what this repo is built to support.
           </p>
@@ -462,6 +657,7 @@ function PricingSection() {
           {plans.map((plan) => (
             <div
               key={plan.name}
+              data-gsap="pricing-card"
               className={`relative flex flex-col rounded-xl border p-6 ${
                 plan.highlighted
                   ? "border-primary bg-card shadow-lg shadow-primary/5"
@@ -510,16 +706,34 @@ function PricingSection() {
 }
 
 function CtaSection() {
+  const root = useRef<HTMLElement>(null)
+  useGSAP(
+    () => {
+      registerScrollTrigger()
+      const items = root.current?.querySelectorAll("[data-gsap='cta']")
+      if (!items?.length) return
+      gsap.from(items, {
+        scrollTrigger: { trigger: root.current, start: "top 85%" },
+        opacity: 0,
+        y: 20,
+        duration: 0.48,
+        stagger: 0.08,
+        ease: "power2.out",
+      })
+    },
+    { scope: root },
+  )
+
   return (
-    <section className="px-6 py-20 md:py-28">
+    <section ref={root} className="px-6 py-20 md:py-28">
       <div className="mx-auto max-w-3xl text-center">
-        <h2 className="text-balance text-3xl font-bold text-foreground md:text-4xl">
+        <h2 data-gsap="cta" className="text-balance text-3xl font-bold text-foreground md:text-4xl">
           Ready to try the workspace?
         </h2>
-        <p className="mx-auto mt-4 max-w-md text-pretty text-muted-foreground">
+        <p data-gsap="cta" className="mx-auto mt-4 max-w-md text-pretty text-muted-foreground">
           Create an account, connect a mailbox, and see the briefing, inbox, and AI tools in minutes. If something’s missing, tell us from Feedback in the app.
         </p>
-        <div className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
+        <div data-gsap="cta" className="mt-8 flex flex-col items-center gap-3 sm:flex-row sm:justify-center">
           <Button size="lg" asChild className="bg-primary text-primary-foreground hover:bg-primary/90 h-12 px-8">
             <Link href="/signup">
               Get started free
@@ -536,10 +750,28 @@ function CtaSection() {
 }
 
 function Footer() {
+  const root = useRef<HTMLElement>(null)
+  useGSAP(
+    () => {
+      registerScrollTrigger()
+      const parts = root.current?.querySelectorAll("[data-gsap='footer']")
+      if (!parts?.length) return
+      gsap.from(parts, {
+        scrollTrigger: { trigger: root.current, start: "top 94%" },
+        opacity: 0,
+        y: 12,
+        duration: 0.42,
+        stagger: 0.07,
+        ease: "power2.out",
+      })
+    },
+    { scope: root },
+  )
+
   return (
-    <footer className="border-t border-border px-6 py-10">
+    <footer ref={root} className="border-t border-border px-6 py-10">
       <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 md:flex-row">
-        <div className="flex items-center gap-2.5">
+        <div data-gsap="footer" className="flex items-center gap-2.5">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary">
             <Mail className="h-3.5 w-3.5 text-primary-foreground" />
           </div>
@@ -549,13 +781,13 @@ function Footer() {
             <BetaLabel className="scale-95" />
           </span>
         </div>
-        <div className="flex items-center gap-6">
+        <div data-gsap="footer" className="flex flex-wrap items-center justify-center gap-6">
           <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Privacy</a>
           <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Terms</a>
           <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Support</a>
           <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Contact</a>
         </div>
-        <p className="text-xs text-muted-foreground">
+        <p data-gsap="footer" className="text-xs text-muted-foreground">
           {"2026 Smart Mail AI Beta. All rights reserved."}
         </p>
       </div>

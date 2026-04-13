@@ -75,6 +75,8 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
   const [imapPort, setImapPort] = useState(DEFAULT_IMAP.port)
   const [smtpHost, setSmtpHost] = useState(DEFAULT_SMTP.host)
   const [smtpPort, setSmtpPort] = useState(DEFAULT_SMTP.port)
+  const [imapSecure, setImapSecure] = useState(true)
+  const [smtpSecure, setSmtpSecure] = useState(true)
   const [password, setPassword] = useState("")
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
@@ -94,6 +96,8 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
     setImapPort(DEFAULT_IMAP.port)
     setSmtpHost(DEFAULT_SMTP.host)
     setSmtpPort(DEFAULT_SMTP.port)
+    setImapSecure(true)
+    setSmtpSecure(true)
     setPassword("")
     setError("")
     setStep(1)
@@ -108,6 +112,8 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
     if (provider === "other") {
       setImapHost("")
       setSmtpHost("")
+      setImapSecure(true)
+      setSmtpSecure(true)
       return
     }
     const p = PRESETS[provider]
@@ -116,6 +122,8 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
       setImapPort(p.imap.port)
       setSmtpHost(p.smtp.host)
       setSmtpPort(p.smtp.port)
+      setImapSecure(true)
+      setSmtpSecure(true)
     }
   }
 
@@ -139,8 +147,10 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
         color: color || undefined,
         imap_host: imapHost.trim(),
         imap_port: imapPort,
+        imap_secure: imapSecure,
         smtp_host: smtpHost.trim(),
         smtp_port: smtpPort,
+        smtp_secure: smtpSecure,
         username: emailTrimmed,
         password,
       })
@@ -182,7 +192,7 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!submitting) { onOpenChange(v); if (!v) { if (step === 2) onSuccess?.(); reset() } } }}>
-      <DialogContent className="sm:max-w-[780px] max-w-[calc(100vw-2rem)] p-0 gap-0 overflow-hidden max-h-[90vh] flex flex-col">
+      <DialogContent className="sm:max-w-[880px] max-w-[calc(100vw-2rem)] max-h-[85vh] p-0 gap-0 flex flex-col overflow-hidden">
         {step === 1 ? (
         <>
         <DialogHeader className="px-5 pt-4 pb-3 border-b border-border shrink-0">
@@ -195,9 +205,10 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
           </DialogDescription>
         </DialogHeader>
 
-        <form onSubmit={handleSubmit} className="flex flex-col min-h-0">
+        <form onSubmit={handleSubmit} className="flex min-h-0 flex-1 flex-col overflow-hidden">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 pb-2">
           {/* Provider selection - compact row */}
-          <div className="px-5 pt-3">
+          <div className="pt-3">
             <p className="text-xs font-medium text-foreground mb-2">Select your email provider</p>
             <div className="flex gap-2">
               {PROVIDER_OPTIONS.map((opt) => {
@@ -207,7 +218,7 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
                     key={opt.id}
                     type="button"
                     onClick={() => applyPreset(opt.id)}
-                    className={`flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border-2 py-2.5 px-2 transition-all min-h-0 ${
+                    className={`flex flex-1 flex-col items-center justify-center gap-1 rounded-lg border-2 py-2 px-2 transition-all min-h-0 ${
                       isSelected
                         ? "border-primary bg-primary/10 text-primary shadow-sm"
                         : "border-border bg-muted/30 text-muted-foreground hover:border-primary/50 hover:bg-muted/50"
@@ -224,9 +235,9 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
           </div>
 
           {/* Two columns: Account details | Server settings */}
-          <div className="px-5 pt-3 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div className="pt-3 grid grid-cols-1 md:grid-cols-2 gap-4 min-w-0">
             {/* Account details */}
-            <div>
+            <div className="min-w-0">
               <p className="text-xs font-medium text-foreground mb-2">Account details</p>
               <div className="rounded-lg border border-border bg-muted/20 p-3 space-y-3">
                 <div className="space-y-1">
@@ -271,81 +282,119 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
             </div>
 
             {/* Server settings + Color */}
-            <div>
-              <p className="text-xs font-medium text-foreground mb-2">Server settings</p>
-              <div className="rounded-lg border border-border bg-muted/20 overflow-hidden">
-                <table className="w-full text-xs">
-                  <thead>
-                    <tr className="border-b border-border">
-                      <th className="text-left text-muted-foreground font-medium p-2 w-[100px]">Protocol</th>
-                      <th className="text-left text-muted-foreground font-medium p-2">Host</th>
-                      <th className="text-left text-muted-foreground font-medium p-2 w-28">Port</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr className="border-b border-border/50">
-                      <td className="p-2 text-foreground">IMAP</td>
-                      <td className="p-1.5">
-                        <Input
-                          id="mb-imap-host"
-                          value={imapHost}
-                          onChange={(e) => setImapHost(e.target.value)}
-                          className="bg-background border-border text-foreground h-7 text-xs"
-                        />
-                      </td>
-                      <td className="p-1.5">
-                        <Input
-                          id="mb-imap-port"
-                          type="number"
-                          min={1}
-                          max={65535}
-                          value={imapPort}
-                          onChange={(e) => setImapPort(parseInt(e.target.value, 10) || 993)}
-                          className="bg-background border-border text-foreground h-7 text-xs w-24 min-w-[5.5rem]"
-                        />
-                      </td>
-                    </tr>
-                    <tr>
-                      <td className="p-2 text-foreground">SMTP</td>
-                      <td className="p-1.5">
-                        <Input
-                          id="mb-smtp-host"
-                          value={smtpHost}
-                          onChange={(e) => setSmtpHost(e.target.value)}
-                          className="bg-background border-border text-foreground h-7 text-xs"
-                        />
-                      </td>
-                      <td className="p-1.5">
-                        <Input
-                          id="mb-smtp-port"
-                          type="number"
-                          min={1}
-                          max={65535}
-                          value={smtpPort}
-                          onChange={(e) => setSmtpPort(parseInt(e.target.value, 10) || 587)}
-                          className="bg-background border-border text-foreground h-7 text-xs w-24 min-w-[5.5rem]"
-                        />
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-              <div className="mt-2 flex items-center gap-2">
-                <Label htmlFor="mb-color" className="text-xs text-muted-foreground shrink-0">Color</Label>
-                <input
-                  id="mb-color"
-                  type="color"
-                  value={color}
-                  onChange={(e) => setColor(e.target.value)}
-                  className="h-7 w-10 cursor-pointer rounded border border-border bg-background"
-                />
+            <div className="min-w-0 flex flex-col gap-2">
+              <p className="text-xs font-medium text-foreground">Server settings</p>
+              <div className="rounded-lg border border-border bg-muted/20 p-2.5 space-y-3">
+                {/* IMAP — host full width; port + security on one row */}
+                <div className="space-y-1.5 min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">IMAP (incoming)</p>
+                  <div className="space-y-1">
+                    <Label htmlFor="mb-imap-host" className="text-xs text-muted-foreground">Host</Label>
+                    <Input
+                      id="mb-imap-host"
+                      value={imapHost}
+                      onChange={(e) => setImapHost(e.target.value)}
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="bg-background border-border text-foreground h-9 text-sm font-mono min-w-0 w-full"
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div className="space-y-1 w-[5.5rem] shrink-0">
+                      <Label htmlFor="mb-imap-port" className="text-xs text-muted-foreground">Port</Label>
+                      <Input
+                        id="mb-imap-port"
+                        type="number"
+                        min={1}
+                        max={65535}
+                        value={imapPort}
+                        onChange={(e) => {
+                          const p = parseInt(e.target.value, 10) || 993
+                          setImapPort(p)
+                          setImapSecure(p === 993 || p === 143)
+                        }}
+                        className="bg-background border-border text-foreground h-9 text-sm tabular-nums w-full"
+                      />
+                    </div>
+                    <div className="space-y-1 min-w-[10rem] flex-1">
+                      <Label htmlFor="mb-imap-sec" className="text-xs text-muted-foreground">Security</Label>
+                      <select
+                        id="mb-imap-sec"
+                        value={imapSecure ? "secure" : "none"}
+                        onChange={(e) => setImapSecure(e.target.value === "secure")}
+                        className="h-9 w-full min-w-0 rounded-md border border-border bg-background px-2.5 text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
+                      >
+                        <option value="secure">{imapPort === 993 ? "SSL/TLS (implicit)" : "STARTTLS"}</option>
+                        <option value="none">None</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="border-t border-border pt-3 space-y-1.5 min-w-0">
+                  <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">SMTP (outgoing)</p>
+                  <div className="space-y-1">
+                    <Label htmlFor="mb-smtp-host" className="text-xs text-muted-foreground">Host</Label>
+                    <Input
+                      id="mb-smtp-host"
+                      value={smtpHost}
+                      onChange={(e) => setSmtpHost(e.target.value)}
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="bg-background border-border text-foreground h-9 text-sm font-mono min-w-0 w-full"
+                    />
+                  </div>
+                  <div className="flex flex-wrap items-end gap-3">
+                    <div className="space-y-1 w-[5.5rem] shrink-0">
+                      <Label htmlFor="mb-smtp-port" className="text-xs text-muted-foreground">Port</Label>
+                      <Input
+                        id="mb-smtp-port"
+                        type="number"
+                        min={1}
+                        max={65535}
+                        value={smtpPort}
+                        onChange={(e) => {
+                          const p = parseInt(e.target.value, 10) || 587
+                          setSmtpPort(p)
+                          setSmtpSecure(p === 465 || p === 587)
+                        }}
+                        className="bg-background border-border text-foreground h-9 text-sm tabular-nums w-full"
+                      />
+                    </div>
+                    <div className="space-y-1 min-w-[10rem] flex-1">
+                      <Label htmlFor="mb-smtp-sec" className="text-xs text-muted-foreground">Security</Label>
+                      <select
+                        id="mb-smtp-sec"
+                        value={smtpSecure ? "secure" : "none"}
+                        onChange={(e) => setSmtpSecure(e.target.value === "secure")}
+                        className="h-9 w-full min-w-0 rounded-md border border-border bg-background px-2.5 text-sm text-foreground shadow-sm focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 focus:ring-offset-background"
+                      >
+                        <option value="secure">{smtpPort === 465 ? "SSL/TLS (implicit)" : "STARTTLS"}</option>
+                        <option value="none">None</option>
+                      </select>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between gap-3 border-t border-border pt-2.5">
+                  <Label htmlFor="mb-color" className="text-xs font-medium text-foreground">Mailbox color</Label>
+                  <input
+                    id="mb-color"
+                    type="color"
+                    value={color}
+                    onChange={(e) => setColor(e.target.value)}
+                    title="Pick color"
+                    className="h-9 w-12 shrink-0 cursor-pointer rounded-md border border-border bg-background p-0.5"
+                  />
+                </div>
               </div>
             </div>
           </div>
 
           {error && (
-            <p className="mx-5 mt-2 text-sm text-red-400">{error}</p>
+            <p className="mt-2 text-sm text-red-400">{error}</p>
           )}
+          </div>
 
           <DialogFooter className="px-5 py-3 border-t border-border bg-muted/10 shrink-0">
             <Button
@@ -371,7 +420,7 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
         </form>
         </>
         ) : (
-        <>
+        <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
           <DialogHeader className="px-5 pt-4 pb-3 border-b border-border shrink-0">
             <DialogTitle className="flex items-center gap-2 text-lg text-primary">
               <CheckCircle2 className="h-5 w-5 shrink-0" />
@@ -385,7 +434,7 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
               )}
             </DialogDescription>
           </DialogHeader>
-          <div className="px-5 py-4 min-w-0 overflow-auto">
+          <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-5 py-4 min-w-0">
             <div className="space-y-3 rounded-lg border border-border p-4 bg-muted/30">
               <Label className="text-sm font-medium">When connecting, sync emails</Label>
               <RadioGroup
@@ -453,7 +502,7 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
               )}
             </Button>
           </DialogFooter>
-        </>
+        </div>
         )}
       </DialogContent>
     </Dialog>

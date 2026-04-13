@@ -110,6 +110,50 @@ async function request<T>(
   return data as T;
 }
 
+/** GET binary with the same Authorization + refresh behavior as {@link request}. */
+async function fetchBlobWithAuth(path: string, options?: { _retried?: boolean }): Promise<Blob> {
+  const url = path.startsWith("http") ? path : `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
+  const headers: Record<string, string> = {};
+  const token = getAccessToken();
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+
+  const res = await fetch(url, {
+    method: "GET",
+    headers,
+    credentials: "include",
+  });
+
+  if (res.status === 401 && !options?._retried) {
+    const refreshToken =
+      typeof window !== "undefined" ? localStorage.getItem(REFRESH_KEY) : null;
+    if (refreshToken) {
+      try {
+        const refreshed = await request<{ access_token: string; refresh_token: string }>(
+          "POST",
+          "/auth/refresh/",
+          { refresh_token: refreshToken },
+          { skipAuth: true }
+        );
+        if (refreshed?.access_token && typeof window !== "undefined") {
+          localStorage.setItem(TOKEN_KEY, refreshed.access_token);
+          if (refreshed.refresh_token) localStorage.setItem(REFRESH_KEY, refreshed.refresh_token);
+          return fetchBlobWithAuth(path, { _retried: true });
+        }
+      } catch {
+        // refresh failed
+      }
+    }
+    notifySessionExpired();
+  }
+
+  if (!res.ok) {
+    const err = new Error(res.statusText || "Request failed");
+    (err as Error & { status?: number }).status = res.status;
+    throw err;
+  }
+  return res.blob();
+}
+
 // ── Auth ───────────────────────────────────────────────────────────────────
 
 export const auth = {
@@ -158,8 +202,10 @@ export const mailboxes = {
     color?: string;
     imap_host: string;
     imap_port?: number;
+    imap_secure?: boolean;
     smtp_host: string;
     smtp_port?: number;
+    smtp_secure?: boolean;
     username: string;
     password: string;
   }) => request<MailboxApi>("POST", "/mailboxes/", data),
@@ -308,7 +354,12 @@ export const emails = {
   deleteSentReply: (emailId: string, replyIndex: number) =>
     request<EmailDetailApi>("DELETE", `/emails/${emailId}/sent-reply/${replyIndex}/`),
   attachmentDownloadUrl: (emailId: string, attachmentIndex: number) =>
-    `${API_BASE}/emails/${emailId}/attachments/${attachmentIndex}/download/`,
+    `${API_BASE}/emails/${encodeURIComponent(emailId)}/attachments/${attachmentIndex}/download/`,
+  /** Download raw bytes with JWT refresh (use this instead of fetch(attachmentDownloadUrl)). */
+  downloadAttachment: (emailId: string, attachmentIndex: number) =>
+    fetchBlobWithAuth(
+      `/emails/${encodeURIComponent(emailId)}/attachments/${attachmentIndex}/download/`
+    ),
 };
 
 // ── Follow-ups ──────────────────────────────────────────────────────────────

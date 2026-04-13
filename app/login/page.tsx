@@ -1,7 +1,9 @@
 "use client"
 
 import Link from "next/link"
-import { useState } from "react"
+import { useState, useRef } from "react"
+import { useGSAP } from "@gsap/react"
+import { gsap } from "@/lib/gsap-ui"
 import { Mail, ArrowRight, Eye, EyeOff } from "lucide-react"
 import { BetaLabel } from "@/components/beta-label"
 import { Button } from "@/components/ui/button"
@@ -10,12 +12,39 @@ import { Label } from "@/components/ui/label"
 import { useAuth } from "@/lib/auth-context"
 
 export default function LoginPage() {
+  const pageRef = useRef<HTMLDivElement>(null)
   const { login } = useAuth()
   const [showPassword, setShowPassword] = useState(false)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [email, setEmail] = useState("")
   const [password, setPassword] = useState("")
+
+  useGSAP(
+    () => {
+      const brand = pageRef.current?.querySelector("[data-auth-panel='brand']")
+      const formCol = pageRef.current?.querySelector("[data-auth-panel='form']")
+      if (brand) {
+        gsap.from(brand.querySelectorAll("[data-auth-reveal]"), {
+          opacity: 0,
+          x: -18,
+          duration: 0.5,
+          stagger: 0.09,
+          ease: "power2.out",
+        })
+      }
+      if (formCol) {
+        gsap.from(formCol.querySelectorAll("[data-auth-reveal]"), {
+          opacity: 0,
+          y: 18,
+          duration: 0.45,
+          stagger: 0.07,
+          ease: "power2.out",
+        })
+      }
+    },
+    { scope: pageRef },
+  )
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
@@ -30,10 +59,10 @@ export default function LoginPage() {
   }
 
   return (
-    <div className="flex min-h-svh bg-background">
+    <div ref={pageRef} className="flex min-h-svh bg-background">
       {/* Left panel - branding */}
-      <div className="hidden w-1/2 flex-col justify-between border-r border-border bg-card p-12 lg:flex">
-        <div>
+      <div data-auth-panel="brand" className="hidden w-1/2 flex-col justify-between border-r border-border bg-card p-12 lg:flex">
+        <div data-auth-reveal>
           <Link href="/" className="flex items-center gap-2.5">
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
               <Mail className="h-4 w-4 text-primary-foreground" />
@@ -47,15 +76,15 @@ export default function LoginPage() {
         </div>
 
         <div className="max-w-md">
-          <h2 className="text-3xl font-bold leading-tight text-foreground">
+          <h2 data-auth-reveal className="text-3xl font-bold leading-tight text-foreground">
             Welcome back
           </h2>
-          <p className="mt-4 text-base leading-relaxed text-muted-foreground">
+          <p data-auth-reveal className="mt-4 text-base leading-relaxed text-muted-foreground">
             Continue where you left off: daily briefing, unified inbox across your mailboxes, AI search, compose, assistant, analytics, and calendar—all in
             one workspace.
           </p>
 
-          <div className="mt-10 rounded-xl border border-border bg-background/50 p-5">
+          <div data-auth-reveal className="mt-10 rounded-xl border border-border bg-background/50 p-5">
             <div className="flex items-center gap-3 mb-3">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
                 <Mail className="h-4 w-4 text-primary" />
@@ -70,16 +99,16 @@ export default function LoginPage() {
           </div>
         </div>
 
-        <p className="text-xs text-muted-foreground">
+        <p data-auth-reveal className="text-xs text-muted-foreground">
           {"2026 Smart Mail AI Beta. All rights reserved."}
         </p>
       </div>
 
       {/* Right panel - form */}
-      <div className="flex flex-1 flex-col items-center justify-center px-6 py-12">
+      <div data-auth-panel="form" className="flex flex-1 flex-col items-center justify-center px-6 py-12">
         <div className="w-full max-w-sm">
           {/* Mobile logo */}
-          <div className="mb-8 flex flex-col items-center lg:hidden">
+          <div data-auth-reveal className="mb-8 flex flex-col items-center lg:hidden">
             <Link href="/" className="flex items-center gap-2.5">
               <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
                 <Mail className="h-4 w-4 text-primary-foreground" />
@@ -92,7 +121,7 @@ export default function LoginPage() {
             </Link>
           </div>
 
-          <div className="mb-8">
+          <div data-auth-reveal className="mb-8">
             <h1 className="flex flex-wrap items-center gap-x-1 text-2xl font-bold text-foreground">
               <span>Log in to</span>
               <span className="flex items-center">
@@ -110,7 +139,7 @@ export default function LoginPage() {
           </div>
 
           {/* Login form */}
-          <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <form data-auth-reveal onSubmit={handleSubmit} className="flex flex-col gap-4">
             {error && (
               <div className="rounded-md bg-red-500/10 border border-red-500/20 px-3 py-2 text-sm text-red-400">
                 {error}
@@ -180,7 +209,7 @@ export default function LoginPage() {
             </Button>
           </form>
 
-          <p className="mt-6 text-center text-xs leading-relaxed text-muted-foreground">
+          <p data-auth-reveal className="mt-6 text-center text-xs leading-relaxed text-muted-foreground">
             By continuing, you agree to our{" "}
             <a href="#" className="text-foreground hover:text-primary transition-colors">Terms of Service</a>
             {" "}and{" "}

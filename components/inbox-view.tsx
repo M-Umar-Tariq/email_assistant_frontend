@@ -1725,14 +1725,8 @@ function EmailDetail({
                           download={att.filename}
                           onClick={(e) => {
                             e.preventDefault()
-                            const token = localStorage.getItem("smartmailai_access_token")
-                            fetch(emailsApi.attachmentDownloadUrl(email.id, i), {
-                              headers: token ? { Authorization: `Bearer ${token}` } : {},
-                            })
-                              .then((res) => {
-                                if (!res.ok) throw new Error("Download failed")
-                                return res.blob()
-                              })
+                            emailsApi
+                              .downloadAttachment(email.id, i)
                               .then((blob) => {
                                 const url = URL.createObjectURL(blob)
                                 const a = document.createElement("a")

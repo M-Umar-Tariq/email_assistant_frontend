@@ -1,6 +1,8 @@
 "use client"
 
 import { useState, useCallback, useEffect, useRef } from "react"
+import { useGSAP } from "@gsap/react"
+import { gsap } from "@/lib/gsap-ui"
 import { Menu, X } from "lucide-react"
 import { AppSidebar, type EmailFolder } from "@/components/app-sidebar"
 import { DailyBriefing } from "@/components/daily-briefing"
@@ -187,6 +189,51 @@ export default function AppDashboard() {
   }, [activeView])
 
   const [mobileOpen, setMobileOpen] = useState(false)
+  const viewShellRef = useRef<HTMLDivElement>(null)
+  const desktopSidebarRef = useRef<HTMLElement>(null)
+  const mobileDrawerRef = useRef<HTMLDivElement>(null)
+
+  useGSAP(
+    () => {
+      const el = desktopSidebarRef.current
+      if (!el) return
+      gsap.fromTo(
+        el,
+        { x: -20, opacity: 0.88 },
+        { x: 0, opacity: 1, duration: 0.48, ease: "power3.out" },
+      )
+    },
+    { scope: desktopSidebarRef },
+  )
+
+  useGSAP(
+    () => {
+      if (!mobileOpen || !mobileDrawerRef.current) return
+      const root = mobileDrawerRef.current
+      const backdrop = root.querySelector("[data-drawer-backdrop]")
+      const panel = root.querySelector("[data-drawer-panel]")
+      if (backdrop) {
+        gsap.fromTo(backdrop, { opacity: 0 }, { opacity: 1, duration: 0.22, ease: "power1.out" })
+      }
+      if (panel) {
+        gsap.fromTo(panel, { x: "-105%" }, { x: "0%", duration: 0.36, ease: "power3.out" })
+      }
+    },
+    { dependencies: [mobileOpen] },
+  )
+
+  useGSAP(
+    () => {
+      const el = viewShellRef.current
+      if (!el) return
+      gsap.fromTo(
+        el,
+        { opacity: 0.92, y: 6 },
+        { opacity: 1, y: 0, duration: 0.3, ease: "power3.out" },
+      )
+    },
+    { scope: viewShellRef, dependencies: [activeView] },
+  )
 
   useEffect(() => {
     const goHome = () => {
@@ -215,7 +262,7 @@ export default function AppDashboard() {
     <AiChatProvider>
       <div className="flex h-svh w-full overflow-hidden bg-background">
         {/* ── Desktop sidebar ── */}
-        <aside className="hidden md:flex h-full min-h-0 shrink-0">
+        <aside ref={desktopSidebarRef} className="hidden md:flex h-full min-h-0 shrink-0 will-change-transform">
           <AppSidebar
             activeView={activeView}
             onViewChange={handleViewChange}
@@ -229,12 +276,16 @@ export default function AppDashboard() {
 
         {/* ── Mobile drawer overlay ── */}
         {mobileOpen && (
-          <div className="fixed inset-0 z-50 md:hidden">
+          <div ref={mobileDrawerRef} className="fixed inset-0 z-50 md:hidden">
             <div
+              data-drawer-backdrop
               className="absolute inset-0 bg-black/40 backdrop-blur-sm"
               onClick={() => setMobileOpen(false)}
             />
-            <aside className="relative flex h-full w-fit max-w-[min(100vw-1rem,380px)] animate-in slide-in-from-left duration-200">
+            <aside
+              data-drawer-panel
+              className="relative flex h-full w-fit max-w-[min(100vw-1rem,380px)] will-change-transform"
+            >
               <AppSidebar
                 activeView={activeView}
                 onViewChange={handleViewChange}
@@ -278,7 +329,7 @@ export default function AppDashboard() {
           </div>
 
           {/* Views */}
-          <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+          <div ref={viewShellRef} className="min-h-0 min-w-0 flex-1 overflow-hidden">
             {activeView === "dashboard" && (
               <DailyBriefing
                 onViewChange={handleViewChange}
