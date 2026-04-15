@@ -28,7 +28,7 @@ import { cn } from "@/lib/utils"
 const navLinks = [
   { label: "Features", href: "#features" },
   { label: "How it works", href: "#how-it-works" },
-  { label: "Pricing", href: "#pricing" },
+  // { label: "Pricing", href: "#pricing" },
 ]
 
 const features = [
@@ -804,7 +804,7 @@ export default function LandingPage() {
       <FeaturesSection />
       <HowItWorksSection />
       <TestimonialsSection />
-      <PricingSection />
+      {/* <PricingSection /> */}
       <CtaSection />
       <Footer />
     </main>
