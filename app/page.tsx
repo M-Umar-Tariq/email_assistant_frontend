@@ -1,11 +1,11 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { useState, useRef } from "react"
 import { useGSAP } from "@gsap/react"
 import { gsap, registerScrollTrigger } from "@/lib/gsap-ui"
 import {
-  Mail,
   Sparkles,
   BarChart3,
   Search,
@@ -24,6 +24,7 @@ import {
 import { Button } from "@/components/ui/button"
 import { BetaLabel } from "@/components/beta-label"
 import { cn } from "@/lib/utils"
+import smartMailLogo from "@/logo/Smart Mail Logo.png"
 
 const navLinks = [
   { label: "Features", href: "#features" },
@@ -231,8 +232,8 @@ function Navbar() {
     <nav ref={navRef} className="fixed top-0 left-0 right-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
       <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-6">
         <Link href="/" data-gsap="nav-item" className="flex items-center gap-2.5">
-          <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-            <Mail className="h-4 w-4 text-primary-foreground" />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center">
+            <Image src={smartMailLogo} alt="Smart Mail AI logo" className="h-9 w-9 object-contain" priority />
           </div>
           <span className="flex items-center text-base font-semibold">
             <span className="text-foreground">Smart Mail </span>
@@ -772,8 +773,8 @@ function Footer() {
     <footer ref={root} className="border-t border-border px-6 py-10">
       <div className="mx-auto flex max-w-6xl flex-col items-center justify-between gap-6 md:flex-row">
         <div data-gsap="footer" className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary">
-            <Mail className="h-3.5 w-3.5 text-primary-foreground" />
+          <div className="flex h-9 w-9 shrink-0 items-center justify-center">
+            <Image src={smartMailLogo} alt="Smart Mail AI logo" className="h-8 w-8 object-contain" />
           </div>
           <span className="flex items-center text-sm font-semibold">
             <span className="text-foreground">Smart Mail </span>

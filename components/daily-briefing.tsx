@@ -1,6 +1,7 @@
 "use client"
 
 import { useCallback, useEffect, useMemo, useState } from "react"
+import Image from "next/image"
 import {
   AlertTriangle,
   Clock,
@@ -58,6 +59,8 @@ import { mapBriefingItem, mapEmailListApi } from "@/lib/mappers"
 import type { Mailbox, BriefingItem, Email } from "@/lib/mock-data"
 import { cn } from "@/lib/utils"
 import { format, parseISO } from "date-fns"
+import smartMailLogo from "@/logo/Smart Mail Logo.png"
+import smartMailLogoWhite from "@/logo/Smart Mail Logo White.png"
 
 const BRIEFING_MEETINGS_REFRESH_MS = 20_000
 
@@ -303,7 +306,7 @@ function AiSummaryBanner({
               <div className="relative shrink-0">
                 <div className="absolute inset-0 rounded-xl bg-primary/20 blur-md opacity-60" />
                 <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-primary/25 to-blue-500/15 ring-1 ring-primary/10 sm:h-11 sm:w-11">
-                  <Sparkles className="h-4 w-4 text-primary sm:h-5 sm:w-5" />
+                  <Image src={smartMailLogo} alt="AI Snapshot" className="h-5 w-5 object-contain sm:h-6 sm:w-6" />
                 </div>
               </div>
               <div className="min-w-0">
@@ -318,7 +321,7 @@ function AiSummaryBanner({
               className="w-full shrink-0 gap-2 rounded-xl px-5 shadow-lg shadow-primary/25 transition-all duration-300 hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/30 active:translate-y-0 sm:w-auto"
               onClick={fetchSummary}
             >
-              <Sparkles className="h-3.5 w-3.5" />
+              <Image src={smartMailLogoWhite} alt="" className="h-5 w-5 object-contain" />
               Generate
             </Button>
           </div>
@@ -337,7 +340,7 @@ function AiSummaryBanner({
           <div className="flex items-center justify-between px-5 py-3.5 border-b border-border/40">
             <div className="flex items-center gap-3">
               <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-primary/25 to-blue-500/15">
-                <Sparkles className="h-4 w-4 text-primary" />
+                <Image src={smartMailLogo} alt="AI Snapshot" className="h-5 w-5 object-contain" />
               </div>
               <h3 className="text-sm font-bold text-foreground">AI Snapshot</h3>
             </div>
@@ -357,7 +360,7 @@ function AiSummaryBanner({
                 <div className="relative">
                   <div className="h-10 w-10 rounded-full border-2 border-primary/15" />
                   <div className="absolute inset-0 h-10 w-10 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-                  <Sparkles className="absolute inset-0 m-auto h-4 w-4 text-primary/60" />
+                  <Image src={smartMailLogo} alt="" className="absolute inset-0 m-auto h-5 w-5 object-contain opacity-70" />
                 </div>
                 <span className="text-sm text-muted-foreground font-medium">Analyzing today&apos;s emails...</span>
               </div>
@@ -1406,7 +1409,7 @@ export function DailyBriefing({
           <div className="absolute inset-0 bg-primary/10 rounded-full blur-xl scale-150" />
           <div className="relative h-12 w-12 rounded-full border-2 border-primary/15" />
           <div className="absolute inset-0 h-12 w-12 rounded-full border-2 border-primary border-t-transparent animate-spin" />
-          <Sparkles className="absolute inset-0 m-auto h-5 w-5 text-primary/50" />
+          <Image src={smartMailLogo} alt="Loading" className="absolute inset-0 m-auto h-5 w-5 object-contain opacity-80" />
         </div>
         <div className="text-center">
           <p className="text-sm font-semibold text-foreground">Loading your briefing</p>
@@ -1567,7 +1570,7 @@ export function DailyBriefing({
               <div className="flex items-center justify-between">
                 <h2 className="text-base font-extrabold text-foreground flex items-center gap-2.5">
                   <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 shadow-sm">
-                    <Sparkles className="h-4 w-4 text-primary" />
+                    <Image src={smartMailLogo} alt="Today's Briefing" className="h-4 w-4 object-contain" />
                   </div>
                   Today&apos;s Briefing
                 </h2>

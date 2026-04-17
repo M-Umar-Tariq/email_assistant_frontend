@@ -1,19 +1,18 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname } from "next/navigation"
 import { useEffect, useState, useCallback } from "react"
 import {
   LayoutDashboard,
   Inbox,
-  Mail,
   PenSquare,
   BarChart3,
   Settings,
   Plus,
   Clock,
   Mic,
-  Sparkles,
   Sun,
   Moon,
   Users,
@@ -50,6 +49,8 @@ import type { Mailbox } from "@/lib/mock-data"
 import { cn } from "@/lib/utils"
 import { AccountMenu } from "@/components/mailbox-account-menu"
 import { BetaLabel } from "@/components/beta-label"
+import smartMailLogo from "@/logo/Smart Mail Logo.png"
+import smartMailLogoGray from "@/logo/Smart Mail Logo Gray.png"
 
 const NAV_PANEL_STORAGE_KEY = "smart-mail-ai:nav-panel"
 
@@ -81,6 +82,16 @@ const railBottom = [
   { id: "feedback", icon: Megaphone, tip: "Feedback" },
   { id: "settings", icon: Settings, tip: "Settings" },
 ]
+
+function AssistantLogoIcon({ className }: { className?: string }) {
+  return (
+    <Image
+      src={smartMailLogoGray}
+      alt="Smart Mail Assistant"
+      className={cn("h-3 w-3 object-contain", className)}
+    />
+  )
+}
 
 // ── Sidebar component ────────────────────────────────────────────────────────
 
@@ -327,8 +338,8 @@ export function AppSidebar({
                 }
               }}
             >
-              <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-primary shadow-sm shadow-primary/20 transition-transform hover:scale-[1.02]">
-                <Mail className="h-[22px] w-[22px] text-primary-foreground" strokeWidth={2} />
+              <span className="flex h-12 w-12 shrink-0 items-center justify-center transition-transform hover:scale-[1.02]">
+                <Image src={smartMailLogo} alt="Smart Mail AI logo" className="h-[34px] w-[34px] object-contain" priority />
               </span>
               <span className="flex min-w-0 items-center text-left text-lg font-bold leading-tight tracking-tight text-foreground">
                 <span className="truncate">
@@ -735,12 +746,12 @@ export function AppSidebar({
 
                   {/* Other nav items */}
                   {[
-                    { id: "contacts", label: "Contacts", icon: Users, badge: null },
-                    { id: "assistant", label: "AI Assistant", icon: Sparkles, badge: null },
-                    { id: "agent", label: "Voice Agent", icon: Mic, badge: null },
+                    { id: "contacts", label: "Contacts", icon: Users, badge: null, iconClassName: "h-4 w-4" },
+                    { id: "assistant", label: "Smart Mail Assistant", icon: AssistantLogoIcon, badge: null, iconClassName: "h-6 w-6" },
+                    { id: "agent", label: "Voice Agent", icon: Mic, badge: null, iconClassName: "h-4 w-4" },
                     ...(mailboxes.length > 0 ? [{ id: "followups" as const, label: "Follow-ups", icon: Clock, badge: badges.followUps || null }] : []),
-                    { id: "analytics", label: "Analytics", icon: BarChart3, badge: null },
-                  ].map(({ id, label, icon: Icon, badge }) => {
+                    { id: "analytics", label: "Analytics", icon: BarChart3, badge: null, iconClassName: "h-4 w-4" },
+                  ].map(({ id, label, icon: Icon, badge, iconClassName }) => {
                     const isActive = activeView === id
                     return (
                       <button
@@ -753,7 +764,7 @@ export function AppSidebar({
                             : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
                         }`}
                       >
-                        <Icon className="h-4 w-4 shrink-0" strokeWidth={isActive ? 2.25 : 1.75} />
+                        <Icon className={`${iconClassName ?? "h-4 w-4"} shrink-0`} strokeWidth={isActive ? 2.25 : 1.75} />
                         <span className="flex-1 text-left truncate">{label}</span>
                         {badge != null && badge > 0 && (
                           <span className={`text-[11px] font-semibold tabular-nums ${isActive ? "text-primary" : "text-muted-foreground"}`}>

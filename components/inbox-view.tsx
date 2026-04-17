@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useCallback, useEffect, useRef, type MouseEvent } from "react"
+import Image from "next/image"
 import {
   Search,
   Star,
@@ -99,6 +100,8 @@ import type { InboxFilter } from "@/components/daily-briefing"
 import { ConnectMailboxCta } from "@/components/connect-mailbox-cta"
 import { sanitizeEmailHtml } from "@/lib/sanitize-html"
 import { LABELS_UPDATED_EVENT, type LabelsUpdatedDetail } from "@/lib/labels-events"
+import smartMailLogo from "@/logo/Smart Mail Logo.png"
+import smartMailLogoWhite from "@/logo/Smart Mail Logo White.png"
 
 function EmailListSkeleton() {
   return (
@@ -1123,7 +1126,7 @@ function EmailAiChat({ emailId, attachments, onClose }: { emailId: string; attac
       <div className="px-4 py-3 border-b border-border bg-primary/[0.03]">
         <div className="flex items-center gap-2.5">
           <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
-            <Sparkles className="h-3.5 w-3.5 text-primary" />
+            <Image src={smartMailLogo} alt="AI Chat" className="h-4 w-4 object-contain" />
           </div>
           <div className="flex-1">
             <span className="text-sm font-semibold text-foreground">AI Chat</span>
@@ -1194,7 +1197,7 @@ function EmailAiChat({ emailId, attachments, onClose }: { emailId: string; attac
                 <div key={i} className={`flex gap-2.5 ${msg.role === "user" ? "flex-row-reverse" : ""}`}>
                   {msg.role === "ai" && (
                     <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 shrink-0 mt-0.5">
-                      <Sparkles className="h-3 w-3 text-primary" />
+                      <Image src={smartMailLogo} alt="Assistant" className="h-3.5 w-3.5 object-contain" />
                     </div>
                   )}
                   <div className={`max-w-[82%] flex flex-col items-end gap-1 ${msg.role === "user" ? "" : "items-start"}`}>
@@ -1226,7 +1229,7 @@ function EmailAiChat({ emailId, attachments, onClose }: { emailId: string; attac
             {loading && (
               <div className="flex gap-2.5">
                 <div className="flex h-6 w-6 items-center justify-center rounded-full bg-primary/10 shrink-0 mt-0.5">
-                  <Sparkles className="h-3 w-3 text-primary animate-spin" />
+                  <Image src={smartMailLogo} alt="Assistant loading" className="h-3.5 w-3.5 object-contain animate-spin" />
                 </div>
                 <div className="bg-muted/70 rounded-2xl rounded-tl-sm px-3.5 py-2.5">
                   <div className="flex items-center gap-1.5">
@@ -1678,7 +1681,11 @@ function EmailDetail({
                 className={`h-10 gap-1.5 rounded-lg px-3 text-xs transition-all duration-200 sm:h-8 ${showAiChat ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" : "text-muted-foreground hover:bg-primary/10 hover:text-primary"}`}
                 onClick={() => setShowAiChat(!showAiChat)}
               >
-                <Sparkles className={`h-3.5 w-3.5 shrink-0 ${showAiChat ? "" : "text-primary/70"}`} />
+                <Image
+                  src={showAiChat ? smartMailLogoWhite : smartMailLogo}
+                  alt="AI Chat"
+                  className="h-4 w-4 shrink-0 object-contain"
+                />
                 <span className="hidden sm:inline">AI Chat</span>
               </Button>
             </TooltipTrigger>

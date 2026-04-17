@@ -1,9 +1,9 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
+import Image from "next/image"
 import {
   Send,
-  Sparkles,
   FileText,
   ExternalLink,
   ChevronDown,
@@ -55,6 +55,7 @@ import { useAiChat } from "@/lib/ai-chat-context"
 import type { ChatMessage } from "@/lib/mock-data"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import smartMailLogoWhite from "@/logo/Smart Mail Logo White.png"
 
 const ACTION_ICONS: Record<string, typeof Mail> = {
   send_email: Mail,
@@ -451,15 +452,15 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
           <div className="flex items-center justify-between px-4 py-3">
             <div className="flex items-center gap-2.5">
               <div className="relative">
-                <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/10">
-                  <Sparkles className="h-4.5 w-4.5 text-primary" />
+                <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary shadow-sm shadow-primary/20">
+                  <Image src={smartMailLogoWhite} alt="Smart Mail Assistant" className="h-6 w-6 object-contain" />
                 </div>
                 <div className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full bg-emerald-500 border-[1.5px] border-background">
                   <div className="absolute inset-0 rounded-full bg-emerald-500 animate-ping opacity-40" />
                 </div>
               </div>
               <div>
-                <h3 className="text-sm font-semibold text-foreground leading-tight">AI Assistant</h3>
+                <h3 className="text-sm font-semibold text-foreground leading-tight">Smart Mail Assistant</h3>
                 <p className="text-[10px] text-muted-foreground">Ask anything about your emails</p>
               </div>
             </div>
@@ -550,8 +551,8 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
             <div className="w-full max-w-sm flex flex-col items-center">
               <div className="relative mb-4">
                 <div className="absolute -inset-3 rounded-full bg-gradient-to-r from-primary/20 via-primary/5 to-primary/20 blur-xl opacity-60" />
-                <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 ring-1 ring-primary/10 shadow-lg shadow-primary/10">
-                  <Sparkles className="h-6 w-6 text-primary" />
+                <div className="relative flex h-14 w-14 items-center justify-center rounded-2xl bg-gradient-to-br from-primary to-primary/90 ring-1 ring-primary/20 shadow-lg shadow-primary/20">
+                  <Image src={smartMailLogoWhite} alt="Smart Mail Assistant" className="h-8 w-8 object-contain" />
                 </div>
               </div>
 
@@ -665,7 +666,7 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
           "transition-all duration-300 ease-out",
           isOpen && "opacity-0 scale-0 pointer-events-none"
         )}
-        aria-label="Open AI Assistant"
+        aria-label="Open Smart Mail Assistant"
       >
         {/* Outer glow ring */}
         <div className="absolute -inset-2 rounded-full bg-gradient-to-r from-primary/30 via-primary/10 to-primary/30 blur-lg opacity-0 group-hover:opacity-100 transition-opacity duration-500 animate-gradient" />
@@ -684,7 +685,7 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
           {isQueryLoading ? (
             <Loader2 className="h-6 w-6 text-primary-foreground animate-spin" />
           ) : (
-            <Sparkles className="h-6 w-6 text-primary-foreground transition-transform duration-300 group-hover:rotate-12 group-hover:scale-110" />
+            <Image src={smartMailLogoWhite} alt="Smart Mail Assistant" className="h-7 w-7 object-contain transition-transform duration-300 group-hover:rotate-12 group-hover:scale-110" />
           )}
         </div>
 
@@ -697,7 +698,7 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
 
         {/* Tooltip */}
         <div className="absolute right-full mr-3 top-1/2 -translate-y-1/2 px-3 py-1.5 rounded-lg bg-foreground text-background text-xs font-medium whitespace-nowrap opacity-0 group-hover:opacity-100 transition-opacity duration-200 pointer-events-none shadow-lg">
-          AI Assistant
+          Smart Mail Assistant
           <span className="ml-1.5 text-[10px] opacity-60">Ctrl+J</span>
           <div className="absolute right-0 top-1/2 -translate-y-1/2 translate-x-1 w-2 h-2 bg-foreground rotate-45" />
         </div>

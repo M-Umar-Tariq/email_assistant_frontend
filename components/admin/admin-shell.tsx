@@ -1,6 +1,7 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { usePathname, useRouter } from "next/navigation"
 import { useEffect, useState } from "react"
 import {
@@ -11,7 +12,6 @@ import {
   Inbox,
   LayoutDashboard,
   LogOut,
-  Mail,
   Megaphone,
   Menu,
   Shield,
@@ -23,6 +23,7 @@ import { AdminSpinner } from "@/components/admin/admin-spinner"
 import { BetaLabel } from "@/components/beta-label"
 import { useAuth } from "@/lib/auth-context"
 import { cn } from "@/lib/utils"
+import smartMailLogo from "@/logo/Smart Mail Logo.png"
 
 const nav = [
   { href: "/admin/dashboard", label: "Overview", icon: LayoutDashboard },
@@ -81,8 +82,8 @@ function Sidebar({
     >
       <div className="relative border-b border-white/5 px-3 py-5">
         <Link href="/admin/dashboard" className={cn("flex items-center gap-3", collapsed && "justify-center")}>
-          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-sky-500 to-cyan-600 shadow-lg shadow-sky-500/20 ring-1 ring-white/10">
-            <Mail className="h-4 w-4 text-white" aria-hidden />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center">
+            <Image src={smartMailLogo} alt="Smart Mail AI logo" className="h-8 w-8 object-contain" priority />
           </div>
           {!collapsed && (
             <div className="min-w-0 text-left">

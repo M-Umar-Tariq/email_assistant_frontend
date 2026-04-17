@@ -1,15 +1,17 @@
 "use client"
 
 import Link from "next/link"
+import Image from "next/image"
 import { useState, useRef } from "react"
 import { useGSAP } from "@gsap/react"
 import { gsap } from "@/lib/gsap-ui"
-import { Mail, ArrowRight, Eye, EyeOff } from "lucide-react"
+import { ArrowRight, Eye, EyeOff } from "lucide-react"
 import { BetaLabel } from "@/components/beta-label"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { useAuth } from "@/lib/auth-context"
+import smartMailLogo from "@/logo/Smart Mail Logo.png"
 
 export default function LoginPage() {
   const pageRef = useRef<HTMLDivElement>(null)
@@ -64,8 +66,8 @@ export default function LoginPage() {
       <div data-auth-panel="brand" className="hidden w-1/2 flex-col justify-between border-r border-border bg-card p-12 lg:flex">
         <div data-auth-reveal>
           <Link href="/" className="flex items-center gap-2.5">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-              <Mail className="h-4 w-4 text-primary-foreground" />
+            <div className="flex h-10 w-10 shrink-0 items-center justify-center">
+              <Image src={smartMailLogo} alt="Smart Mail AI logo" className="h-9 w-9 object-contain" priority />
             </div>
             <span className="flex items-center text-base font-semibold">
               <span className="text-foreground">Smart Mail </span>
@@ -86,8 +88,8 @@ export default function LoginPage() {
 
           <div data-auth-reveal className="mt-10 rounded-xl border border-border bg-background/50 p-5">
             <div className="flex items-center gap-3 mb-3">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary/10">
-                <Mail className="h-4 w-4 text-primary" />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center">
+                <Image src={smartMailLogo} alt="Smart Mail AI logo" className="h-8 w-8 object-contain" />
               </div>
               <span className="text-sm font-medium text-foreground">Inside the app</span>
             </div>
@@ -110,8 +112,8 @@ export default function LoginPage() {
           {/* Mobile logo */}
           <div data-auth-reveal className="mb-8 flex flex-col items-center lg:hidden">
             <Link href="/" className="flex items-center gap-2.5">
-              <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-                <Mail className="h-4 w-4 text-primary-foreground" />
+              <div className="flex h-10 w-10 shrink-0 items-center justify-center">
+                <Image src={smartMailLogo} alt="Smart Mail AI logo" className="h-9 w-9 object-contain" priority />
               </div>
               <span className="flex items-center text-base font-semibold">
                 <span className="text-foreground">Smart Mail </span>

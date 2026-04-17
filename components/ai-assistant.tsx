@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useRef, useEffect, useCallback } from "react"
+import Image from "next/image"
 import {
   Send,
   Sparkles,
@@ -53,6 +54,7 @@ import { useAiChat } from "@/lib/ai-chat-context"
 import type { ChatMessage } from "@/lib/mock-data"
 import { cn } from "@/lib/utils"
 import { toast } from "sonner"
+import smartMailLogo from "@/logo/Smart Mail Logo.png"
 
 const ACTION_ICONS: Record<string, typeof Mail> = {
   read_emails: MailOpen,
@@ -484,7 +486,7 @@ export function AiAssistant() {
             <div className="relative shrink-0">
               <div className="absolute inset-0 rounded-2xl bg-primary/20 opacity-50 blur-lg" />
               <div className="relative flex h-10 w-10 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 shadow-md shadow-primary/10 ring-1 ring-primary/15 sm:h-11 sm:w-11">
-                <Sparkles className="h-5 w-5 text-primary" />
+                <Image src={smartMailLogo} alt="Smart Mail Assistant" className="h-6 w-6 object-contain" />
               </div>
               <div className="absolute -bottom-0.5 -right-0.5 h-3.5 w-3.5 rounded-full border-2 border-background bg-emerald-500 shadow-md">
                 <div className="absolute inset-0 animate-ping rounded-full bg-emerald-500 opacity-40" />
@@ -492,7 +494,7 @@ export function AiAssistant() {
             </div>
             <div className="min-w-0">
               <h1 className="text-base font-extrabold tracking-tight text-foreground sm:text-lg">
-                AI Assistant
+                Smart Mail Assistant
               </h1>
               <p className="mt-0.5 text-[11px] font-medium text-muted-foreground/80">
                 Ask anything or take actions on your emails
@@ -606,7 +608,7 @@ export function AiAssistant() {
             <div className="group relative mb-4 sm:mb-7">
               <div className="absolute -inset-4 animate-gradient rounded-full bg-gradient-to-r from-primary/25 via-blue-500/10 to-violet-500/15 opacity-70 blur-3xl sm:-inset-6" />
               <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 shadow-xl shadow-primary/15 ring-1 ring-primary/15 transition-transform duration-500 group-hover:rotate-1 group-hover:scale-105 sm:h-[4.5rem] sm:w-[4.5rem]">
-                <Sparkles className="h-8 w-8 text-primary transition-transform duration-500 group-hover:scale-105 sm:h-9 sm:w-9" />
+                <Image src={smartMailLogo} alt="Smart Mail Assistant" className="h-10 w-10 object-contain transition-transform duration-500 group-hover:scale-105 sm:h-11 sm:w-11" />
               </div>
               <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-background bg-emerald-500 shadow-lg sm:h-6 sm:w-6">
                 <div className="h-1.5 w-1.5 rounded-full bg-white sm:h-2 sm:w-2" />

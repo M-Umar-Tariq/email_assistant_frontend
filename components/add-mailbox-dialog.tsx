@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Mail, Loader2, CheckCircle2 } from "lucide-react"
+import { Mail, Loader2, CheckCircle2, Eye, EyeOff } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -78,6 +78,7 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
   const [imapSecure, setImapSecure] = useState(true)
   const [smtpSecure, setSmtpSecure] = useState(true)
   const [password, setPassword] = useState("")
+  const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
   const [step, setStep] = useState<1 | 2>(1)
@@ -99,6 +100,7 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
     setImapSecure(true)
     setSmtpSecure(true)
     setPassword("")
+    setShowPassword(false)
     setError("")
     setStep(1)
     setCreatedMailboxId(null)
@@ -310,15 +312,26 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="mb-password" className="text-xs text-muted-foreground">Password</Label>
-                  <Input
-                    id="mb-password"
-                    type="password"
-                    autoComplete="current-password"
-                    placeholder="App password or mailbox password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    className="bg-background border-border text-foreground h-8 text-sm"
-                  />
+                  <div className="relative">
+                    <Input
+                      id="mb-password"
+                      type={showPassword ? "text" : "password"}
+                      autoComplete="current-password"
+                      placeholder="App password or mailbox password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      className="bg-background border-border text-foreground h-8 text-sm pr-9"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => setShowPassword((prev) => !prev)}
+                      className="absolute inset-y-0 right-0 flex h-full items-center px-2 text-muted-foreground hover:text-foreground"
+                      aria-label={showPassword ? "Hide password" : "Show password"}
+                      title={showPassword ? "Hide password" : "Show password"}
+                    >
+                      {showPassword ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                    </button>
+                  </div>
                   <p className="text-[10px] text-muted-foreground">Use app password if your provider has 2-step verification; otherwise mailbox password.</p>
                 </div>
                 <div className="space-y-1">
