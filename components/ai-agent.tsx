@@ -22,6 +22,7 @@ import {
   Zap,
   RotateCcw,
   Square,
+  Send,
 } from "lucide-react"
 import {
   agent as agentApi,
@@ -30,7 +31,6 @@ import {
   type AgentActionApi,
   type AgentSuggestion,
 } from "@/lib/api"
-import { useAuth } from "@/lib/auth-context"
 import { cn } from "@/lib/utils"
 
 /* ─── Types ──────────────────────────────────────────────────────────── */
@@ -45,15 +45,15 @@ type DisplayMessage = {
   actions?: AgentActionApi[]
 }
 
-type AgentState = "idle" | "listening" | "thinking" | "speaking" | "confirming"
+type AgentState = "idle" | "listening" | "transcribing" | "review" | "thinking" | "speaking" | "confirming"
 
 /* ─── Constants ──────────────────────────────────────────────────────── */
 
 const TLDS = "com|org|net|io|ai|co|edu|gov|dev|info|biz|me|uk|pk|in"
 const ORB_BARS = 64
-const SILENCE_TIMEOUT_MS = 1800
-const VOLUME_SILENCE_THRESHOLD = 12
-
+/** Whisper fallback: poll transcription while recording so live text updates (like Web Speech interim). */
+const WHISPER_INTERIM_MS = 1600
+const MIN_WHISPER_INTERIM_BYTES = 6000
 const ACTION_ICONS: Record<string, typeof Mail> = {
   read_emails: MailOpen,
   open_email: MailOpen,
@@ -110,11 +110,9 @@ function nextMsgId(): string {
 /* ─── Main Component ─────────────────────────────────────────────────── */
 
 export function AiAgent() {
-  const { user } = useAuth()
-  const firstName = user?.name?.split(" ")[0] ?? "there"
-
   const [state, setState] = useState<AgentState>("idle")
   const [liveText, setLiveText] = useState("")
+  const [draftText, setDraftText] = useState("")
   const [speakingText, setSpeakingText] = useState("")
   const [error, setError] = useState("")
   const [mailboxList, setMailboxList] = useState<MailboxApi[]>([])
@@ -127,9 +125,6 @@ export function AiAgent() {
   const [bars, setBars] = useState<number[]>(() => Array(ORB_BARS).fill(0))
   const [tick, setTick] = useState(0)
 
-  const greetedRef = useRef(false)
-  const firstNameRef = useRef(firstName)
-  firstNameRef.current = firstName
   const recognitionRef = useRef<any>(null)
   const audioRef = useRef<HTMLAudioElement | null>(null)
   const ttsGenerationRef = useRef(0)
@@ -153,6 +148,21 @@ export function AiAgent() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null)
   const recordedChunksRef = useRef<Blob[]>([])
   const useWhisperFallbackRef = useRef(false)
+  const voiceSessionActiveRef = useRef(false)
+  const voiceEpochRef = useRef(0)
+  const skipRecorderTranscribeRef = useRef(false)
+  const skipRecognitionResultRef = useRef(false)
+  const whisperInterimPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const whisperSttSessionRef = useRef(0)
+  const whisperInterimBusyRef = useRef(false)
+
+  const bumpWhisperSttSessionAndClearPoll = useCallback(() => {
+    if (whisperInterimPollRef.current) {
+      clearInterval(whisperInterimPollRef.current)
+      whisperInterimPollRef.current = null
+    }
+    whisperSttSessionRef.current += 1
+  }, [])
 
   const scrollToLatest = useCallback(() => {
     requestAnimationFrame(() => {
@@ -168,6 +178,7 @@ export function AiAgent() {
   }, [scrollToLatest])
 
   const resumeListening = useCallback(() => {
+    if (!voiceSessionActiveRef.current) return
     setTimeout(() => startListeningRef.current(), 300)
   }, [])
 
@@ -219,16 +230,6 @@ export function AiAgent() {
           newBars.push((value / 255) * bellCurve)
         }
         setBars(newBars)
-        const avg = dataArray.reduce((sum, v) => sum + v, 0) / binCount
-        if (avg > VOLUME_SILENCE_THRESHOLD) {
-          lastSpeechTimeRef.current = Date.now()
-        } else if (
-          recognizedTextRef.current.trim() &&
-          lastSpeechTimeRef.current > 0 &&
-          Date.now() - lastSpeechTimeRef.current > SILENCE_TIMEOUT_MS
-        ) {
-          recognitionRef.current?.stop()
-        }
         animFrameRef.current = requestAnimationFrame(animate)
       }
       animFrameRef.current = requestAnimationFrame(animate)
@@ -317,10 +318,12 @@ export function AiAgent() {
 
   /* ── Execute / reject actions ───────────────────────────────────── */
   const executeAction = useCallback(async (action: AgentActionApi) => {
+    const epochAtStart = voiceEpochRef.current
     const runGen = ttsGenerationRef.current
     setExecutingId(action.id)
     try {
       const result = await agentApi.execute(action)
+      if (epochAtStart !== voiceEpochRef.current) return
       const isCompleted = (result.status || "").toLowerCase() === "completed"
       const failedCount = Number((result as AgentActionApi & { failed?: number }).failed || 0)
       const markedCount = Number((result as AgentActionApi & { marked?: number }).marked || 1)
@@ -335,15 +338,18 @@ export function AiAgent() {
       window.dispatchEvent(new CustomEvent("email:action-executed"))
       await speak(doneMsg)
       if (runGen !== ttsGenerationRef.current) return
+      if (epochAtStart !== voiceEpochRef.current) return
       if (pendingActionsRef.current.length === 0) { setState("idle"); resumeListening() }
       else setState("confirming")
     } catch (e) {
+      if (epochAtStart !== voiceEpochRef.current) return
       setState("speaking")
       const detail = e instanceof Error && e.message ? e.message : "Sorry, I couldn't complete that action."
       const errMsg = `Sorry, I couldn't complete that action. ${detail}`
       addMessage("assistant", errMsg)
       await speak(errMsg)
       if (runGen !== ttsGenerationRef.current) return
+      if (epochAtStart !== voiceEpochRef.current) return
       setState("confirming")
     } finally { setExecutingId(null) }
   }, [speak, addMessage, resumeListening])
@@ -364,14 +370,18 @@ export function AiAgent() {
     if (isYes && pendingActionsRef.current.length > 0) {
       for (const action of [...pendingActionsRef.current]) await executeAction(action)
     } else if (isNo) {
+      const epochAtStart = voiceEpochRef.current
       const runGen = ttsGenerationRef.current
       for (const action of [...pendingActionsRef.current]) await rejectAction(action)
+      if (epochAtStart !== voiceEpochRef.current) return
       setState("speaking")
       addMessage("assistant", "Alright, cancelled.")
       await speak("Alright, cancelled.")
       if (runGen !== ttsGenerationRef.current) return
+      if (epochAtStart !== voiceEpochRef.current) return
       setState("idle"); resumeListening()
     } else {
+      const epochAtStart = voiceEpochRef.current
       addMessage("user", text)
       historyRef.current.push({ role: "user", content: text })
       sendingRef.current = true
@@ -381,6 +391,7 @@ export function AiAgent() {
         const recent = historyRef.current.slice(-10)
         const mbId = selectedMailboxRef.current === "all" ? undefined : selectedMailboxRef.current
         const res = await agentApi.chat(text.trim(), recent, mbId)
+        if (epochAtStart !== voiceEpochRef.current) return
         const reply = res.content || "I didn't catch that."
         historyRef.current.push({ role: "assistant", content: reply })
         const newActions = res.actions ?? []
@@ -391,12 +402,15 @@ export function AiAgent() {
         addMessage("assistant", reply, newActions.length ? newActions : undefined)
         setState("speaking"); await speak(reply)
         if (runGen !== ttsGenerationRef.current) return
+        if (epochAtStart !== voiceEpochRef.current) return
         if (pendingActionsRef.current.length > 0) { setState("confirming"); resumeListening() }
         else { setState("idle"); resumeListening() }
       } catch {
+        if (epochAtStart !== voiceEpochRef.current) return
         addMessage("assistant", "Something went wrong, try again.")
         setState("speaking"); await speak("Something went wrong, try again.")
         if (runGen !== ttsGenerationRef.current) return
+        if (epochAtStart !== voiceEpochRef.current) return
         if (pendingActionsRef.current.length > 0) { setState("confirming"); resumeListening() }
         else { setState("idle"); resumeListening() }
       } finally { sendingRef.current = false }
@@ -410,6 +424,7 @@ export function AiAgent() {
   const sendToAgent = useCallback(async (text: string) => {
     if (!text.trim() || sendingRef.current) return
     if (pendingActionsRef.current.length > 0) { await handleVoiceConfirmationRef.current(text); return }
+    const epochAtStart = voiceEpochRef.current
     sendingRef.current = true
     setLiveText(""); setState("thinking")
     const runGen = ttsGenerationRef.current
@@ -420,6 +435,7 @@ export function AiAgent() {
       const recent = historyRef.current.slice(-10)
       const mbId = selectedMailboxRef.current === "all" ? undefined : selectedMailboxRef.current
       const res = await agentApi.chat(text.trim(), recent, mbId)
+      if (epochAtStart !== voiceEpochRef.current) return
       const reply = res.content || "I didn't catch that, could you try again?"
       historyRef.current.push({ role: "assistant", content: reply })
       const actions = res.actions ?? []
@@ -427,20 +443,31 @@ export function AiAgent() {
       addMessage("assistant", reply, actions.length > 0 ? actions : undefined)
       setState("speaking"); await speak(reply)
       if (runGen !== ttsGenerationRef.current) return
+      if (epochAtStart !== voiceEpochRef.current) return
       if (actions.length > 0) {
         setState("speaking")
         const summary = actions.map(a => a.label).join(", ")
         await speak(`I need your confirmation to ${summary}. Say yes or no.`)
         if (runGen !== ttsGenerationRef.current) return
+        if (epochAtStart !== voiceEpochRef.current) return
         setState("confirming"); resumeListening()
       } else { setState("idle"); resumeListening() }
     } catch {
+      if (epochAtStart !== voiceEpochRef.current) return
       addMessage("assistant", "I couldn't process that, please try again.")
       setState("speaking"); await speak("I couldn't process that, please try again.")
       if (runGen !== ttsGenerationRef.current) return
+      if (epochAtStart !== voiceEpochRef.current) return
       setState("idle"); resumeListening()
     } finally { sendingRef.current = false }
   }, [speak, addMessage, scrollToLatest, resumeListening])
+
+  const submitVoiceDraft = useCallback(() => {
+    const t = draftText.trim()
+    if (!t) return
+    setDraftText("")
+    sendToAgent(t)
+  }, [draftText, sendToAgent])
 
   /* ── MediaRecorder fallback (Whisper STT) for non-Chrome browsers ── */
   const stopMediaRecorder = useCallback(() => {
@@ -450,7 +477,11 @@ export function AiAgent() {
   }, [])
 
   const startMediaRecorderFallback = useCallback(async () => {
-    setError(""); setLiveText("Recording..."); lastSpeechTimeRef.current = Date.now()
+    skipRecorderTranscribeRef.current = false
+    bumpWhisperSttSessionAndClearPoll()
+    setError("")
+    setLiveText("")
+    lastSpeechTimeRef.current = Date.now()
     recordedChunksRef.current = []
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true })
@@ -461,55 +492,76 @@ export function AiAgent() {
       const mr = mimeType ? new MediaRecorder(stream, { mimeType }) : new MediaRecorder(stream)
       mediaRecorderRef.current = mr
       mr.ondataavailable = (e) => { if (e.data.size > 0) recordedChunksRef.current.push(e.data) }
+      const sttSession = whisperSttSessionRef.current
       mr.onstop = async () => {
+        bumpWhisperSttSessionAndClearPoll()
         stream.getTracks().forEach(t => t.stop())
         stopAudioVisualization()
+        if (skipRecorderTranscribeRef.current) {
+          skipRecorderTranscribeRef.current = false
+          return
+        }
         const chunks = recordedChunksRef.current
+        const epochAtStart = voiceEpochRef.current
         if (chunks.length === 0) {
           if (pendingActionsRef.current.length > 0) setState("confirming"); else setState("idle")
           setLiveText("")
           return
         }
         const audioBlob = new Blob(chunks, { type: mr.mimeType || "audio/webm" })
-        setLiveText("Transcribing..."); setState("thinking")
+        setState("transcribing")
         try {
           const result = await agentApi.transcribe(audioBlob)
+          if (epochAtStart !== voiceEpochRef.current) return
           const text = normalizeSpeechText(result.text || "")
-          setLiveText("")
-          if (text.trim()) sendToAgent(text)
-          else {
+          if (text.trim()) {
+            setDraftText(text)
+            setLiveText("")
+            setState("review")
+          } else {
+            setError("No speech detected. Try again.")
             if (pendingActionsRef.current.length > 0) setState("confirming"); else setState("idle")
           }
         } catch {
+          if (epochAtStart !== voiceEpochRef.current) return
           setError("Transcription failed. Please try again.")
           if (pendingActionsRef.current.length > 0) setState("confirming"); else setState("idle")
-          setLiveText("")
         }
       }
       mr.start(250)
-      setState("listening"); startAudioVisualization()
-
-      const checkSilence = () => {
-        if (!analyserRef.current || !mediaRecorderRef.current) return
-        const dataArray = new Uint8Array(analyserRef.current.frequencyBinCount)
-        analyserRef.current.getByteFrequencyData(dataArray)
-        const avg = dataArray.reduce((sum, v) => sum + v, 0) / dataArray.length
-        if (avg > VOLUME_SILENCE_THRESHOLD) lastSpeechTimeRef.current = Date.now()
-        else if (lastSpeechTimeRef.current > 0 && Date.now() - lastSpeechTimeRef.current > SILENCE_TIMEOUT_MS + 500) {
-          stopMediaRecorder()
-          return
-        }
-        if (mediaRecorderRef.current?.state === "recording") requestAnimationFrame(checkSilence)
-      }
-      setTimeout(checkSilence, 500)
+      setState("listening")
+      startAudioVisualization()
+      whisperInterimPollRef.current = setInterval(() => {
+        void (async () => {
+          if (sttSession !== whisperSttSessionRef.current) return
+          if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== "recording") return
+          if (whisperInterimBusyRef.current) return
+          const chunks = [...recordedChunksRef.current]
+          if (chunks.length === 0) return
+          const interimBlob = new Blob(chunks, { type: mr.mimeType || "audio/webm" })
+          if (interimBlob.size < MIN_WHISPER_INTERIM_BYTES) return
+          whisperInterimBusyRef.current = true
+          try {
+            const result = await agentApi.transcribe(interimBlob)
+            if (sttSession !== whisperSttSessionRef.current) return
+            const text = normalizeSpeechText(result.text || "")
+            if (text.trim()) setLiveText(text)
+          } catch {
+            /* ignore interim errors */
+          } finally {
+            whisperInterimBusyRef.current = false
+          }
+        })()
+      }, WHISPER_INTERIM_MS)
     } catch {
       setError("Microphone access denied. Please allow mic permissions.")
       if (pendingActionsRef.current.length > 0) setState("confirming"); else setState("idle")
     }
-  }, [sendToAgent, startAudioVisualization, stopAudioVisualization, stopMediaRecorder])
+  }, [bumpWhisperSttSessionAndClearPoll, startAudioVisualization, stopAudioVisualization, stopMediaRecorder])
 
   /* ── Speech Recognition ─────────────────────────────────────────── */
   const startListening = useCallback(() => {
+    skipRecognitionResultRef.current = false
     setError(""); recognizedTextRef.current = ""; lastSpeechTimeRef.current = Date.now()
 
     if (useWhisperFallbackRef.current) {
@@ -534,13 +586,9 @@ export function AiAgent() {
         if (r.isFinal) final += r[0].transcript; else interim += r[0].transcript
       }
       const normalized = normalizeSpeechText(final + interim)
-      setLiveText(normalized); recognizedTextRef.current = normalized; lastSpeechTimeRef.current = Date.now()
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
-      if (normalized.trim()) {
-        silenceTimerRef.current = setTimeout(() => {
-          if (recognitionRef.current && recognizedTextRef.current.trim()) recognitionRef.current.stop()
-        }, SILENCE_TIMEOUT_MS)
-      }
+      setLiveText(normalized)
+      recognizedTextRef.current = normalized
+      lastSpeechTimeRef.current = Date.now()
     }
     recognition.onerror = (event: any) => {
       const errType = event?.error ?? "unknown"
@@ -567,13 +615,23 @@ export function AiAgent() {
       const captured = recognizedTextRef.current.trim()
       recognizedTextRef.current = ""
       if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null }
-      if (captured) sendToAgent(normalizeSpeechText(captured))
-      else if (pendingActionsRef.current.length > 0) setState("confirming")
-      else setState("idle")
+      if (skipRecognitionResultRef.current) {
+        skipRecognitionResultRef.current = false
+        return
+      }
+      if (captured) {
+        setDraftText(normalizeSpeechText(captured))
+        setLiveText("")
+        setState("review")
+      } else if (pendingActionsRef.current.length > 0) {
+        setState("confirming")
+      } else {
+        setState("idle")
+      }
     }
     recognitionRef.current = recognition; recognition.start()
     setState("listening"); setLiveText(""); startAudioVisualization()
-  }, [sendToAgent, startAudioVisualization, stopAudioVisualization, startMediaRecorderFallback])
+  }, [startAudioVisualization, stopAudioVisualization, startMediaRecorderFallback])
 
   startListeningRef.current = startListening
 
@@ -583,76 +641,61 @@ export function AiAgent() {
     agentApi.suggestions().then(setSuggestions).catch(() => {})
   }, [])
 
-  useEffect(() => {
-    if (greetedRef.current) return
-    greetedRef.current = true
-    const greeting = `Hey ${firstNameRef.current}! How can I help with your emails?`
-    const doGreet = async () => {
-      const gen = ttsGenerationRef.current
-      setState("speaking"); addMessage("assistant", greeting)
-      try {
-        const res = await agentApi.speak(greeting.slice(0, 500))
-        if (gen !== ttsGenerationRef.current) return
-        if (!res?.audio) throw new Error("No audio")
-        const bytes = Uint8Array.from(atob(res.audio), (c) => c.charCodeAt(0))
-        const blob = new Blob([bytes], { type: "audio/mp3" })
-        const url = URL.createObjectURL(blob)
-        ttsBlobUrlRef.current = url
-        const el = new Audio(url)
-        audioRef.current = el
-        await new Promise<void>((resolve) => {
-          let settled = false
-          const finish = () => {
-            if (settled) return; settled = true; ttsPlaybackResolveRef.current = null
-            if (ttsBlobUrlRef.current === url) { try { URL.revokeObjectURL(url) } catch { /* */ } ttsBlobUrlRef.current = null }
-            el.onended = null; el.onerror = null; stopTypewriter(); resolve()
-          }
-          ttsPlaybackResolveRef.current = resolve
-          el.onended = () => finish(); el.onerror = () => finish()
-          el.onplay = () => { if (gen === ttsGenerationRef.current) startTypewriter(greeting) }
-          void el.play().catch(() => finish())
-        })
-        if (gen !== ttsGenerationRef.current) return
-      } catch {
-        if (gen !== ttsGenerationRef.current) return
-        if ("speechSynthesis" in window) {
-          const u = new SpeechSynthesisUtterance(greeting); u.rate = 1.05
-          await new Promise<void>((resolve) => {
-            let settled = false
-            const finish = () => { if (settled) return; settled = true; ttsPlaybackResolveRef.current = null; stopTypewriter(); resolve() }
-            ttsPlaybackResolveRef.current = resolve
-            u.onstart = () => { if (gen === ttsGenerationRef.current) startTypewriter(greeting) }
-            u.onend = () => finish(); u.onerror = () => finish()
-            window.speechSynthesis.speak(u)
-          })
-        }
-      }
-      if (gen !== ttsGenerationRef.current) return
-      setState("idle"); setTimeout(() => startListeningRef.current(), 400)
-    }
-    const timer = setTimeout(doGreet, 300)
-    return () => clearTimeout(timer)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  /* ── Cancel ─────────────────────────────────────────────────────── */
-  const cancel = useCallback(() => {
+  /* ── Cancel / teardown ───────────────────────────────────────────── */
+  const teardownVoiceResources = useCallback(() => {
+    bumpWhisperSttSessionAndClearPoll()
     if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null }
-    recognizedTextRef.current = ""; sendingRef.current = false
-    recognitionRef.current?.stop(); recognitionRef.current = null
+    recognizedTextRef.current = ""
+    sendingRef.current = false
+    recognitionRef.current?.stop()
+    recognitionRef.current = null
     stopMediaRecorder()
-    haltTtsPlayback(); stopTypewriter(); stopAudioVisualization()
-    setLiveText(""); setState("idle")
-  }, [haltTtsPlayback, stopTypewriter, stopAudioVisualization, stopMediaRecorder])
+    haltTtsPlayback()
+    stopTypewriter()
+    stopAudioVisualization()
+  }, [bumpWhisperSttSessionAndClearPoll, haltTtsPlayback, stopTypewriter, stopAudioVisualization, stopMediaRecorder])
+
+  const cancel = useCallback(() => {
+    voiceEpochRef.current += 1
+    voiceSessionActiveRef.current = false
+    skipRecorderTranscribeRef.current = true
+    skipRecognitionResultRef.current = true
+    teardownVoiceResources()
+    setLiveText("")
+    setDraftText("")
+    setState("idle")
+  }, [teardownVoiceResources])
+
+  useEffect(() => () => {
+    voiceEpochRef.current += 1
+    voiceSessionActiveRef.current = false
+    skipRecorderTranscribeRef.current = true
+    skipRecognitionResultRef.current = true
+    teardownVoiceResources()
+  }, [teardownVoiceResources])
 
   const handleMicClick = useCallback(() => {
     if (state === "listening") {
       if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
       recognitionRef.current?.stop()
       stopMediaRecorder()
+      return
     }
-    else if (state === "idle" || state === "confirming") startListening()
-    else if (state === "speaking") cancel()
+    if (state === "idle" || state === "confirming") {
+      voiceSessionActiveRef.current = true
+      startListening()
+      return
+    }
+    if (state === "speaking") {
+      cancel()
+      return
+    }
+    if (state === "review") {
+      voiceSessionActiveRef.current = true
+      setDraftText("")
+      setError("")
+      startListening()
+    }
   }, [state, startListening, cancel, stopMediaRecorder])
 
   useEffect(() => {
@@ -666,12 +709,24 @@ export function AiAgent() {
   }, [handleMicClick])
 
   const handleSuggestionClick = useCallback((s: AgentSuggestion) => {
+    voiceSessionActiveRef.current = true
     sendToAgent(s.type === "chat" ? s.description : `${s.title}: ${s.description}`)
   }, [sendToAgent])
 
   const clearConversation = useCallback(() => {
-    setMessages([]); historyRef.current = []; setPendingActions([]); pendingActionsRef.current = []; setState("idle")
-  }, [])
+    voiceEpochRef.current += 1
+    voiceSessionActiveRef.current = false
+    skipRecorderTranscribeRef.current = true
+    skipRecognitionResultRef.current = true
+    teardownVoiceResources()
+    setMessages([])
+    historyRef.current = []
+    setPendingActions([])
+    pendingActionsRef.current = []
+    setState("idle")
+    setLiveText("")
+    setDraftText("")
+  }, [teardownVoiceResources])
 
   /* ── Animations ─────────────────────────────────────────────────── */
   useEffect(() => {
@@ -684,11 +739,11 @@ export function AiAgent() {
       }, 80)
       return () => clearInterval(interval)
     }
-    if (state !== "listening") setBars(Array(ORB_BARS).fill(0))
+    if (state !== "listening" && state !== "transcribing") setBars(Array(ORB_BARS).fill(0))
   }, [state])
 
   useEffect(() => {
-    if (state !== "thinking" && state !== "confirming") return
+    if (state !== "thinking" && state !== "confirming" && state !== "transcribing") return
     const interval = setInterval(() => setTick(t => t + 1), 60)
     return () => clearInterval(interval)
   }, [state])
@@ -698,19 +753,25 @@ export function AiAgent() {
     state === "listening" ? "from-blue-500 to-cyan-400" :
     state === "speaking" ? "from-emerald-400 to-teal-500" :
     state === "thinking" ? "from-amber-400 to-orange-500" :
+    state === "transcribing" ? "from-amber-400 to-orange-500" :
     state === "confirming" ? "from-amber-400 to-yellow-500" :
+    state === "review" ? "from-sky-500 to-blue-600" :
     "from-zinc-400/60 to-zinc-500/60 dark:from-zinc-500/40 dark:to-zinc-600/40"
 
   const stateGlow =
     state === "listening" ? "shadow-blue-500/25" :
     state === "speaking" ? "shadow-emerald-500/25" :
     state === "thinking" ? "shadow-amber-500/20" :
+    state === "transcribing" ? "shadow-amber-500/20" :
     state === "confirming" ? "shadow-amber-500/20" :
+    state === "review" ? "shadow-sky-500/20" :
     "shadow-transparent"
 
   const stateLabel =
     state === "idle" ? "Tap to speak" :
     state === "listening" ? "Listening..." :
+    state === "transcribing" ? "Transcribing..." :
+    state === "review" ? "Review & send" :
     state === "thinking" ? "Thinking..." :
     state === "speaking" ? "Speaking..." :
     "Confirm action"
@@ -764,7 +825,7 @@ export function AiAgent() {
       <main className="flex-1 flex flex-col items-center justify-center px-6 overflow-hidden relative">
 
         {/* Transcript / live text area — centered above orb */}
-        <div className="w-full max-w-lg mb-8 min-h-[80px] flex flex-col items-center justify-end text-center">
+        <div className="w-full max-w-lg mb-8 min-h-[80px] flex flex-col items-center justify-end text-center gap-2">
           {state === "listening" && liveText && (
             <p className="text-lg text-foreground/80 font-light leading-relaxed animate-in fade-in-0 duration-200">
               &ldquo;{liveText}&rdquo;
@@ -772,6 +833,17 @@ export function AiAgent() {
           )}
           {state === "listening" && !liveText && (
             <p className="text-sm text-muted-foreground/60 font-light">Listening...</p>
+          )}
+          {state === "transcribing" && (
+            <div className="flex items-center gap-2 text-muted-foreground/60">
+              <Loader2 className="h-4 w-4 animate-spin" />
+              <span className="text-sm font-light">Transcribing...</span>
+            </div>
+          )}
+          {state === "review" && draftText && (
+            <p className="text-lg text-foreground/80 font-light leading-relaxed max-w-md animate-in fade-in-0 duration-200">
+              &ldquo;{draftText}&rdquo;
+            </p>
           )}
           {state === "thinking" && (
             <div className="flex items-center gap-2 text-muted-foreground/60">
@@ -800,6 +872,8 @@ export function AiAgent() {
             state === "listening" ? "bg-blue-500/[0.06]" :
             state === "speaking" ? "bg-emerald-500/[0.06]" :
             state === "thinking" ? "bg-amber-500/[0.04]" :
+            state === "transcribing" ? "bg-amber-500/[0.05]" :
+            state === "review" ? "bg-sky-500/[0.06]" :
             state === "confirming" ? "bg-amber-500/[0.05]" : ""
           )} />
 
@@ -811,7 +885,7 @@ export function AiAgent() {
                 const radius = 85
                 const x = 100 + Math.cos(angle) * radius
                 const y = 100 + Math.sin(angle) * radius
-                const barHeight = state === "thinking"
+                const barHeight = state === "thinking" || state === "transcribing"
                   ? 4 + Math.sin(i * 0.5 + tick * 0.25) * 6
                   : state === "confirming"
                     ? 2 + Math.sin(i * 0.4 + tick * 0.15) * 4
@@ -825,7 +899,8 @@ export function AiAgent() {
                       "transition-all",
                       state === "listening" ? "stroke-blue-500/60 duration-75" :
                       state === "speaking" ? "stroke-emerald-500/50 duration-100" :
-                      state === "thinking" ? "stroke-amber-400/40 duration-150" :
+                      state === "thinking" || state === "transcribing" ? "stroke-amber-400/40 duration-150" :
+                      state === "review" ? "stroke-sky-400/35 duration-200" :
                       state === "confirming" ? "stroke-amber-400/30 duration-200" :
                       "stroke-muted-foreground/10 duration-500"
                     )}
@@ -839,7 +914,8 @@ export function AiAgent() {
           {/* Orb button */}
           <button
             onClick={handleMicClick}
-            disabled={state === "thinking"}
+            disabled={state === "thinking" || state === "transcribing"}
+            title={state === "review" ? "Record again" : undefined}
             className={cn(
               "relative z-10 flex items-center justify-center rounded-full w-32 h-32",
               "bg-gradient-to-br transition-all duration-500 ease-out",
@@ -850,6 +926,7 @@ export function AiAgent() {
               state === "listening" ? "shadow-2xl scale-105" :
               state === "speaking" ? "shadow-xl cursor-pointer" :
               state === "thinking" ? "shadow-md cursor-wait opacity-80" :
+              state === "transcribing" ? "shadow-md cursor-wait opacity-80" :
               "shadow-xl cursor-pointer hover:scale-105"
             )}
           >
@@ -866,7 +943,7 @@ export function AiAgent() {
               </div>
             ) : state === "speaking" ? (
               <Volume2 className="h-10 w-10 text-white drop-shadow-sm" />
-            ) : state === "thinking" ? (
+            ) : state === "thinking" || state === "transcribing" ? (
               <Loader2 className="h-10 w-10 text-white/90 animate-spin" />
             ) : (
               <Mic className="h-10 w-10 text-white drop-shadow-sm" />
@@ -879,20 +956,37 @@ export function AiAgent() {
           {stateLabel}
         </p>
 
-        {/* Stop / Keyboard hint */}
-        <div className="h-8 flex items-center">
-          {state === "speaking" && (
-            <button onClick={cancel} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
-              <Square className="h-3 w-3 fill-current" /> Stop
-            </button>
+        {/* Stop / Send / hints */}
+        <div className="min-h-8 flex flex-col items-center gap-2">
+          <div className="flex flex-wrap items-center justify-center gap-2">
+            {(state === "listening" || state === "speaking" || state === "thinking" || state === "confirming" || state === "transcribing" || state === "review") && (
+              <button type="button" onClick={cancel} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
+                <Square className="h-3 w-3 fill-current" /> Stop
+              </button>
+            )}
+            {state === "review" && draftText.trim() && (
+              <button
+                type="button"
+                onClick={submitVoiceDraft}
+                className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-colors shadow-sm"
+              >
+                <Send className="h-3.5 w-3.5" /> Send
+              </button>
+            )}
+          </div>
+          {state === "listening" && (
+            <span className="text-[11px] text-muted-foreground/50 text-center">Tap the orb or Stop when you are done speaking</span>
           )}
           {state === "idle" && (
             <span className="text-[11px] text-muted-foreground/40 flex items-center gap-1.5">
               Press <kbd className="px-1.5 py-0.5 rounded bg-muted/80 border border-border/50 text-[10px] font-mono">Space</kbd> to talk
             </span>
           )}
+          {state === "review" && draftText.trim() && (
+            <span className="text-[11px] text-muted-foreground/50 text-center">Or tap the orb to record again</span>
+          )}
           {state === "confirming" && (
-            <span className="text-[11px] text-muted-foreground/60">Say &ldquo;yes&rdquo; or &ldquo;no&rdquo;</span>
+            <span className="text-[11px] text-muted-foreground/60">Say &ldquo;yes&rdquo; or &ldquo;no&rdquo; — then review and Send</span>
           )}
         </div>
 
@@ -906,7 +1000,7 @@ export function AiAgent() {
         <div className="max-w-lg mx-auto px-5 pb-4 space-y-3">
 
           {/* Pending actions */}
-          {pendingActions.length > 0 && (state === "confirming" || state === "listening" || state === "idle") && (
+          {pendingActions.length > 0 && (state === "confirming" || state === "listening" || state === "idle" || state === "review" || state === "transcribing") && (
             <div className="space-y-2 animate-in slide-in-from-bottom-4 duration-300">
               <p className="text-[11px] text-amber-500/80 font-medium uppercase tracking-wide flex items-center gap-1.5">
                 <Sparkles className="h-3 w-3" /> Pending
