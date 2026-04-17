@@ -178,6 +178,8 @@ export const auth = {
     request<{ access_token: string; refresh_token: string }>("POST", "/auth/refresh/", {
       refresh_token: refreshToken,
     }),
+  /** Permanently delete the current user (MongoDB + Qdrant). Returns 204 with no body. */
+  deleteAccount: () => request<void>("POST", "/auth/delete-account/"),
 };
 
 // ── Mailboxes ───────────────────────────────────────────────────────────────
@@ -192,6 +194,8 @@ export type MailboxApi = {
   created_at?: string;
   total_emails?: number;
   unread?: number;
+  sync_total_fetched?: number;
+  sync_processed?: number;
 };
 
 export const mailboxes = {
@@ -217,7 +221,14 @@ export const mailboxes = {
     id: string,
     options?: { initial_sync?: "only_new" | "last_n" | "all"; limit?: number }
   ) =>
-    request<{ synced: number; total: number; total_fetched: number; flags_updated?: number }>(
+    request<{
+      synced: number;
+      total: number;
+      total_fetched: number;
+      flags_updated?: number;
+      thread_replies_added?: number;
+      skipped_reason?: string;
+    }>(
       "POST",
       `/mailboxes/${id}/sync/`,
       options ? { initial_sync: options.initial_sync, limit: options.limit } : undefined
@@ -236,6 +247,7 @@ export type EmailListApi = {
   from_email: string;
   to: { name?: string; email?: string }[];
   date: string;
+  original_date?: string | null;
   preview: string;
   read: boolean;
   starred: boolean;
@@ -308,7 +320,12 @@ export type FolderCountsApi = {
 };
 
 export const emails = {
-  stats: () => request<EmailStatsApi>("GET", "/emails/stats/"),
+  stats: (params?: { mailbox_id?: string }) => {
+    const sp = new URLSearchParams();
+    if (params?.mailbox_id) sp.set("mailbox_id", params.mailbox_id);
+    const q = sp.toString();
+    return request<EmailStatsApi>("GET", q ? `/emails/stats/?${q}` : "/emails/stats/");
+  },
   folderCounts: (params?: { mailbox_id?: string }) => {
     const sp = new URLSearchParams();
     if (params?.mailbox_id) sp.set("mailbox_id", params.mailbox_id);
@@ -321,7 +338,17 @@ export const emails = {
     const q = sp.toString();
     return request<UniqueSendersApi>("GET", `/emails/unique-senders/${q ? `?${q}` : ""}`);
   },
-  list: (params?: { mailbox_id?: string; category?: string; unread_only?: boolean; from_email?: string; label?: string; folder?: string; limit?: number; offset?: number }) => {
+  list: (params?: {
+    mailbox_id?: string;
+    category?: string;
+    unread_only?: boolean;
+    from_email?: string;
+    label?: string;
+    folder?: string;
+    limit?: number;
+    offset?: number;
+    inbox_preset?: string;
+  }) => {
     const sp = new URLSearchParams();
     if (params?.mailbox_id) sp.set("mailbox_id", params.mailbox_id);
     if (params?.category) sp.set("category", params.category);
@@ -329,6 +356,7 @@ export const emails = {
     if (params?.from_email) sp.set("from_email", params.from_email);
     if (params?.label) sp.set("label", params.label);
     if (params?.folder) sp.set("folder", params.folder);
+    if (params?.inbox_preset) sp.set("inbox_preset", params.inbox_preset);
     if (params?.limit != null) sp.set("limit", String(params.limit));
     if (params?.offset != null) sp.set("offset", String(params.offset));
     const q = sp.toString();
@@ -340,6 +368,9 @@ export const emails = {
   snooze: (id: string, hours: number) => request<EmailDetailApi>("POST", `/emails/${id}/snooze/`, { hours }),
   archive: (id: string) => request<{ status: string }>("POST", `/emails/${id}/archive/`),
   trash: (id: string) => request<{ status: string }>("POST", `/emails/${id}/trash/`),
+  /** Remove the email from this app permanently (local DB + vectors). */
+  deletePermanently: (id: string) =>
+    request<{ status: string }>("POST", `/emails/${id}/delete/`),
   spam: (id: string) => request<{ status: string }>("POST", `/emails/${id}/spam/`),
   deleteAll: () =>
     request<{ deleted: number }>("POST", "/emails/delete-all/"),

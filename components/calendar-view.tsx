@@ -26,7 +26,6 @@ import {
   Send,
   ChevronLeft,
   ChevronRight,
-  Plus,
 } from "lucide-react"
 import { toast } from "sonner"
 import {
@@ -773,16 +772,6 @@ export function CalendarView() {
               )}
             </div>
             <div className="flex shrink-0 items-center gap-1">
-              <Button
-                type="button"
-                variant="default"
-                size="icon"
-                className="h-9 w-9 rounded-xl shadow-sm"
-                aria-label="Add event"
-                onClick={() => window.dispatchEvent(new CustomEvent("calendar:openCreate"))}
-              >
-                <Plus className="h-4 w-4" />
-              </Button>
               <Button
                 type="button"
                 variant="outline"

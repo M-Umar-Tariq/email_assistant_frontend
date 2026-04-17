@@ -26,7 +26,6 @@ import {
   Clock,
   Trash2,
   Archive,
-  Pencil,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { ScrollArea } from "@/components/ui/scroll-area"
@@ -56,15 +55,27 @@ import { cn } from "@/lib/utils"
 import { toast } from "sonner"
 
 const ACTION_ICONS: Record<string, typeof Mail> = {
+  read_emails: MailOpen,
+  open_email: MailOpen,
+  open_latest_email: MailOpen,
+  search_emails: Search,
   send_email: Mail,
+  draft_email: Mail,
   draft_reply: Reply,
   send_reply: Reply,
+  reply_all: Reply,
   forward_email: Forward,
-  send_whatsapp: MessageSquare,
-  set_reminder: Clock,
   trash_email: Trash2,
+  move_to_trash: Trash2,
+  delete_email: Trash2,
   archive_email: Archive,
   mark_read: MailOpen,
+  mark_unread: Mail,
+  mark_all_read: MailOpen,
+  mark_all_unread: Mail,
+  snooze_email: Clock,
+  send_whatsapp: MessageSquare,
+  set_reminder: Clock,
 }
 
 function ChatMessageBubble({
@@ -142,7 +153,7 @@ function ChatMessageBubble({
               const isExecuted = action.status === "executed"
               const isRejected = action.status === "rejected"
               const isExecuting = executingId === action.id
-              const showButtons = !isExecuted && !isRejected && action.requires_approval
+              const showButtons = !isExecuted && !isRejected
 
               return (
                 <div
@@ -304,10 +315,10 @@ const CAPABILITIES = [
 
 export function AiAssistant() {
   const { user } = useAuth()
-  const { messages, setMessages, selectedMailbox, setSelectedMailbox } = useAiChat()
+  const { messages, setMessages, selectedMailbox, setSelectedMailbox, isQueryLoading, setIsQueryLoading } =
+    useAiChat()
   const [suggestedQuestions, setSuggestedQuestions] = useState<string[]>(FALLBACK_SUGGESTIONS)
   const [input, setInput] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
   const [mailboxList, setMailboxList] = useState<MailboxApi[]>([])
   const [executingId, setExecutingId] = useState<string | null>(null)
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -334,12 +345,12 @@ export function AiAssistant() {
     requestAnimationFrame(() => {
       scrollBottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
     })
-  }, [messages.length, isLoading])
+  }, [messages.length, isQueryLoading])
 
   const handleRefresh = () => {
     setMessages([])
     setInput("")
-    setIsLoading(false)
+    setIsQueryLoading(false)
     setExecutingId(null)
     aiApi.suggestedQuestions()
       .then((list) =>
@@ -355,7 +366,14 @@ export function AiAssistant() {
   const handleApproveAction = useCallback(async (action: AgentActionApi) => {
     setExecutingId(action.id)
     try {
-      await agentApi.execute(action)
+      const result = await agentApi.execute(action)
+      const isCompleted = (result.status || "").toLowerCase() === "completed"
+      const failedCount = Number((result as AgentActionApi & { failed?: number }).failed || 0)
+      const markedCount = Number((result as AgentActionApi & { marked?: number }).marked || 1)
+      if (!isCompleted || failedCount > 0 || markedCount <= 0) {
+        const detail = result.execution_details || "Action ran but no email matched the target."
+        throw new Error(detail)
+      }
       setMessages((prev) =>
         prev.map((msg) => ({
           ...msg,
@@ -365,8 +383,18 @@ export function AiAssistant() {
         }))
       )
       toast.success(`${action.label || action.type.replace(/_/g, " ")} executed!`)
-    } catch {
-      toast.error("Failed to execute action")
+      window.dispatchEvent(new CustomEvent("email:action-executed"))
+    } catch (e) {
+      const detail = e instanceof Error && e.message ? e.message : "Failed to execute action"
+      toast.error(detail)
+      setMessages((prev) =>
+        prev.map((msg) => ({
+          ...msg,
+          actions: msg.actions?.map((a) =>
+            a.id === action.id ? { ...a, status: "failed" } : a
+          ),
+        }))
+      )
     } finally {
       setExecutingId(null)
     }
@@ -398,7 +426,7 @@ export function AiAssistant() {
 
     setMessages((prev) => [...prev, userMessage])
     setInput("")
-    setIsLoading(true)
+    setIsQueryLoading(true)
 
     try {
       const mbId = selectedMailbox === "all" ? undefined : selectedMailbox
@@ -425,7 +453,7 @@ export function AiAssistant() {
         },
       ])
     } finally {
-      setIsLoading(false)
+      setIsQueryLoading(false)
       setTimeout(() => inputRef.current?.focus(), 100)
     }
   }
@@ -442,10 +470,6 @@ export function AiAssistant() {
     const el = e.target
     el.style.height = "auto"
     el.style.height = `${Math.min(el.scrollHeight, 120)}px`
-  }
-
-  const openCompose = () => {
-    window.dispatchEvent(new CustomEvent("compose:openWith", { detail: {} }))
   }
 
   return (
@@ -476,23 +500,13 @@ export function AiAssistant() {
             </div>
           </div>
           <div className="flex min-w-0 flex-wrap items-center justify-end gap-2 sm:shrink-0">
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              onClick={openCompose}
-              className="h-9 gap-1.5 rounded-xl border-primary/25 text-xs font-medium text-primary hover:bg-primary/10"
-            >
-              <Pencil className="h-3.5 w-3.5 shrink-0" />
-              Compose
-            </Button>
             {hasConversation && (
               <Button
                 type="button"
                 variant="ghost"
                 size="sm"
                 onClick={handleRefresh}
-                disabled={isLoading}
+                disabled={isQueryLoading}
                 className="h-9 gap-1.5 rounded-xl text-xs text-muted-foreground hover:bg-muted/60 hover:text-foreground"
               >
                 <MessageSquarePlus className="h-3.5 w-3.5 shrink-0" />
@@ -672,7 +686,7 @@ export function AiAssistant() {
                 executingId={executingId}
               />
             ))}
-            {isLoading && <TypingIndicator />}
+            {isQueryLoading && <TypingIndicator />}
             <div ref={scrollBottomRef} className="min-h-0 shrink-0" aria-hidden />
           </div>
         </ScrollArea>
@@ -694,14 +708,14 @@ export function AiAssistant() {
               value={input}
               onChange={handleTextareaInput}
               onKeyDown={handleKeyDown}
-              disabled={isLoading}
+              disabled={isQueryLoading}
               rows={1}
               className="flex-1 resize-none bg-transparent text-sm text-foreground placeholder:text-muted-foreground/60 focus:outline-none disabled:opacity-50 max-h-[120px] py-1 leading-relaxed"
             />
             <Button
               type="submit"
               size="icon"
-              disabled={!input.trim() || isLoading}
+              disabled={!input.trim() || isQueryLoading}
               className={cn(
                 "h-10 w-10 shrink-0 rounded-xl transition-all duration-300",
                 input.trim()

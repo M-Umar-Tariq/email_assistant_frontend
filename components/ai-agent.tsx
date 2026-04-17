@@ -55,15 +55,27 @@ const SILENCE_TIMEOUT_MS = 1800
 const VOLUME_SILENCE_THRESHOLD = 12
 
 const ACTION_ICONS: Record<string, typeof Mail> = {
+  read_emails: MailOpen,
+  open_email: MailOpen,
+  open_latest_email: MailOpen,
+  search_emails: Inbox,
   send_email: Mail,
+  draft_email: Mail,
   draft_reply: Reply,
   send_reply: Reply,
+  reply_all: Reply,
   forward_email: Forward,
-  send_whatsapp: MessageSquare,
-  set_reminder: Clock,
   trash_email: Trash2,
+  move_to_trash: Trash2,
+  delete_email: Trash2,
   archive_email: Archive,
   mark_read: MailOpen,
+  mark_unread: Mail,
+  mark_all_read: MailOpen,
+  mark_all_unread: Mail,
+  snooze_email: Clock,
+  send_whatsapp: MessageSquare,
+  set_reminder: Clock,
 }
 
 /* ─── Helpers ────────────────────────────────────────────────────────── */
@@ -308,19 +320,27 @@ export function AiAgent() {
     const runGen = ttsGenerationRef.current
     setExecutingId(action.id)
     try {
-      await agentApi.execute(action)
+      const result = await agentApi.execute(action)
+      const isCompleted = (result.status || "").toLowerCase() === "completed"
+      const failedCount = Number((result as AgentActionApi & { failed?: number }).failed || 0)
+      const markedCount = Number((result as AgentActionApi & { marked?: number }).marked || 1)
+      if (!isCompleted || failedCount > 0 || markedCount <= 0) {
+        throw new Error(result.execution_details || "Action ran but no email matched the target.")
+      }
       setPendingActions(prev => prev.filter(a => a.id !== action.id))
       pendingActionsRef.current = pendingActionsRef.current.filter(a => a.id !== action.id)
       setState("speaking")
       const doneMsg = `Done, ${action.label} has been executed.`
       addMessage("assistant", doneMsg)
+      window.dispatchEvent(new CustomEvent("email:action-executed"))
       await speak(doneMsg)
       if (runGen !== ttsGenerationRef.current) return
       if (pendingActionsRef.current.length === 0) { setState("idle"); resumeListening() }
       else setState("confirming")
-    } catch {
+    } catch (e) {
       setState("speaking")
-      const errMsg = "Sorry, I couldn't complete that action."
+      const detail = e instanceof Error && e.message ? e.message : "Sorry, I couldn't complete that action."
+      const errMsg = `Sorry, I couldn't complete that action. ${detail}`
       addMessage("assistant", errMsg)
       await speak(errMsg)
       if (runGen !== ttsGenerationRef.current) return
@@ -363,11 +383,12 @@ export function AiAgent() {
         const res = await agentApi.chat(text.trim(), recent, mbId)
         const reply = res.content || "I didn't catch that."
         historyRef.current.push({ role: "assistant", content: reply })
-        if (res.actions?.length > 0) {
-          pendingActionsRef.current = [...pendingActionsRef.current, ...res.actions]
+        const newActions = res.actions ?? []
+        if (newActions.length > 0) {
+          pendingActionsRef.current = [...pendingActionsRef.current, ...newActions]
           setPendingActions([...pendingActionsRef.current])
         }
-        addMessage("assistant", reply, res.actions?.length ? res.actions : undefined)
+        addMessage("assistant", reply, newActions.length ? newActions : undefined)
         setState("speaking"); await speak(reply)
         if (runGen !== ttsGenerationRef.current) return
         if (pendingActionsRef.current.length > 0) { setState("confirming"); resumeListening() }
@@ -401,7 +422,7 @@ export function AiAgent() {
       const res = await agentApi.chat(text.trim(), recent, mbId)
       const reply = res.content || "I didn't catch that, could you try again?"
       historyRef.current.push({ role: "assistant", content: reply })
-      const actions = res.actions?.filter(a => a.requires_approval) ?? []
+      const actions = res.actions ?? []
       if (actions.length > 0) { pendingActionsRef.current = actions; setPendingActions(actions) }
       addMessage("assistant", reply, actions.length > 0 ? actions : undefined)
       setState("speaking"); await speak(reply)

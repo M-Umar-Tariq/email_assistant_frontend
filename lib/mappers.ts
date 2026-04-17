@@ -76,6 +76,8 @@ export function mapMailboxApi(m: MailboxApi & { unread?: number }): Mailbox {
     lastSync: m.last_sync_at ? new Date(m.last_sync_at).toLocaleString() : "Never",
     totalEmails: m.total_emails,
     syncStatus: m.sync_status,
+    syncTotalFetched: m.sync_total_fetched ?? 0,
+    syncProcessed: m.sync_processed ?? 0,
   }
 }
 
@@ -88,6 +90,12 @@ export function mapEmailListApi(e: EmailListApi): Email {
     preview: sanitizeEmailPreview(e.preview || ""),
     body: "",
     date: typeof e.date === "string" ? e.date : new Date(e.date).toISOString(),
+    originalDate:
+      e.original_date == null || e.original_date === ""
+        ? null
+        : typeof e.original_date === "string"
+          ? e.original_date
+          : new Date(e.original_date as string | number | Date).toISOString(),
     read: e.read,
     starred: e.starred,
     labels: e.labels || [],

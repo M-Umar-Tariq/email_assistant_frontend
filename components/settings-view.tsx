@@ -74,6 +74,16 @@ import {
   TooltipTrigger,
 } from "@/components/ui/tooltip"
 import { toast } from "sonner"
+import {
+  AlertDialog,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+  AlertDialogTrigger,
+} from "@/components/ui/alert-dialog"
 import { Textarea } from "@/components/ui/textarea"
 import { Input } from "@/components/ui/input"
 import {
@@ -82,6 +92,7 @@ import {
   agent as agentApi,
   settingsApi,
   auth,
+  clearAuth,
   type AgentProfile,
   type SettingsApi,
   type AiLabelRule,
@@ -126,6 +137,9 @@ export function SettingsView({
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([])
   const [loading, setLoading] = useState(true)
   const [deletingAll, setDeletingAll] = useState(false)
+  const [deletingAccount, setDeletingAccount] = useState(false)
+  const [confirmDeleteEmailsOpen, setConfirmDeleteEmailsOpen] = useState(false)
+  const [confirmDeleteAccountOpen, setConfirmDeleteAccountOpen] = useState(false)
   const [profile, setProfile] = useState<AgentProfile | null>(null)
   const [profileLoading, setProfileLoading] = useState(false)
   const [profileBuilding, setProfileBuilding] = useState(false)
@@ -272,6 +286,26 @@ export function SettingsView({
     return () => window.removeEventListener("mailbox:updated", onMailboxUpdated)
   }, [])
 
+  useEffect(() => {
+    if (syncingIds.size === 0) return
+    const timer = window.setInterval(() => {
+      mailboxesApi
+        .list()
+        .then((mbs) => setMailboxes(mbs.map(mapMailboxApi)))
+        .catch(() => {})
+    }, 1500)
+    return () => window.clearInterval(timer)
+  }, [syncingIds])
+
+  const getSyncProgress = (mb: Mailbox) => {
+    const total = Math.max(0, mb.syncTotalFetched ?? 0)
+    const processed = Math.max(0, mb.syncProcessed ?? 0)
+    const safeProcessed = total > 0 ? Math.min(processed, total) : 0
+    const remaining = Math.max(0, total - safeProcessed)
+    const pct = total > 0 ? Math.round((safeProcessed / total) * 100) : 0
+    return { total, processed: safeProcessed, remaining, pct }
+  }
+
   const handleSync = (mb: Mailbox) => {
     setSyncingIds((prev) => new Set(prev).add(mb.id))
     mailboxesApi
@@ -312,7 +346,8 @@ export function SettingsView({
       optValue === "all"
         ? { initial_sync: "all" as const }
         : { initial_sync: "last_n" as const, limit: parseInt(optValue, 10) }
-    toast.info("Fetching more past emails in background…")
+    const loadingToastId = `fetch-more-${mb.id}`
+    toast.info("Fetching more past emails in background…", { id: loadingToastId, duration: 30000 })
     setSyncingIds((prev) => new Set(prev).add(mb.id))
     mailboxesApi
       .sync(mb.id, options)
@@ -324,10 +359,10 @@ export function SettingsView({
               : m
           )
         )
-        toast.success(`Done. Synced ${res.synced} new. Total: ${res.total} emails`)
+        toast.success(`Done. Synced ${res.synced} new. Total: ${res.total} emails`, { id: loadingToastId })
       })
       .catch((err: Error) => {
-        toast.error(err?.message ?? "Fetch more failed")
+        toast.error(err?.message ?? "Fetch more failed", { id: loadingToastId })
         setMailboxes((prev) =>
           prev.map((m) =>
             m.id === mb.id ? { ...m, synced: false, syncStatus: "error" } : m
@@ -335,6 +370,7 @@ export function SettingsView({
         )
       })
       .finally(() => {
+        toast.dismiss(loadingToastId)
         setSyncingIds((prev) => {
           const next = new Set(prev)
           next.delete(mb.id)
@@ -458,7 +494,10 @@ export function SettingsView({
                           </Button>
                         </div>
                       )}
-                      {mailboxes.map((mb, idx) => (
+                      {mailboxes.map((mb, idx) => {
+                        const isSyncing = syncingIds.has(mb.id) || mb.syncStatus === "syncing"
+                        const progress = getSyncProgress(mb)
+                        return (
                         <div
                           key={mb.id}
                           className="group relative flex flex-col gap-3 rounded-xl border border-border p-3 transition-all duration-200 hover:border-primary/20 hover:bg-accent/30 hover:shadow-md sm:flex-row sm:items-center sm:justify-between sm:p-4"
@@ -489,7 +528,29 @@ export function SettingsView({
                           <div className="flex w-full min-w-0 flex-wrap items-center gap-2 border-t border-border/50 pt-3 sm:w-auto sm:flex-nowrap sm:justify-end sm:border-t-0 sm:pt-0">
                             {/* Sync status */}
                             <div className="flex shrink-0 flex-wrap items-center gap-2 sm:mr-2">
-                              {mb.syncStatus === "synced" ? (
+                              {isSyncing ? (
+                                <div className="min-w-[220px] rounded-lg border border-primary/20 bg-primary/5 px-2.5 py-2">
+                                  <div className="mb-1 flex items-center justify-between gap-2">
+                                    <span className="text-[11px] font-medium text-primary">Fetching emails…</span>
+                                    <span className="text-[10px] tabular-nums text-primary/80">
+                                      {progress.total > 0
+                                        ? `${progress.processed}/${progress.total} (${progress.pct}%)`
+                                        : "Starting…"}
+                                    </span>
+                                  </div>
+                                  <div className="h-1.5 w-full overflow-hidden rounded-full bg-primary/15">
+                                    <div
+                                      className="h-full rounded-full bg-primary transition-all duration-300"
+                                      style={{ width: `${Math.max(8, progress.pct)}%` }}
+                                    />
+                                  </div>
+                                  {progress.total > 0 && (
+                                    <div className="mt-1 text-[10px] text-muted-foreground">
+                                      {progress.remaining.toLocaleString()} remaining
+                                    </div>
+                                  )}
+                                </div>
+                              ) : mb.syncStatus === "synced" ? (
                                 <div className="flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-2.5 py-1">
                                   <span className="relative flex h-2 w-2">
                                     <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75" />
@@ -520,10 +581,10 @@ export function SettingsView({
                                   variant="ghost"
                                   size="icon"
                                   className="h-8 w-8 text-muted-foreground hover:text-primary hover:bg-primary/10 transition-colors"
-                                  disabled={syncingIds.has(mb.id)}
+                                  disabled={isSyncing}
                                   onClick={() => handleSync(mb)}
                                 >
-                                  <RefreshCw className={`h-4 w-4 ${syncingIds.has(mb.id) ? "animate-spin" : ""}`} />
+                                  <RefreshCw className={`h-4 w-4 ${isSyncing ? "animate-spin" : ""}`} />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent side="bottom"><p>Sync now</p></TooltipContent>
@@ -546,6 +607,7 @@ export function SettingsView({
                                   <DropdownMenuItem
                                     key={opt.value}
                                     className="text-foreground cursor-pointer"
+                                    disabled={isSyncing}
                                     onClick={() => handleFetchMore(mb, opt.value)}
                                   >
                                     {opt.label}
@@ -564,7 +626,7 @@ export function SettingsView({
                             </Tooltip>
                           </div>
                         </div>
-                      ))}
+                      )})}
                     </CardContent>
                   </Card>
                 </TabsContent>
@@ -1526,31 +1588,75 @@ export function SettingsView({
                             </p>
                           </div>
                         </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          className="w-full shrink-0 border-red-500/30 text-red-600 transition-all hover:border-red-500/50 hover:bg-red-500/10 dark:text-red-400 sm:w-auto"
-                          disabled={deletingAll}
-                          onClick={() => {
-                            if (!window.confirm("Delete all emails from this dashboard? This cannot be undone. Mailboxes will remain connected.")) return
-                            setDeletingAll(true)
-                            emailsApi
-                              .deleteAll()
-                              .then((res) => {
-                                toast.success(`Deleted ${res.deleted} email(s).`)
-                                setMailboxes((prev) => prev.map((m) => ({ ...m, totalEmails: 0 })))
-                              })
-                              .catch((err: Error) => toast.error(err?.message ?? "Failed to delete emails"))
-                              .finally(() => setDeletingAll(false))
+                        <AlertDialog
+                          open={confirmDeleteEmailsOpen}
+                          onOpenChange={(open) => {
+                            if (!deletingAll) setConfirmDeleteEmailsOpen(open)
                           }}
                         >
-                          {deletingAll ? (
-                            <span className="flex items-center gap-2">
-                              <RefreshCw className="h-3.5 w-3.5 animate-spin" />
-                              Deleting...
-                            </span>
-                          ) : "Delete All Emails"}
-                        </Button>
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full shrink-0 border-red-500/30 text-red-600 transition-all hover:border-red-500/50 hover:bg-red-500/10 dark:text-red-400 sm:w-auto"
+                              disabled={deletingAll}
+                            >
+                              Delete All Emails
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent className="gap-0 overflow-hidden border-red-500/20 p-0 sm:max-w-md">
+                            <div className="border-b border-border/80 bg-muted/30 px-6 py-4">
+                              <div className="flex gap-4">
+                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-500/15 ring-1 ring-red-500/20">
+                                  <Trash2 className="h-5 w-5 text-red-600 dark:text-red-400" aria-hidden />
+                                </div>
+                                <AlertDialogHeader className="flex-1 space-y-1.5 text-left">
+                                  <AlertDialogTitle className="text-base font-semibold leading-snug">
+                                    Delete all synced emails?
+                                  </AlertDialogTitle>
+                                  <AlertDialogDescription className="text-sm leading-relaxed text-muted-foreground">
+                                    This removes every email from your dashboard and cannot be undone. Your connected
+                                    mailboxes stay linked—only local copies here are cleared.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                              </div>
+                            </div>
+                            <AlertDialogFooter className="gap-2 border-t border-border/80 bg-card/50 px-6 py-4 sm:gap-2">
+                              <AlertDialogCancel
+                                className="mt-0 border-border sm:min-w-[100px]"
+                                disabled={deletingAll}
+                              >
+                                Cancel
+                              </AlertDialogCancel>
+                              <Button
+                                variant="destructive"
+                                className="gap-2 sm:min-w-[140px]"
+                                disabled={deletingAll}
+                                onClick={() => {
+                                  setDeletingAll(true)
+                                  emailsApi
+                                    .deleteAll()
+                                    .then((res) => {
+                                      toast.success(`Deleted ${res.deleted} email(s).`)
+                                      setMailboxes((prev) => prev.map((m) => ({ ...m, totalEmails: 0 })))
+                                      setConfirmDeleteEmailsOpen(false)
+                                    })
+                                    .catch((err: Error) => toast.error(err?.message ?? "Failed to delete emails"))
+                                    .finally(() => setDeletingAll(false))
+                                }}
+                              >
+                                {deletingAll ? (
+                                  <span className="flex items-center gap-2">
+                                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                    Deleting…
+                                  </span>
+                                ) : (
+                                  "Delete all emails"
+                                )}
+                              </Button>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
 
                       <div className="flex min-w-0 flex-col gap-3 rounded-xl border border-red-500/10 p-4 transition-colors hover:bg-red-500/5 sm:flex-row sm:items-center sm:justify-between">
@@ -1565,9 +1671,78 @@ export function SettingsView({
                             </p>
                           </div>
                         </div>
-                        <Button variant="outline" size="sm" className="w-full shrink-0 border-red-500/30 text-red-600 transition-all hover:border-red-500/50 hover:bg-red-500/10 dark:text-red-400 sm:w-auto">
-                          Delete Account
-                        </Button>
+                        <AlertDialog
+                          open={confirmDeleteAccountOpen}
+                          onOpenChange={(open) => {
+                            if (!deletingAccount) setConfirmDeleteAccountOpen(open)
+                          }}
+                        >
+                          <AlertDialogTrigger asChild>
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              className="w-full shrink-0 border-red-500/30 text-red-600 transition-all hover:border-red-500/50 hover:bg-red-500/10 dark:text-red-400 sm:w-auto"
+                              disabled={deletingAccount}
+                            >
+                              Delete Account
+                            </Button>
+                          </AlertDialogTrigger>
+                          <AlertDialogContent className="gap-0 overflow-hidden border-red-500/20 p-0 sm:max-w-md">
+                            <div className="border-b border-border/80 bg-muted/30 px-6 py-4">
+                              <div className="flex gap-4">
+                                <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-xl bg-red-500/15 ring-1 ring-red-500/20">
+                                  <XCircle className="h-5 w-5 text-red-600 dark:text-red-400" aria-hidden />
+                                </div>
+                                <AlertDialogHeader className="flex-1 space-y-1.5 text-left">
+                                  <AlertDialogTitle className="text-base font-semibold leading-snug">
+                                    Permanently delete your account?
+                                  </AlertDialogTitle>
+                                  <AlertDialogDescription className="text-sm leading-relaxed text-muted-foreground">
+                                    Your Smart Mail AI Beta account and all associated data—including mailboxes,
+                                    settings, and synced content—will be permanently removed. This cannot be undone.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                              </div>
+                            </div>
+                            <AlertDialogFooter className="gap-2 border-t border-border/80 bg-card/50 px-6 py-4 sm:gap-2">
+                              <AlertDialogCancel
+                                className="mt-0 border-border sm:min-w-[100px]"
+                                disabled={deletingAccount}
+                              >
+                                Cancel
+                              </AlertDialogCancel>
+                              <Button
+                                variant="destructive"
+                                className="gap-2 sm:min-w-[160px]"
+                                disabled={deletingAccount}
+                                onClick={() => {
+                                  setDeletingAccount(true)
+                                  auth
+                                    .deleteAccount()
+                                    .then(() => {
+                                      clearAuth()
+                                      toast.success("Your account has been deleted.")
+                                      setConfirmDeleteAccountOpen(false)
+                                      window.dispatchEvent(new CustomEvent("auth:session-expired"))
+                                    })
+                                    .catch((err: Error) =>
+                                      toast.error(err?.message ?? "Failed to delete account")
+                                    )
+                                    .finally(() => setDeletingAccount(false))
+                                }}
+                              >
+                                {deletingAccount ? (
+                                  <span className="flex items-center gap-2">
+                                    <RefreshCw className="h-3.5 w-3.5 animate-spin" />
+                                    Deleting…
+                                  </span>
+                                ) : (
+                                  "Yes, delete my account"
+                                )}
+                              </Button>
+                            </AlertDialogFooter>
+                          </AlertDialogContent>
+                        </AlertDialog>
                       </div>
                     </CardContent>
                   </Card>

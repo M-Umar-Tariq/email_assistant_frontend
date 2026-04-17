@@ -7,6 +7,8 @@ export type Email = {
   body: string
   bodyIsHtml?: boolean
   date: string
+  /** First received time (UTC) when thread activity bumps `date` — matches API `original_date`. */
+  originalDate?: string | null
   read: boolean
   starred: boolean
   labels: string[]
@@ -94,6 +96,9 @@ export type Mailbox = {
   totalEmails?: number
   /** "synced" | "error" | "pending" - so UI can show red only when error */
   syncStatus?: string
+  /** Live sync progress for current mailbox fetch job. */
+  syncTotalFetched?: number
+  syncProcessed?: number
 }
 
 export type BriefingItem = {

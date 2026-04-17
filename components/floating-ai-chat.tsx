@@ -270,10 +270,10 @@ interface FloatingAiChatProps {
 
 export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAiChatProps) {
   const { user } = useAuth()
-  const { messages, setMessages, selectedMailbox, setSelectedMailbox } = useAiChat()
+  const { messages, setMessages, selectedMailbox, setSelectedMailbox, isQueryLoading, setIsQueryLoading } =
+    useAiChat()
   const [isOpen, setIsOpen] = useState(false)
   const [input, setInput] = useState("")
-  const [isLoading, setIsLoading] = useState(false)
   const [mailboxList, setMailboxList] = useState<MailboxApi[]>([])
   const [executingId, setExecutingId] = useState<string | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
@@ -294,7 +294,7 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
     requestAnimationFrame(() => {
       scrollBottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" })
     })
-  }, [messages.length, isLoading, isOpen])
+  }, [messages.length, isQueryLoading, isOpen])
 
   useEffect(() => {
     if (isOpen) {
@@ -320,7 +320,7 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
   const handleRefresh = () => {
     setMessages([])
     setInput("")
-    setIsLoading(false)
+    setIsQueryLoading(false)
     setExecutingId(null)
   }
 
@@ -370,7 +370,7 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
 
     setMessages((prev) => [...prev, userMessage])
     setInput("")
-    setIsLoading(true)
+    setIsQueryLoading(true)
 
     try {
       const mbId = selectedMailbox === "all" ? undefined : selectedMailbox
@@ -398,7 +398,7 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
         },
       ])
     } finally {
-      setIsLoading(false)
+      setIsQueryLoading(false)
       setTimeout(() => inputRef.current?.focus(), 100)
     }
   }
@@ -467,7 +467,7 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
               {hasConversation && (
                 <button
                   onClick={handleRefresh}
-                  disabled={isLoading}
+                  disabled={isQueryLoading}
                   className="flex h-7 w-7 items-center justify-center rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors disabled:opacity-50"
                   title="New chat"
                 >
@@ -606,7 +606,7 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
                   executingId={executingId}
                 />
               ))}
-              {isLoading && <FloatingTypingIndicator />}
+              {isQueryLoading && <FloatingTypingIndicator />}
               <div ref={scrollBottomRef} className="min-h-0 shrink-0" aria-hidden />
             </div>
           </ScrollArea>
@@ -628,14 +628,14 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
                 value={input}
                 onChange={handleTextareaInput}
                 onKeyDown={handleKeyDown}
-                disabled={isLoading}
+                disabled={isQueryLoading}
                 rows={1}
                 className="flex-1 resize-none bg-transparent text-[13px] text-foreground placeholder:text-muted-foreground/50 focus:outline-none disabled:opacity-50 max-h-[100px] py-0.5 leading-relaxed"
               />
               <Button
                 type="submit"
                 size="icon"
-                disabled={!input.trim() || isLoading}
+                disabled={!input.trim() || isQueryLoading}
                 className={cn(
                   "h-8 w-8 shrink-0 rounded-lg transition-all duration-300",
                   input.trim()
@@ -681,7 +681,11 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
           "transition-all duration-300 hover:scale-110 active:scale-95",
           "ring-2 ring-primary/20 ring-offset-2 ring-offset-background"
         )}>
-          <Sparkles className="h-6 w-6 text-primary-foreground transition-transform duration-300 group-hover:rotate-12 group-hover:scale-110" />
+          {isQueryLoading ? (
+            <Loader2 className="h-6 w-6 text-primary-foreground animate-spin" />
+          ) : (
+            <Sparkles className="h-6 w-6 text-primary-foreground transition-transform duration-300 group-hover:rotate-12 group-hover:scale-110" />
+          )}
         </div>
 
         {/* Unread badge */}

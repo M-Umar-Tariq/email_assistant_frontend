@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback, useEffect, useRef } from "react"
+import { useState, useCallback, useEffect, useRef, type MouseEvent } from "react"
 import {
   Search,
   Star,
@@ -32,11 +32,14 @@ import {
   Users,
   CreditCard,
   CheckCircle2,
+  CheckSquare,
   RefreshCw,
   Square,
+  StarOff,
   Zap,
   Inbox,
   MailOpen,
+  MailCheck,
   MailX,
   FileText,
   Download,
@@ -47,6 +50,7 @@ import {
 import { toast } from "sonner"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
+import { Checkbox } from "@/components/ui/checkbox"
 import { Badge } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Separator } from "@/components/ui/separator"
@@ -60,10 +64,34 @@ import {
   DropdownMenuItem,
   DropdownMenuLabel,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu"
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog"
-import { emails as emailsApi, mailboxes as mailboxesApi, compose as composeApi, ai as aiApi, settingsApi, getStoredUser, calendar as calendarApi, type UniqueSendersApi, type SettingsApi } from "@/lib/api"
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog"
+import {
+  emails as emailsApi,
+  mailboxes as mailboxesApi,
+  compose as composeApi,
+  ai as aiApi,
+  settingsApi,
+  getStoredUser,
+  calendar as calendarApi,
+  type EmailStatsApi,
+  type UniqueSendersApi,
+  type SettingsApi,
+} from "@/lib/api"
 import { mapEmailListApi, mapEmailDetailApi, mapMailboxApi } from "@/lib/mappers"
 import type { Email, EmailCategory, Mailbox, SchedulingInfo } from "@/lib/mock-data"
 import { format } from "date-fns"
@@ -207,20 +235,37 @@ function SentimentDot({ score }: { score?: number }) {
   return <div className={`h-1.5 w-1.5 rounded-full ${color}`} title={`Sentiment: ${score > 0 ? "+" : ""}${score.toFixed(1)}`} />
 }
 
+const INBOX_ROW_ACTION = "[data-inbox-row-action]"
+
 function EmailListItem({
   email,
   mailboxes,
   isSelected,
+  isChecked,
+  onToggleChecked,
+  onMarkRead,
+  onMarkUnread,
+  onStar,
+  onDelete,
   onSelect,
   showMailbox = false,
   index = 0,
+  deleteTooltip = "Delete",
 }: {
   email: Email
   mailboxes: Mailbox[]
   isSelected: boolean
+  isChecked: boolean
+  onToggleChecked: () => void
+  onMarkRead: () => void
+  onMarkUnread: () => void
+  onStar: () => void
+  onDelete: () => void
   onSelect: () => void
   showMailbox?: boolean
   index?: number
+  /** Toolbar + row delete control (e.g. "Delete forever" in Trash). */
+  deleteTooltip?: string
 }) {
   const mb = showMailbox ? mailboxes.find((m) => m.id === email.mailbox) : null
   const mbColor = getMailboxColor(email.mailbox, mailboxes)
@@ -230,26 +275,42 @@ function EmailListItem({
       ? email.date
       : email.repliedAt ?? ""
 
+  const handleRowClick = (e: MouseEvent) => {
+    if ((e.target as HTMLElement).closest(INBOX_ROW_ACTION)) return
+    onSelect()
+  }
+
   return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={`email-list-item group relative grid w-full min-w-0 max-w-full grid-cols-[auto_minmax(0,1fr)_auto] items-start gap-2 px-3 py-2.5 text-left transition-all duration-300 rounded-xl border shadow-sm overflow-hidden sm:gap-3 sm:px-4 sm:py-3.5 ${
+    <div
+      onClick={handleRowClick}
+      className={`email-list-item group relative grid w-full min-w-0 max-w-full cursor-pointer grid-cols-[auto_auto_minmax(0,1fr)_auto] items-start gap-2 px-3 py-2.5 text-left transition-all duration-300 rounded-xl border shadow-sm overflow-hidden sm:gap-3 sm:px-4 sm:py-3.5 ${
         isSelected
           ? "bg-primary/[0.07] border-primary/35 shadow-[0_6px_24px_hsl(var(--primary)/0.08)]"
           : email.read
             ? "bg-card/50 border-border/50 hover:bg-muted/30 hover:border-border/80 hover:shadow-md"
             : "bg-primary/[0.04] border-primary/20 hover:bg-primary/[0.08] hover:border-primary/35 hover:shadow-md"
-      }`}
+      } ${isChecked ? "ring-1 ring-primary/25" : ""}`}
       style={{ animationDelay: `${index * 30}ms` }}
     >
-      {!email.read && (
-        <div className="absolute left-2.5 top-3">
-          <div className="h-2 w-2 rounded-full bg-primary animate-pulse-dot" />
-        </div>
-      )}
+      <div
+        data-inbox-row-action
+        className="flex shrink-0 items-start pt-1 sm:pt-1.5"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <Checkbox
+          checked={isChecked}
+          onCheckedChange={() => onToggleChecked()}
+          aria-label={isChecked ? "Deselect email" : "Select email"}
+          className="border-muted-foreground/40 data-[state=checked]:border-primary"
+        />
+      </div>
 
       <div className="relative shrink-0">
+        {!email.read && (
+          <div className="absolute -left-0.5 top-2 z-[1] sm:top-2.5">
+            <div className="h-2 w-2 rounded-full bg-primary animate-pulse-dot" />
+          </div>
+        )}
         <Avatar className="mt-0.5 h-9 w-9 shrink-0 ring-2 ring-transparent transition-all duration-200 group-hover:ring-primary/10 sm:h-10 sm:w-10">
           <AvatarFallback
             className="text-xs font-semibold"
@@ -305,7 +366,6 @@ function EmailListItem({
 
           <div className="mt-1.5 flex flex-wrap items-center gap-1 sm:mt-2 sm:gap-1.5">
           <SentimentDot score={email.sentimentScore} />
-          {email.starred && <Star className="h-3 w-3 text-amber-400 fill-amber-400 drop-shadow-[0_0_3px_rgba(251,191,36,0.4)]" />}
           {email.hasAttachment && (
             <span className="inline-flex items-center gap-1 text-[10px] text-muted-foreground/70 bg-muted/60 px-1.5 py-0.5 rounded-md">
               <Paperclip className="h-2.5 w-2.5" />
@@ -365,8 +425,99 @@ function EmailListItem({
         </div>
       </div>
 
-      {/* Received date — dedicated grid column so it is never pushed off-screen by long subject/preview */}
-      <div className="flex w-[4.5rem] shrink-0 flex-col items-end justify-start gap-0.5 border-l border-border/50 pl-1.5 text-right sm:w-[6.75rem] sm:pl-3">
+      {/* Read/unread, star, delete, and received date — dedicated grid column */}
+      <div className="flex w-[7.5rem] shrink-0 flex-col items-end justify-start gap-1 border-l border-border/50 pl-1.5 text-right sm:w-[8.5rem] sm:pl-3">
+        <div className="flex flex-wrap items-center justify-end gap-0.5" data-inbox-row-action onClick={(e) => e.stopPropagation()}>
+          {!email.read ? (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 rounded-md text-muted-foreground hover:bg-primary/10 hover:text-primary sm:h-8 sm:w-8"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onMarkRead()
+                  }}
+                  aria-label="Mark as read"
+                >
+                  <MailCheck className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">Mark as read</p>
+              </TooltipContent>
+            </Tooltip>
+          ) : (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 rounded-md text-muted-foreground hover:bg-muted/80 hover:text-foreground sm:h-8 sm:w-8"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onMarkUnread()
+                  }}
+                  aria-label="Mark as unread"
+                >
+                  <Mail className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">Mark as unread</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0 rounded-md text-muted-foreground hover:bg-muted/80 hover:text-amber-500 sm:h-8 sm:w-8"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onStar()
+                }}
+                aria-label={email.starred ? "Remove star" : "Star"}
+              >
+                <Star
+                  className={`h-3.5 w-3.5 sm:h-4 sm:w-4 transition-all duration-200 ${
+                    email.starred
+                      ? "fill-amber-400 text-amber-400 drop-shadow-[0_0_4px_rgba(251,191,36,0.45)]"
+                      : ""
+                  }`}
+                />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p className="text-xs">{email.starred ? "Remove star" : "Star"}</p>
+            </TooltipContent>
+          </Tooltip>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon"
+                className="h-7 w-7 shrink-0 rounded-md text-muted-foreground hover:bg-destructive/10 hover:text-destructive sm:h-8 sm:w-8"
+                onClick={(e) => {
+                  e.stopPropagation()
+                  onDelete()
+                }}
+                aria-label={deleteTooltip}
+              >
+                <Trash2 className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p className="text-xs">{deleteTooltip}</p>
+            </TooltipContent>
+          </Tooltip>
+        </div>
         <div className="flex items-center justify-end gap-0.5">
           <span className="text-[11px] font-semibold tabular-nums text-foreground">
             {receivedAt ? formatTime(receivedAt) : "—"}
@@ -387,7 +538,7 @@ function EmailListItem({
           {receivedAt ? `Received ${formatReceivedDate(receivedAt)}` : "No date"}
         </span>
       </div>
-    </button>
+    </div>
   )
 }
 
@@ -1320,6 +1471,8 @@ function EmailDetail({
   onSpam,
   onUpdate,
   onEmailRefreshed,
+  folder = "inbox",
+  onPermanentDelete,
 }: {
   email: Email
   mailboxes: Mailbox[]
@@ -1332,6 +1485,9 @@ function EmailDetail({
   onSpam: (emailId: string) => void
   onUpdate: (emailId: string, data: { read?: boolean; starred?: boolean; labels?: string[] }) => void
   onEmailRefreshed?: (email: Email) => void
+  /** Current folder; in Trash, delete moves to permanent delete instead of trash. */
+  folder?: string
+  onPermanentDelete?: (emailId: string) => void
 }) {
   const [showSnooze, setShowSnooze] = useState(false)
   const [showTags, setShowTags] = useState(false)
@@ -1339,6 +1495,8 @@ function EmailDetail({
   const [showAiChat, setShowAiChat] = useState(false)
   const [composeMode, setComposeMode] = useState<ComposeMode | null>(null)
   const [sentReply, setSentReply] = useState<string | null>(null)
+  const [permanentDeleteOpen, setPermanentDeleteOpen] = useState(false)
+  const inTrashFolder = folder === "trash" && Boolean(onPermanentDelete)
 
   useEffect(() => {
     if (initialComposeMode === "reply") {
@@ -1367,7 +1525,10 @@ function EmailDetail({
     switch (action) {
       case "markUnread": handleMarkUnread(); break
       case "spam": onSpam(email.id); break
-      case "delete": onTrash(email.id); break
+      case "delete":
+        if (inTrashFolder && onPermanentDelete) setPermanentDeleteOpen(true)
+        else onTrash(email.id)
+        break
       case "reply": setComposeMode("reply"); break
       case "forward": setComposeMode("forward"); break
       case "archive": onArchive(email.id); break
@@ -1453,20 +1614,22 @@ function EmailDetail({
 
           <Separator orientation="vertical" className="mx-0.5 hidden h-5 sm:mx-1.5 sm:block" />
 
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="h-10 w-10 min-h-11 min-w-11 rounded-lg text-muted-foreground transition-all duration-200 hover:bg-muted/60 hover:text-foreground sm:h-8 sm:w-8 sm:min-h-0 sm:min-w-0"
-                onClick={() => onArchive(email.id)}
-                aria-label="Archive"
-              >
-                <Archive className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom"><p className="text-xs">Archive</p></TooltipContent>
-          </Tooltip>
+          {!inTrashFolder && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-10 min-h-11 min-w-11 rounded-lg text-muted-foreground transition-all duration-200 hover:bg-muted/60 hover:text-foreground sm:h-8 sm:w-8 sm:min-h-0 sm:min-w-0"
+                  onClick={() => onArchive(email.id)}
+                  aria-label="Archive"
+                >
+                  <Archive className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom"><p className="text-xs">Archive</p></TooltipContent>
+            </Tooltip>
+          )}
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -1474,13 +1637,19 @@ function EmailDetail({
                 variant="ghost"
                 size="icon"
                 className="h-10 w-10 min-h-11 min-w-11 rounded-lg text-muted-foreground transition-all duration-200 hover:bg-destructive/10 hover:text-destructive sm:h-8 sm:w-8 sm:min-h-0 sm:min-w-0"
-                onClick={() => onTrash(email.id)}
-                aria-label="Delete"
+                onClick={() =>
+                  inTrashFolder && onPermanentDelete
+                    ? setPermanentDeleteOpen(true)
+                    : onTrash(email.id)
+                }
+                aria-label={inTrashFolder ? "Delete forever" : "Delete"}
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
-            <TooltipContent side="bottom"><p className="text-xs">Delete</p></TooltipContent>
+            <TooltipContent side="bottom">
+              <p className="text-xs">{inTrashFolder ? "Delete forever" : "Delete"}</p>
+            </TooltipContent>
           </Tooltip>
 
           <Tooltip>
@@ -1808,6 +1977,28 @@ function EmailDetail({
         )}
       </div>
     </div>
+
+    {inTrashFolder && onPermanentDelete && (
+      <AlertDialog open={permanentDeleteOpen} onOpenChange={setPermanentDeleteOpen}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete this email forever?</AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes it from Email Assistant permanently, including attachments and AI index data. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 focus:ring-destructive"
+              onClick={() => onPermanentDelete(email.id)}
+            >
+              Delete forever
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    )}
     </TooltipProvider>
   )
 }
@@ -1824,14 +2015,43 @@ const filterPresetConfig: Record<InboxFilter, { label: string; icon: React.Eleme
 const todayPresetKeys: InboxFilter[] = ["today", "today_unread", "today_replied", "today_unreplied"]
 const totalPresetKeys: InboxFilter[] = ["total_unread", "total_replied", "total_unreplied"]
 
-function isToday(dateStr: string) {
+function receivedDateForFilter(email: Email): string {
+  return email.originalDate ?? email.date ?? ""
+}
+
+/** Same "received today" rule as the API (UTC calendar day, prefers original_date). */
+function isReceivedUtcToday(dateStr: string): boolean {
+  if (!dateStr) return false
   const d = new Date(dateStr)
-  const now = new Date()
+  if (Number.isNaN(d.getTime())) return false
+  const n = new Date()
   return (
-    d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate()
+    d.getUTCFullYear() === n.getUTCFullYear() &&
+    d.getUTCMonth() === n.getUTCMonth() &&
+    d.getUTCDate() === n.getUTCDate()
   )
+}
+
+function emailMatchesInboxPreset(email: Email, preset: InboxFilter): boolean {
+  const recv = receivedDateForFilter(email)
+  switch (preset) {
+    case "today":
+      return isReceivedUtcToday(recv)
+    case "today_unread":
+      return isReceivedUtcToday(recv) && !email.read
+    case "today_replied":
+      return isReceivedUtcToday(recv) && !!email.repliedAt
+    case "today_unreplied":
+      return isReceivedUtcToday(recv) && !email.repliedAt
+    case "total_unread":
+      return !email.read
+    case "total_replied":
+      return !!email.repliedAt
+    case "total_unreplied":
+      return !email.repliedAt
+    default:
+      return true
+  }
 }
 
 function FilterDropdownContent({
@@ -1932,6 +2152,8 @@ export function InboxView({
 } = {}) {
   const [mailboxesList, setMailboxesList] = useState<Mailbox[]>([])
   const [emailsList, setEmailsList] = useState<Email[]>([])
+  /** Server counts for filter dropdown (full inbox, not just loaded page). */
+  const [inboxStats, setInboxStats] = useState<EmailStatsApi | null>(null)
   const [loading, setLoading] = useState(true)
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -1954,6 +2176,12 @@ export function InboxView({
   )
 
   const [snoozedEmails, setSnoozedEmails] = useState<Set<string>>(new Set())
+  /** Multi-select checkboxes in the list (opening an email does not clear this). */
+  const [listSelectedIds, setListSelectedIds] = useState<Set<string>>(new Set())
+  /** Trash folder: confirm before permanently deleting from list or bulk selection. */
+  const [permanentDeletePrompt, setPermanentDeletePrompt] = useState<
+    null | { type: "list"; id: string } | { type: "bulk" }
+  >(null)
   const [refreshing, setRefreshing] = useState(false)
   const [filterPreset, setFilterPreset] = useState<InboxFilter | null>(initialFilter ?? null)
   const [showFilterDropdown, setShowFilterDropdown] = useState(false)
@@ -1966,6 +2194,7 @@ export function InboxView({
   const PAGE_SIZE = 50
   const [hasMore, setHasMore] = useState(true)
   const [loadingMore, setLoadingMore] = useState(false)
+  const [bulkSelectingAll, setBulkSelectingAll] = useState(false)
   const initialLoadDoneRef = useRef(false)
 
   useEffect(() => {
@@ -2018,6 +2247,8 @@ export function InboxView({
       setSearchQuery("")
       setHasMore(true)
       setFilterLabel(null)
+      setFilterPreset(null)
+      setInboxStats(null)
     }
   }, [folder])
 
@@ -2067,11 +2298,27 @@ export function InboxView({
 
   const fetchMailboxesAndEmails = useCallback((mailboxId?: string) => {
     const mbFilter = mailboxId ?? filterMailbox
-    const listParams: { limit: number; offset: number; mailbox_id?: string; from_email?: string; label?: string; folder?: string } = { limit: PAGE_SIZE, offset: 0 }
+    const listParams: {
+      limit: number
+      offset: number
+      mailbox_id?: string
+      from_email?: string
+      label?: string
+      folder?: string
+      inbox_preset?: string
+    } = { limit: PAGE_SIZE, offset: 0 }
     if (mbFilter !== "all") listParams.mailbox_id = mbFilter
     if (senderFilter?.from_email) listParams.from_email = senderFilter.from_email
     if (filterLabel) listParams.label = filterLabel
     if (folder && folder !== "inbox") listParams.folder = folder
+    if ((!folder || folder === "inbox") && filterPreset) listParams.inbox_preset = filterPreset
+
+    const statParams = mbFilter !== "all" ? { mailbox_id: mbFilter } : undefined
+    const statsPromise =
+      !folder || folder === "inbox"
+        ? emailsApi.stats(statParams).then(setInboxStats).catch(() => setInboxStats(null))
+        : Promise.resolve().then(() => setInboxStats(null))
+
     return Promise.all([
       mailboxesApi.list().then((list) => setMailboxesList(list.map(mapMailboxApi))).catch(() => {}),
       emailsApi
@@ -2081,17 +2328,27 @@ export function InboxView({
           setHasMore(list.length >= PAGE_SIZE)
         })
         .catch(() => {}),
+      statsPromise,
     ])
-  }, [filterMailbox, senderFilter?.from_email, filterLabel, folder])
+  }, [filterMailbox, senderFilter?.from_email, filterLabel, folder, filterPreset])
 
   const loadMore = useCallback(() => {
     if (loadingMore || !hasMore) return
     setLoadingMore(true)
-    const listParams: { limit: number; offset: number; mailbox_id?: string; from_email?: string; label?: string; folder?: string } = { limit: PAGE_SIZE, offset: emailsList.length }
+    const listParams: {
+      limit: number
+      offset: number
+      mailbox_id?: string
+      from_email?: string
+      label?: string
+      folder?: string
+      inbox_preset?: string
+    } = { limit: PAGE_SIZE, offset: emailsList.length }
     if (filterMailbox !== "all") listParams.mailbox_id = filterMailbox
     if (senderFilter?.from_email) listParams.from_email = senderFilter.from_email
     if (filterLabel) listParams.label = filterLabel
     if (folder && folder !== "inbox") listParams.folder = folder
+    if ((!folder || folder === "inbox") && filterPreset) listParams.inbox_preset = filterPreset
     emailsApi
       .list(listParams)
       .then((list) => {
@@ -2101,7 +2358,7 @@ export function InboxView({
       })
       .catch(() => {})
       .finally(() => setLoadingMore(false))
-  }, [loadingMore, hasMore, emailsList.length, filterMailbox, senderFilter?.from_email, filterLabel, folder])
+  }, [loadingMore, hasMore, emailsList.length, filterMailbox, senderFilter?.from_email, filterLabel, folder, filterPreset])
 
   useEffect(() => {
     const isMailboxSwitch = initialLoadDoneRef.current
@@ -2133,19 +2390,33 @@ export function InboxView({
     Promise.all(toSync)
       .then((results) => {
         const totalSynced = results.reduce((s, r) => s + (r?.synced ?? 0), 0)
-        const totalThreadReplies = results.reduce((s, r) => s + ((r as Record<string, number>)?.thread_replies_added ?? 0), 0)
+        const totalThreadReplies = results.reduce(
+          (s, r) => s + ((r as { thread_replies_added?: number })?.thread_replies_added ?? 0),
+          0,
+        )
+        const totalFlagsUpdated = results.reduce(
+          (s, r) => s + ((r as { flags_updated?: number })?.flags_updated ?? 0),
+          0,
+        )
         setHasMore(true)
-        return fetchMailboxesAndEmails().then(() => ({ totalSynced, totalThreadReplies }))
+        return fetchMailboxesAndEmails().then(() => ({ totalSynced, totalThreadReplies, totalFlagsUpdated }))
       })
-      .then(({ totalSynced, totalThreadReplies }) => {
+      .then(({ totalSynced, totalThreadReplies, totalFlagsUpdated }) => {
         if (totalSynced > 0 || totalThreadReplies > 0) {
           const parts: string[] = []
           if (totalSynced > 0) parts.push(`${totalSynced} new email(s)`)
           if (totalThreadReplies > 0) parts.push(`${totalThreadReplies} new reply(s)`)
+          if (totalFlagsUpdated > 0) {
+            parts.push(`${totalFlagsUpdated} updated from Gmail/mail (read, star, …)`)
+          }
           toast.success(`Synced. ${parts.join(", ")}.`)
           if (totalSynced > 0) {
             window.dispatchEvent(new CustomEvent("email:sync", { detail: { newCount: totalSynced } }))
           }
+        } else if (totalFlagsUpdated > 0) {
+          toast.success(
+            `Synced. ${totalFlagsUpdated} message(s) updated from your mail provider (read, star, etc.).`,
+          )
         } else {
           toast.success("Inbox is up to date.")
         }
@@ -2189,6 +2460,12 @@ export function InboxView({
     const onAutoSync = () => onAutoSyncRef.current()
     window.addEventListener("mailbox:sync-complete", onAutoSync)
     return () => window.removeEventListener("mailbox:sync-complete", onAutoSync)
+  }, [])
+
+  useEffect(() => {
+    const onActionExecuted = () => onAutoSyncRef.current()
+    window.addEventListener("email:action-executed", onActionExecuted)
+    return () => window.removeEventListener("email:action-executed", onActionExecuted)
   }, [])
 
   // Auto-refresh every 5 minutes so new emails from Gmail etc. show up
@@ -2267,11 +2544,53 @@ export function InboxView({
   const handleTrash = useCallback((emailId: string) => {
     emailsApi.trash(emailId).then(() => {
       setEmailsList((prev) => prev.filter((e) => e.id !== emailId))
+      setListSelectedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(emailId)
+        return next
+      })
       setSelectedEmail(null)
       toast.success("Email deleted")
       refreshMailboxCounts()
     }).catch(() => {})
   }, [refreshMailboxCounts])
+
+  const handleDeletePermanent = useCallback(
+    (emailId: string) => {
+      emailsApi
+        .deletePermanently(emailId)
+        .then(() => {
+          setEmailsList((prev) => prev.filter((e) => e.id !== emailId))
+          setListSelectedIds((prev) => {
+            const next = new Set(prev)
+            next.delete(emailId)
+            return next
+          })
+          setSelectedEmail(null)
+          toast.success("Email deleted permanently")
+          refreshMailboxCounts()
+        })
+        .catch((err) => {
+          toast.error(err?.message ?? "Could not delete permanently")
+        })
+    },
+    [refreshMailboxCounts]
+  )
+
+  const runBulkDeletePermanent = useCallback(() => {
+    const ids = [...listSelectedIds]
+    if (ids.length === 0) return
+    setPermanentDeletePrompt({ type: "bulk" })
+  }, [listSelectedIds])
+
+  const toggleListEmailSelect = useCallback((emailId: string) => {
+    setListSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(emailId)) next.delete(emailId)
+      else next.add(emailId)
+      return next
+    })
+  }, [])
 
   const handleSpam = useCallback((emailId: string) => {
     emailsApi.spam(emailId).then(() => {
@@ -2301,16 +2620,26 @@ export function InboxView({
   }, [])
 
   const activeEmails = emailsList.filter((e) => !snoozedEmails.has(e.id))
-  const todayAll = activeEmails.filter((e) => isToday(e.date))
-  const presetCounts: Record<InboxFilter, number> = {
-    today: todayAll.length,
-    today_unread: todayAll.filter((e) => !e.read).length,
-    today_replied: todayAll.filter((e) => !!e.repliedAt).length,
-    today_unreplied: todayAll.filter((e) => !e.repliedAt).length,
-    total_unread: activeEmails.filter((e) => !e.read).length,
-    total_replied: activeEmails.filter((e) => !!e.repliedAt).length,
-    total_unreplied: activeEmails.filter((e) => !e.repliedAt).length,
-  }
+  const todayAll = activeEmails.filter((e) => isReceivedUtcToday(receivedDateForFilter(e)))
+  const presetCounts: Record<InboxFilter, number> = inboxStats
+    ? {
+        today: inboxStats.today_total,
+        today_unread: inboxStats.today_unread,
+        today_replied: inboxStats.today_replied,
+        today_unreplied: inboxStats.today_unreplied,
+        total_unread: inboxStats.total_unread,
+        total_replied: inboxStats.total_replied,
+        total_unreplied: inboxStats.total_unreplied,
+      }
+    : {
+        today: todayAll.length,
+        today_unread: todayAll.filter((e) => !e.read).length,
+        today_replied: todayAll.filter((e) => !!e.repliedAt).length,
+        today_unreplied: todayAll.filter((e) => !e.repliedAt).length,
+        total_unread: activeEmails.filter((e) => !e.read).length,
+        total_replied: activeEmails.filter((e) => !!e.repliedAt).length,
+        total_unreplied: activeEmails.filter((e) => !e.repliedAt).length,
+      }
 
   const filteredEmails = emailsList.filter((email) => {
     if (snoozedEmails.has(email.id)) return false
@@ -2322,37 +2651,256 @@ export function InboxView({
     const matchesMailbox = filterMailbox === "all" || email.mailbox === filterMailbox
 
 
-    let matchesPreset = true
-    if (filterPreset === "today") {
-      matchesPreset = isToday(email.date)
-    } else if (filterPreset === "today_unread") {
-      matchesPreset = isToday(email.date) && !email.read
-    } else if (filterPreset === "today_replied") {
-      matchesPreset = isToday(email.date) && !!email.repliedAt
-    } else if (filterPreset === "today_unreplied") {
-      matchesPreset = isToday(email.date) && !email.repliedAt
-    } else if (filterPreset === "total_unread") {
-      matchesPreset = !email.read
-    } else if (filterPreset === "total_replied") {
-      matchesPreset = !!email.repliedAt
-    } else if (filterPreset === "total_unreplied") {
-      matchesPreset = !email.repliedAt
-    }
+    const matchesPreset = !filterPreset || emailMatchesInboxPreset(email, filterPreset)
 
     return matchesSearch && matchesMailbox && matchesPreset
   })
 
+  const loadMoreTargetCount =
+    filterPreset && inboxStats && (!folder || folder === "inbox")
+      ? presetCounts[filterPreset]
+      : allCount
+
+  const filterBadgeCount =
+    filterPreset && searchQuery.trim() ? filteredEmails.length : filterPreset ? presetCounts[filterPreset] : 0
+
+  const bulkActionsDisabled = listSelectedIds.size === 0
+  const allFilteredSelected =
+    filteredEmails.length > 0 && filteredEmails.every((e) => listSelectedIds.has(e.id))
+
+  const fetchAllFilteredIds = useCallback(async () => {
+    const baseParams: {
+      mailbox_id?: string
+      from_email?: string
+      label?: string
+      folder?: string
+      inbox_preset?: string
+    } = {}
+    if (filterMailbox !== "all") baseParams.mailbox_id = filterMailbox
+    if (senderFilter?.from_email) baseParams.from_email = senderFilter.from_email
+    if (filterLabel) baseParams.label = filterLabel
+    if (folder && folder !== "inbox") baseParams.folder = folder
+    if ((!folder || folder === "inbox") && filterPreset) baseParams.inbox_preset = filterPreset
+
+    const ids: string[] = []
+    const seen = new Set<string>()
+    let offset = 0
+    while (true) {
+      const batch = await emailsApi.list({ ...baseParams, limit: PAGE_SIZE, offset })
+      if (batch.length === 0) break
+      for (const email of batch) {
+        if (snoozedEmails.has(email.id)) continue
+        if (seen.has(email.id)) continue
+        seen.add(email.id)
+        ids.push(email.id)
+      }
+      if (batch.length < PAGE_SIZE) break
+      offset += batch.length
+    }
+    return ids
+  }, [PAGE_SIZE, filterMailbox, senderFilter?.from_email, filterLabel, folder, filterPreset, snoozedEmails])
+
+  const handleBulkToggleSelectAll = useCallback(async () => {
+    if (bulkSelectingAll) return
+    const isClientSearch = searchQuery.trim().length > 0
+    if (isClientSearch) {
+      setListSelectedIds((prev) => {
+        const ids = filteredEmails.map((e) => e.id)
+        if (ids.length === 0) return prev
+        const allOn = ids.every((id) => prev.has(id))
+        const next = new Set(prev)
+        if (allOn) ids.forEach((id) => next.delete(id))
+        else ids.forEach((id) => next.add(id))
+        return next
+      })
+      return
+    }
+
+    setBulkSelectingAll(true)
+    try {
+      const ids = await fetchAllFilteredIds()
+      if (ids.length === 0) return
+      setListSelectedIds((prev) => {
+        const allOn = ids.every((id) => prev.has(id))
+        const next = new Set(prev)
+        if (allOn) ids.forEach((id) => next.delete(id))
+        else ids.forEach((id) => next.add(id))
+        return next
+      })
+    } catch {
+      toast.error("Could not select all emails")
+    } finally {
+      setBulkSelectingAll(false)
+    }
+  }, [bulkSelectingAll, searchQuery, filteredEmails, fetchAllFilteredIds])
+
+  const runBulkArchive = () => {
+    const ids = [...listSelectedIds]
+    if (ids.length === 0) return
+    Promise.allSettled(ids.map((id) => emailsApi.archive(id))).then((results) => {
+      const succeeded = ids.filter((_, i) => results[i].status === "fulfilled")
+      if (succeeded.length === 0) {
+        toast.error("Could not archive")
+        return
+      }
+      const ok = new Set(succeeded)
+      setEmailsList((prev) => prev.filter((e) => !ok.has(e.id)))
+      setListSelectedIds((prev) => {
+        const next = new Set(prev)
+        succeeded.forEach((id) => next.delete(id))
+        return next
+      })
+      setSelectedEmail((cur) => (cur && ok.has(cur.id) ? null : cur))
+      toast.success(`Archived ${succeeded.length} email(s)`)
+      refreshMailboxCounts()
+    })
+  }
+
+  const runBulkTrash = () => {
+    const ids = [...listSelectedIds]
+    if (ids.length === 0) return
+    Promise.allSettled(ids.map((id) => emailsApi.trash(id))).then((results) => {
+      const succeeded = ids.filter((_, i) => results[i].status === "fulfilled")
+      if (succeeded.length === 0) {
+        toast.error("Could not delete")
+        return
+      }
+      const ok = new Set(succeeded)
+      setEmailsList((prev) => prev.filter((e) => !ok.has(e.id)))
+      setListSelectedIds((prev) => {
+        const next = new Set(prev)
+        succeeded.forEach((id) => next.delete(id))
+        return next
+      })
+      setSelectedEmail((cur) => (cur && ok.has(cur.id) ? null : cur))
+      toast.success(`Deleted ${succeeded.length} email(s)`)
+      refreshMailboxCounts()
+    })
+  }
+
+  const runBulkSpam = () => {
+    const ids = [...listSelectedIds]
+    if (ids.length === 0) return
+    Promise.allSettled(ids.map((id) => emailsApi.spam(id))).then((results) => {
+      const succeeded = ids.filter((_, i) => results[i].status === "fulfilled")
+      if (succeeded.length === 0) {
+        toast.error("Could not report as spam")
+        return
+      }
+      const ok = new Set(succeeded)
+      setEmailsList((prev) => prev.filter((e) => !ok.has(e.id)))
+      setListSelectedIds((prev) => {
+        const next = new Set(prev)
+        succeeded.forEach((id) => next.delete(id))
+        return next
+      })
+      setSelectedEmail((cur) => (cur && ok.has(cur.id) ? null : cur))
+      toast.success(`Reported ${succeeded.length} as spam`)
+      refreshMailboxCounts()
+    })
+  }
+
+  const runBulkMarkRead = () => {
+    const ids = [...listSelectedIds]
+    if (ids.length === 0) return
+    Promise.allSettled(ids.map((id) => emailsApi.update(id, { read: true }))).then((results) => {
+      const succeeded = ids.filter((_, i) => results[i].status === "fulfilled")
+      if (succeeded.length === 0) {
+        toast.error("Could not update")
+        return
+      }
+      const ok = new Set(succeeded)
+      setEmailsList((prev) => prev.map((e) => (ok.has(e.id) ? { ...e, read: true } : e)))
+      setSelectedEmail((cur) => (cur && ok.has(cur.id) ? { ...cur, read: true } : cur))
+      toast.success(`Marked ${succeeded.length} as read`)
+    })
+  }
+
+  const runBulkMarkUnread = () => {
+    const ids = [...listSelectedIds]
+    if (ids.length === 0) return
+    Promise.allSettled(ids.map((id) => emailsApi.update(id, { read: false }))).then((results) => {
+      const succeeded = ids.filter((_, i) => results[i].status === "fulfilled")
+      if (succeeded.length === 0) {
+        toast.error("Could not update")
+        return
+      }
+      const ok = new Set(succeeded)
+      setEmailsList((prev) => prev.map((e) => (ok.has(e.id) ? { ...e, read: false } : e)))
+      setSelectedEmail((cur) => (cur && ok.has(cur.id) ? { ...cur, read: false } : cur))
+      toast.success(`Marked ${succeeded.length} as unread`)
+    })
+  }
+
+  const runBulkStar = () => {
+    const ids = [...listSelectedIds]
+    if (ids.length === 0) return
+    Promise.allSettled(ids.map((id) => emailsApi.update(id, { starred: true }))).then((results) => {
+      const succeeded = ids.filter((_, i) => results[i].status === "fulfilled")
+      if (succeeded.length === 0) {
+        toast.error("Could not star")
+        return
+      }
+      const ok = new Set(succeeded)
+      setEmailsList((prev) => prev.map((e) => (ok.has(e.id) ? { ...e, starred: true } : e)))
+      setSelectedEmail((cur) => (cur && ok.has(cur.id) ? { ...cur, starred: true } : cur))
+      toast.success(`Starred ${succeeded.length} email(s)`)
+    })
+  }
+
+  const runBulkRemoveStar = () => {
+    const ids = [...listSelectedIds]
+    if (ids.length === 0) return
+    Promise.allSettled(ids.map((id) => emailsApi.update(id, { starred: false }))).then((results) => {
+      const succeeded = ids.filter((_, i) => results[i].status === "fulfilled")
+      if (succeeded.length === 0) {
+        toast.error("Could not update")
+        return
+      }
+      const ok = new Set(succeeded)
+      setEmailsList((prev) => prev.map((e) => (ok.has(e.id) ? { ...e, starred: false } : e)))
+      setSelectedEmail((cur) => (cur && ok.has(cur.id) ? { ...cur, starred: false } : cur))
+      toast.success(`Removed star from ${succeeded.length} email(s)`)
+    })
+  }
+
+  const runBulkSnooze = (hours: number) => {
+    const ids = [...listSelectedIds]
+    if (ids.length === 0) return
+    Promise.allSettled(ids.map((id) => emailsApi.snooze(id, hours))).then((results) => {
+      const succeeded = ids.filter((_, i) => results[i].status === "fulfilled")
+      if (succeeded.length === 0) {
+        toast.error("Could not snooze")
+        return
+      }
+      const ok = new Set(succeeded)
+      setSnoozedEmails((prev) => {
+        const next = new Set(prev)
+        succeeded.forEach((id) => next.add(id))
+        return next
+      })
+      setListSelectedIds((prev) => {
+        const next = new Set(prev)
+        succeeded.forEach((id) => next.delete(id))
+        return next
+      })
+      setSelectedEmail((cur) => (cur && ok.has(cur.id) ? null : cur))
+      toast.success(`Snoozed ${succeeded.length} email(s)`)
+    })
+  }
+
   const loadMoreRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
-    if (!loadMoreRef.current || loading || loadingMore || !hasMore || filterPreset || searchQuery) return
+    if (!loadMoreRef.current || loading || loadingMore || !hasMore || searchQuery) return
+    if (displayedCount >= loadMoreTargetCount) return
     const observer = new IntersectionObserver(
       ([entry]) => { if (entry.isIntersecting) loadMore() },
       { rootMargin: "200px" }
     )
     observer.observe(loadMoreRef.current)
     return () => observer.disconnect()
-  }, [loading, loadingMore, hasMore, filterPreset, searchQuery, loadMore])
+  }, [loading, loadingMore, hasMore, searchQuery, loadMore, displayedCount, loadMoreTargetCount])
 
   // Unread count: from API (mailboxesList[].unread) when available; else from loaded emails
   const unreadCountFromApi =
@@ -2388,8 +2936,11 @@ export function InboxView({
           <span className="hidden min-[380px]:inline">Sync</span>
         </Button>
       </TooltipTrigger>
-      <TooltipContent side="bottom">
-        <p className="text-xs">Fetch new emails from your mailbox</p>
+      <TooltipContent side="bottom" className="max-w-[260px]">
+        <p className="text-xs">
+          Sync scans your full inbox on the server and merges new mail plus read/star (and similar) changes from
+          Gmail or other apps.
+        </p>
       </TooltipContent>
     </Tooltip>
   )
@@ -2500,6 +3051,8 @@ export function InboxView({
               onSpam={handleSpam}
               onUpdate={handleUpdate}
               onEmailRefreshed={(updated) => setSelectedEmail(updated)}
+              folder={folder}
+              onPermanentDelete={folder === "trash" ? handleDeletePermanent : undefined}
             />
           </div>
         ) : !loading && mailboxesList.length === 0 ? (
@@ -2587,9 +3140,9 @@ export function InboxView({
               </div>
             )}
 
-            {/* Filter Bar */}
-            <div className="relative flex items-center justify-between gap-2 overflow-visible border-b border-border/60 bg-background/90 px-4 py-2 backdrop-blur-sm sm:px-6 sm:py-2.5">
-              <div className="flex items-center gap-2 shrink-0">
+            {/* Filter bar + bulk actions (selection applies to checked emails) */}
+            <div className="relative flex flex-col gap-2 overflow-visible border-b border-border/60 bg-background/90 px-4 py-2 backdrop-blur-sm sm:flex-row sm:flex-wrap sm:items-center sm:justify-between sm:gap-x-3 sm:gap-y-2 sm:px-6 sm:py-2.5">
+              <div className="flex min-w-0 flex-wrap items-center gap-2">
                 <DropdownMenu open={showFilterDropdown} onOpenChange={setShowFilterDropdown}>
                   <DropdownMenuTrigger asChild>
                     <Button
@@ -2598,7 +3151,11 @@ export function InboxView({
                       className={`gap-1.5 h-8 text-xs rounded-xl transition-all duration-200 ${filterPreset ? "border-primary/40 bg-primary/5 text-primary shadow-sm shadow-primary/10" : "border-border/60 text-muted-foreground hover:text-foreground hover:border-border"}`}
                     >
                       <SlidersHorizontal className={`h-3 w-3 ${filterPreset ? "text-primary" : ""}`} />
-                      {filterPreset ? filterPresetConfig[filterPreset].label : "Filter"}
+                      {filterPreset
+                        ? filterPreset === "today"
+                          ? "Today"
+                          : `${todayPresetKeys.includes(filterPreset) ? "Today" : "Total"} ${filterPresetConfig[filterPreset].label}`
+                        : "Filter"}
                       <ChevronDown className={`h-3 w-3 transition-transform duration-200 ${showFilterDropdown ? "rotate-180" : ""}`} />
                     </Button>
                   </DropdownMenuTrigger>
@@ -2615,6 +3172,39 @@ export function InboxView({
                     />
                   </DropdownMenuContent>
                 </DropdownMenu>
+                {refreshing ? (
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={handleStopSync}
+                    className="h-8 shrink-0 gap-1 rounded-xl border-red-400/40 text-xs text-red-500 shadow-sm hover:bg-red-500/10 hover:text-red-600"
+                  >
+                    <Square className="h-3 w-3 fill-current" />
+                    <span className="hidden min-[360px]:inline">Stop</span>
+                  </Button>
+                ) : (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        onClick={handleRefresh}
+                        disabled={mailboxesList.length === 0}
+                        className="h-8 shrink-0 gap-1.5 rounded-xl border-border/60 bg-card/70 text-xs text-foreground/80 shadow-sm transition-all duration-200 hover:border-primary/30 hover:bg-primary/10 hover:text-primary disabled:opacity-50"
+                      >
+                        <RefreshCw className="h-3.5 w-3.5 shrink-0" />
+                        <span className="hidden min-[380px]:inline">Refresh</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom" className="max-w-[260px]">
+                      <p className="text-xs">
+                        Sync mailboxes: full inbox scan — new mail plus read/star changes from Gmail or other clients.
+                      </p>
+                    </TooltipContent>
+                  </Tooltip>
+                )}
                 {filterPreset && (
                   <Button
                     variant="ghost"
@@ -2643,13 +3233,155 @@ export function InboxView({
                 )}
               </div>
 
-              {filterPreset && (
-                <div className="flex items-center gap-2">
+              <div className="flex flex-wrap items-center gap-1.5 sm:justify-end">
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1 rounded-xl px-2.5 text-xs"
+                      disabled={filteredEmails.length === 0 || bulkSelectingAll}
+                      aria-label={allFilteredSelected ? "Deselect all in list" : "Select all in list"}
+                      onClick={handleBulkToggleSelectAll}
+                    >
+                      <CheckSquare className="h-3.5 w-3.5 shrink-0" />
+                      <span className="max-[420px]:sr-only">
+                        {bulkSelectingAll ? "Selecting..." : allFilteredSelected ? "Deselect all" : "Select all"}
+                      </span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom" className="max-w-[220px]">
+                    <p className="text-xs">
+                      {bulkSelectingAll
+                        ? "Selecting emails..."
+                        : searchQuery.trim()
+                          ? allFilteredSelected
+                            ? "Clear selection for this list"
+                            : "Select every loaded email in current search"
+                          : allFilteredSelected
+                            ? "Clear selection for all matching emails"
+                            : "Select every matching email across the inbox"}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+                {folder !== "trash" && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1 rounded-xl px-2.5 text-xs"
+                        disabled={bulkActionsDisabled}
+                        onClick={runBulkArchive}
+                      >
+                        <Archive className="h-3.5 w-3.5 shrink-0" />
+                        <span className="hidden min-[380px]:inline">Archive</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p className="text-xs">Archive selected</p>
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      className="h-8 gap-1 rounded-xl px-2.5 text-xs text-destructive hover:bg-destructive/10 hover:text-destructive"
+                      disabled={bulkActionsDisabled}
+                      onClick={folder === "trash" ? runBulkDeletePermanent : runBulkTrash}
+                    >
+                      <Trash2 className="h-3.5 w-3.5 shrink-0" />
+                      <span className="hidden min-[380px]:inline">
+                        {folder === "trash" ? "Delete forever" : "Trash"}
+                      </span>
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">
+                      {folder === "trash"
+                        ? "Permanently delete selected emails"
+                        : "Move selected to trash"}
+                    </p>
+                  </TooltipContent>
+                </Tooltip>
+
+                {folder !== "trash" && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1 rounded-xl px-2.5 text-xs"
+                        disabled={bulkActionsDisabled}
+                      >
+                        <MoreHorizontal className="h-3.5 w-3.5 shrink-0" />
+                        <span className="hidden sm:inline">More</span>
+                        <ChevronDown className="h-3 w-3 opacity-60" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent
+                      align="end"
+                      sideOffset={6}
+                      className="w-[min(18rem,calc(100vw-2rem))] rounded-xl border border-border/80 bg-card p-1 shadow-xl"
+                    >
+                      <DropdownMenuLabel className="text-[11px] font-normal text-muted-foreground">
+                        Selected ({listSelectedIds.size})
+                      </DropdownMenuLabel>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem className="gap-2 rounded-lg text-xs" onClick={runBulkSpam}>
+                        <ShieldAlert className="h-3.5 w-3.5 shrink-0 text-orange-500" />
+                        Report spam
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="gap-2 rounded-lg text-xs" onClick={runBulkMarkRead}>
+                        <MailOpen className="h-3.5 w-3.5 shrink-0" />
+                        Mark as read
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="gap-2 rounded-lg text-xs" onClick={runBulkMarkUnread}>
+                        <Mail className="h-3.5 w-3.5 shrink-0" />
+                        Mark as unread
+                      </DropdownMenuItem>
+                      <DropdownMenuSub>
+                        <DropdownMenuSubTrigger className="gap-2 rounded-lg text-xs">
+                          <AlarmClock className="h-3.5 w-3.5 shrink-0" />
+                          Snooze
+                        </DropdownMenuSubTrigger>
+                        <DropdownMenuSubContent className="rounded-xl border border-border/80 bg-card p-1 shadow-lg">
+                          {snoozeOptions.map((opt) => (
+                            <DropdownMenuItem
+                              key={opt.label}
+                              className="rounded-lg text-xs"
+                              onClick={() => runBulkSnooze(opt.hours)}
+                            >
+                              {opt.label}
+                            </DropdownMenuItem>
+                          ))}
+                        </DropdownMenuSubContent>
+                      </DropdownMenuSub>
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem className="gap-2 rounded-lg text-xs" onClick={runBulkStar}>
+                        <Star className="h-3.5 w-3.5 shrink-0 text-amber-500" />
+                        Star
+                      </DropdownMenuItem>
+                      <DropdownMenuItem className="gap-2 rounded-lg text-xs" onClick={runBulkRemoveStar}>
+                        <StarOff className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                        Remove star
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
+
+                {filterPreset && (
                   <Badge variant="secondary" className="text-[11px] px-2.5 py-0.5 bg-primary/8 text-primary border border-primary/15 font-medium">
-                    {presetCounts[filterPreset]} result{presetCounts[filterPreset] !== 1 ? "s" : ""}
+                    {filterBadgeCount} result{filterBadgeCount !== 1 ? "s" : ""}
                   </Badge>
-                </div>
-              )}
+                )}
+              </div>
             </div>
 
             {/* Email List */}
@@ -2665,9 +3397,20 @@ export function InboxView({
                         email={email}
                         mailboxes={mailboxesList}
                         isSelected={false}
+                        isChecked={listSelectedIds.has(email.id)}
+                        onToggleChecked={() => toggleListEmailSelect(email.id)}
+                        onMarkRead={() => handleUpdate(email.id, { read: true })}
+                        onMarkUnread={() => handleUpdate(email.id, { read: false })}
+                        onStar={() => handleUpdate(email.id, { starred: !email.starred })}
+                        onDelete={() =>
+                          folder === "trash"
+                            ? setPermanentDeletePrompt({ type: "list", id: email.id })
+                            : handleTrash(email.id)
+                        }
                         onSelect={() => handleSelectEmail(email)}
                         showMailbox={filterMailbox === "all"}
                         index={idx}
+                        deleteTooltip={folder === "trash" ? "Delete forever" : "Delete"}
                       />
                     ))}
                   </div>
@@ -2724,12 +3467,12 @@ export function InboxView({
                   )}
 
                   {/* Load More / Infinite Scroll Trigger */}
-                  {hasMore && filteredEmails.length > 0 && !filterPreset && !searchQuery && displayedCount < allCount && (
+                  {hasMore && filteredEmails.length > 0 && !searchQuery && displayedCount < loadMoreTargetCount && (
                     <div ref={loadMoreRef} className="flex flex-col items-center gap-3 py-8">
                       <div className="flex items-center gap-3">
                         <div className="h-px w-12 bg-border/60" />
                         <p className="text-[11px] text-muted-foreground/60 font-medium tabular-nums">
-                          {displayedCount} of {allCount}
+                          {displayedCount} of {loadMoreTargetCount}
                         </p>
                         <div className="h-px w-12 bg-border/60" />
                       </div>
@@ -2752,7 +3495,7 @@ export function InboxView({
                     </div>
                   )}
 
-                  {(!hasMore || displayedCount >= allCount) && filteredEmails.length > 0 && (
+                  {(!hasMore || displayedCount >= loadMoreTargetCount) && filteredEmails.length > 0 && (
                     <div className="flex items-center justify-center gap-3 py-6">
                       <div className="h-px w-8 bg-border/40" />
                       <p className="text-[11px] text-muted-foreground/50 flex items-center gap-1.5">
@@ -2768,6 +3511,61 @@ export function InboxView({
           </>
         )}
       </div>
+
+      <AlertDialog
+        open={permanentDeletePrompt !== null}
+        onOpenChange={(open) => {
+          if (!open) setPermanentDeletePrompt(null)
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>
+              {permanentDeletePrompt?.type === "bulk"
+                ? `Delete ${listSelectedIds.size} email(s) forever?`
+                : "Delete this email forever?"}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              This removes the message(s) from Email Assistant permanently, including attachments and AI index data. This cannot be undone.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              className="bg-destructive text-destructive-foreground hover:bg-destructive/90 focus:ring-destructive"
+              onClick={() => {
+                const prompt = permanentDeletePrompt
+                setPermanentDeletePrompt(null)
+                if (!prompt) return
+                if (prompt.type === "list") {
+                  handleDeletePermanent(prompt.id)
+                  return
+                }
+                const ids = [...listSelectedIds]
+                Promise.allSettled(ids.map((id) => emailsApi.deletePermanently(id))).then((results) => {
+                  const succeeded = ids.filter((_, i) => results[i].status === "fulfilled")
+                  if (succeeded.length === 0) {
+                    toast.error("Could not delete permanently")
+                    return
+                  }
+                  const ok = new Set(succeeded)
+                  setEmailsList((prev) => prev.filter((e) => !ok.has(e.id)))
+                  setListSelectedIds((prev) => {
+                    const next = new Set(prev)
+                    succeeded.forEach((id) => next.delete(id))
+                    return next
+                  })
+                  setSelectedEmail((cur) => (cur && ok.has(cur.id) ? null : cur))
+                  toast.success(`Permanently deleted ${succeeded.length} email(s)`)
+                  refreshMailboxCounts()
+                })
+              }}
+            >
+              Delete forever
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Unique senders list dialog */}
       <Dialog open={showUniqueSendersDialog} onOpenChange={setShowUniqueSendersDialog}>

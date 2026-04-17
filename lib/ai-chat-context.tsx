@@ -8,6 +8,9 @@ type AiChatContextType = {
   setMessages: React.Dispatch<React.SetStateAction<ChatMessage[]>>
   selectedMailbox: string
   setSelectedMailbox: React.Dispatch<React.SetStateAction<string>>
+  /** Shared across Assistant + floating chat so a request keeps “running” when navigating the dashboard. */
+  isQueryLoading: boolean
+  setIsQueryLoading: React.Dispatch<React.SetStateAction<boolean>>
 }
 
 const AiChatContext = createContext<AiChatContextType | null>(null)
@@ -23,9 +26,17 @@ export function useAiChat() {
 export function AiChatProvider({ children }: { children: React.ReactNode }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [selectedMailbox, setSelectedMailbox] = useState<string>("all")
+  const [isQueryLoading, setIsQueryLoading] = useState(false)
   return (
     <AiChatContext.Provider
-      value={{ messages, setMessages, selectedMailbox, setSelectedMailbox }}
+      value={{
+        messages,
+        setMessages,
+        selectedMailbox,
+        setSelectedMailbox,
+        isQueryLoading,
+        setIsQueryLoading,
+      }}
     >
       {children}
     </AiChatContext.Provider>

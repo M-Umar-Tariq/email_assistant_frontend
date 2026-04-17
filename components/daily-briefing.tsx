@@ -169,7 +169,13 @@ function StatCard({
   )
 }
 
-function MailboxStatus({ mailboxes }: { mailboxes: Mailbox[] }) {
+function MailboxStatus({
+  mailboxes,
+  onOpenInboxWithMailbox,
+}: {
+  mailboxes: Mailbox[]
+  onOpenInboxWithMailbox?: (mailboxId: string) => void
+}) {
   if (mailboxes.length === 0) return null
   return (
     <Card className="glass-card border-border/40 glow-ring overflow-hidden">
@@ -183,7 +189,17 @@ function MailboxStatus({ mailboxes }: { mailboxes: Mailbox[] }) {
       </CardHeader>
       <CardContent className="flex flex-col gap-3 pb-4">
         {mailboxes.map((mb) => (
-          <div key={mb.id} className="flex items-start justify-between gap-4 rounded-xl bg-muted/20 border border-border/30 px-3.5 py-3 transition-all duration-200 hover:bg-muted/40 hover:border-border/50">
+          <button
+            key={mb.id}
+            type="button"
+            onClick={() => onOpenInboxWithMailbox?.(mb.id)}
+            title={onOpenInboxWithMailbox ? `Open inbox for ${mb.name}` : undefined}
+            className={cn(
+              "flex w-full items-start justify-between gap-4 rounded-xl bg-muted/20 border border-border/30 px-3.5 py-3 text-left transition-all duration-200 hover:bg-muted/40 hover:border-border/50",
+              onOpenInboxWithMailbox &&
+                "cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+            )}
+          >
             <div className="flex items-center gap-3 min-w-0">
               <div className="h-3 w-3 rounded-full shrink-0 ring-2 ring-offset-2 ring-offset-background" style={{ backgroundColor: mb.color, boxShadow: `0 0 10px ${mb.color}40` }} />
               <div className="min-w-0">
@@ -212,7 +228,7 @@ function MailboxStatus({ mailboxes }: { mailboxes: Mailbox[] }) {
                 </span>
               </div>
             </div>
-          </div>
+          </button>
         ))}
       </CardContent>
     </Card>
@@ -259,7 +275,12 @@ function renderSummaryLines(summary: string | string[]) {
   })
 }
 
-function AiSummaryBanner() {
+function AiSummaryBanner({
+  onOpenMailboxByEmail,
+}: {
+  /** Open inbox scoped to the mailbox whose account email matches (from AI snapshot). */
+  onOpenMailboxByEmail?: (mailboxEmail: string) => void
+} = {}) {
   const [snapshots, setSnapshots] = useState<MailboxSnapshot[] | null>(null)
   const [loading, setLoading] = useState(false)
   const fetchSummary = useCallback(() => {
@@ -344,14 +365,28 @@ function AiSummaryBanner() {
               <div className="flex flex-col gap-3 briefing-stagger">
                 {snapshots!.map((mb, idx) => (
                   <div key={idx} className="rounded-xl border border-border/40 bg-card/50 backdrop-blur-sm overflow-hidden transition-all duration-300 hover:border-border/70 hover:shadow-md hover:shadow-primary/5">
-                    <div className="flex items-center gap-2.5 px-4 py-2.5 bg-muted/20 border-b border-border/30">
+                    <button
+                      type="button"
+                      onClick={() => onOpenMailboxByEmail?.(mb.mailbox_email)}
+                      title={
+                        onOpenMailboxByEmail
+                          ? `Open inbox for ${mb.mailbox_name}`
+                          : undefined
+                      }
+                      className={cn(
+                        "flex w-full items-center gap-2.5 px-4 py-2.5 bg-muted/20 border-b border-border/30 text-left",
+                        onOpenMailboxByEmail
+                          ? "cursor-pointer hover:bg-muted/35 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-inset"
+                          : "cursor-default"
+                      )}
+                    >
                       <div className="h-2.5 w-2.5 rounded-full shrink-0 ring-2 ring-offset-1 ring-offset-background" style={{ backgroundColor: mb.color, boxShadow: `0 0 8px ${mb.color}40` }} />
                       <span className="text-sm font-semibold text-foreground">{mb.mailbox_name}</span>
                       <span className="text-[11px] text-muted-foreground/70">({mb.mailbox_email})</span>
                       <Badge variant="secondary" className="ml-auto text-[10px] px-2.5 py-0.5 bg-primary/10 text-primary font-bold rounded-full">
                         {mb.today_count} {mb.today_count === 1 ? "email" : "emails"}
                       </Badge>
-                    </div>
+                    </button>
                     <div className="px-4 py-3 space-y-0.5">
                       {renderSummaryLines(mb.summary)}
                     </div>
@@ -454,6 +489,13 @@ const senderColors = [
 ]
 
 function TopSenders({ refreshKey }: { refreshKey: number }) {
+  const openSenderInbox = (s: { email: string; name: string }) => {
+    window.dispatchEvent(
+      new CustomEvent("contacts:showEmailsFrom", {
+        detail: { from_email: s.email, from_name: s.name || s.email },
+      })
+    )
+  }
   const [senders, setSenders] = useState<{ email: string; name: string; count: number }[]>([])
 
   useEffect(() => {
@@ -476,7 +518,13 @@ function TopSenders({ refreshKey }: { refreshKey: number }) {
       </CardHeader>
       <CardContent className="flex flex-col gap-2.5 pb-4">
         {senders.map((s, i) => (
-          <div key={s.email} className="flex items-center gap-3 rounded-xl px-2.5 py-2 transition-all duration-200 hover:bg-muted/30 group/sender">
+          <button
+            key={s.email}
+            type="button"
+            onClick={() => openSenderInbox(s)}
+            title={`Open inbox — emails from ${s.name || s.email}`}
+            className="flex w-full items-center gap-3 rounded-xl px-2.5 py-2 text-left transition-all duration-200 hover:bg-muted/30 group/sender cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+          >
             <div className={cn("flex h-9 w-9 shrink-0 items-center justify-center rounded-xl text-[11px] font-bold text-white shadow-md transition-transform duration-200 group-hover/sender:scale-105 bg-gradient-to-br", senderColors[i % senderColors.length])}>
               {s.name ? s.name.charAt(0).toUpperCase() : s.email.charAt(0).toUpperCase()}
             </div>
@@ -492,7 +540,7 @@ function TopSenders({ refreshKey }: { refreshKey: number }) {
                 />
               </div>
             </div>
-          </div>
+          </button>
         ))}
       </CardContent>
     </Card>
@@ -1132,12 +1180,15 @@ export function DailyBriefing({
   onNavigateInbox,
   onNavigateToEmail,
   onConnectMailbox,
+  onOpenInboxWithMailbox,
 }: {
   onViewChange: (view: string) => void
   onNavigateInbox?: (filter: InboxFilter) => void
   onNavigateToEmail?: (emailId: string) => void
   /** Opens add-mailbox dialog when user has no accounts */
   onConnectMailbox?: () => void
+  /** Open unified inbox filtered to one connected account (dashboard widgets). */
+  onOpenInboxWithMailbox?: (mailboxId: string) => void
 }) {
   const { user } = useAuth()
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([])
@@ -1490,13 +1541,24 @@ export function DailyBriefing({
           </div>
 
           {/* Row 3: AI Snapshot */}
-          <AiSummaryBanner />
+          <AiSummaryBanner
+            onOpenMailboxByEmail={
+              onOpenInboxWithMailbox
+                ? (email) => {
+                    const e = (email || "").trim().toLowerCase()
+                    if (!e) return
+                    const m = mailboxes.find((mb) => (mb.email || "").toLowerCase() === e)
+                    if (m) onOpenInboxWithMailbox(m.id)
+                  }
+                : undefined
+            }
+          />
 
           {/* Row 3: Analytics strip — 3 equal cards */}
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3 briefing-stagger">
             <EmailTrendsChart refreshKey={widgetRefreshKey} />
             <TopSenders refreshKey={widgetRefreshKey} />
-            <MailboxStatus mailboxes={mailboxes} />
+            <MailboxStatus mailboxes={mailboxes} onOpenInboxWithMailbox={onOpenInboxWithMailbox} />
           </div>
 
           {/* Row 4: Briefing items + sidebar widgets */}

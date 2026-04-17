@@ -45,9 +45,9 @@ const features = [
   },
   {
     icon: PenSquare,
-    title: "Compose & AI Assistant",
+    title: "Compose & Smart Mail Assistant",
     description:
-      "Write and reply from a dedicated compose experience, then jump into the AI Assistant for drafting help, tone tweaks, and context-aware suggestions.",
+      "Write and reply from a dedicated compose experience, then jump into the Smart Mail Assistant for drafting help, tone tweaks, and context-aware suggestions.",
   },
   {
     icon: BarChart3,

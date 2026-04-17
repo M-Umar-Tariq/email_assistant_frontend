@@ -174,16 +174,68 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
           : { initial_sync: "last_n" as const, limit: parseInt(pastSyncCount, 10) }
     const mbName = createdMailboxName
     const mbId = createdMailboxId
-    toast.loading(`Syncing "${mbName}"... This may take a moment.`, { id: `sync-${mbId}`, duration: Infinity })
+    const syncToastId = `sync-${mbId}`
+    const pollMailboxSyncStatus = (attempt = 0) => {
+      const maxAttempts = 36
+      const pollDelayMs = 5000
+      mailboxes
+        .get(mbId)
+        .then((latest) => {
+          const status = latest.sync_status
+          if (status === "syncing") {
+            if (attempt >= maxAttempts) {
+              toast(`"${mbName}" is still syncing in the background.`, { id: syncToastId, duration: 5000 })
+              return
+            }
+            window.setTimeout(() => pollMailboxSyncStatus(attempt + 1), pollDelayMs)
+            return
+          }
+          if (status === "synced") {
+            toast.success(`"${mbName}" sync completed.`, { id: syncToastId, duration: 4000 })
+            window.dispatchEvent(new CustomEvent("mailbox:sync-complete", { detail: { mailboxId: mbId, synced: 0 } }))
+          } else if (status === "cancelled") {
+            toast(`Sync for "${mbName}" was stopped.`, { id: syncToastId, duration: 4000 })
+          } else {
+            toast.error(`Failed to sync "${mbName}". Check settings.`, { id: syncToastId, duration: 5000 })
+          }
+          window.dispatchEvent(new CustomEvent("mailbox:updated"))
+        })
+        .catch(() => {
+          if (attempt >= maxAttempts) {
+            toast.error(`Failed to sync "${mbName}". Check settings.`, { id: syncToastId, duration: 5000 })
+            return
+          }
+          window.setTimeout(() => pollMailboxSyncStatus(attempt + 1), pollDelayMs)
+        })
+    }
+    toast.loading(`Syncing "${mbName}"... This may take a moment.`, { id: syncToastId, duration: Infinity })
     window.dispatchEvent(new CustomEvent("mailbox:updated"))
     mailboxes.sync(mbId, syncOptions)
       .then((res) => {
-        toast.success(`"${mbName}" synced! ${res.synced} email${res.synced !== 1 ? "s" : ""} fetched.`, { id: `sync-${mbId}`, duration: 4000 })
+        if (res.skipped_reason === "already_syncing") {
+          toast.loading(`"${mbName}" is still syncing...`, { id: syncToastId, duration: Infinity })
+          pollMailboxSyncStatus()
+          return
+        }
+        toast.success(`"${mbName}" synced! ${res.synced} email${res.synced !== 1 ? "s" : ""} fetched.`, { id: syncToastId, duration: 4000 })
         window.dispatchEvent(new CustomEvent("mailbox:sync-complete", { detail: { mailboxId: mbId, synced: res.synced } }))
       })
       .catch(() => {
-        toast.error(`Failed to sync "${mbName}". Check settings.`, { id: `sync-${mbId}` })
-        window.dispatchEvent(new CustomEvent("mailbox:updated"))
+        mailboxes
+          .get(mbId)
+          .then((latest) => {
+            if (latest.sync_status === "syncing") {
+              toast.loading(`"${mbName}" is still syncing...`, { id: syncToastId, duration: Infinity })
+              pollMailboxSyncStatus()
+              return
+            }
+            toast.error(`Failed to sync "${mbName}". Check settings.`, { id: syncToastId, duration: 5000 })
+            window.dispatchEvent(new CustomEvent("mailbox:updated"))
+          })
+          .catch(() => {
+            toast.error(`Failed to sync "${mbName}". Check settings.`, { id: syncToastId, duration: 5000 })
+            window.dispatchEvent(new CustomEvent("mailbox:updated"))
+          })
       })
     reset()
     onOpenChange(false)
@@ -254,7 +306,7 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
                     }}
                     className="bg-background border-border text-foreground h-8 text-sm"
                   />
-                  <p className="text-[10px] text-muted-foreground">Username for IMAP/SMTP</p>
+                  <p className="text-[10px] text-muted-foreground">Enter your full mailbox email (this is used as IMAP/SMTP username).</p>
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="mb-password" className="text-xs text-muted-foreground">Password</Label>
@@ -267,6 +319,7 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
                     onChange={(e) => setPassword(e.target.value)}
                     className="bg-background border-border text-foreground h-8 text-sm"
                   />
+                  <p className="text-[10px] text-muted-foreground">Use app password if your provider has 2-step verification; otherwise mailbox password.</p>
                 </div>
                 <div className="space-y-1">
                   <Label htmlFor="mb-name" className="text-xs text-muted-foreground">Display name</Label>
@@ -277,6 +330,7 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
                     onChange={(e) => setName(e.target.value)}
                     className="bg-background border-border text-foreground h-8 text-sm"
                   />
+                  <p className="text-[10px] text-muted-foreground">A friendly name shown in the app, for example Work or Personal.</p>
                 </div>
               </div>
             </div>
@@ -298,6 +352,7 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
                       spellCheck={false}
                       className="bg-background border-border text-foreground h-9 text-sm font-mono min-w-0 w-full"
                     />
+                    <p className="text-[10px] text-muted-foreground">Incoming mail server hostname, e.g. imap.gmail.com.</p>
                   </div>
                   <div className="flex flex-wrap items-end gap-3">
                     <div className="space-y-1 w-[5.5rem] shrink-0">
@@ -315,6 +370,7 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
                         }}
                         className="bg-background border-border text-foreground h-9 text-sm tabular-nums w-full"
                       />
+                      <p className="text-[10px] text-muted-foreground">Usually 993 (SSL/TLS) or 143 (STARTTLS).</p>
                     </div>
                     <div className="space-y-1 min-w-[10rem] flex-1">
                       <Label htmlFor="mb-imap-sec" className="text-xs text-muted-foreground">Security</Label>
@@ -327,6 +383,7 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
                         <option value="secure">{imapPort === 993 ? "SSL/TLS (implicit)" : "STARTTLS"}</option>
                         <option value="none">None</option>
                       </select>
+                      <p className="text-[10px] text-muted-foreground">Match this with your provider's IMAP encryption requirement.</p>
                     </div>
                   </div>
                 </div>
@@ -343,6 +400,7 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
                       spellCheck={false}
                       className="bg-background border-border text-foreground h-9 text-sm font-mono min-w-0 w-full"
                     />
+                    <p className="text-[10px] text-muted-foreground">Outgoing mail server hostname, e.g. smtp.gmail.com.</p>
                   </div>
                   <div className="flex flex-wrap items-end gap-3">
                     <div className="space-y-1 w-[5.5rem] shrink-0">
@@ -360,6 +418,7 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
                         }}
                         className="bg-background border-border text-foreground h-9 text-sm tabular-nums w-full"
                       />
+                      <p className="text-[10px] text-muted-foreground">Usually 587 (STARTTLS) or 465 (SSL/TLS).</p>
                     </div>
                     <div className="space-y-1 min-w-[10rem] flex-1">
                       <Label htmlFor="mb-smtp-sec" className="text-xs text-muted-foreground">Security</Label>
@@ -372,6 +431,7 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
                         <option value="secure">{smtpPort === 465 ? "SSL/TLS (implicit)" : "STARTTLS"}</option>
                         <option value="none">None</option>
                       </select>
+                      <p className="text-[10px] text-muted-foreground">Use the same encryption type recommended for your SMTP port.</p>
                     </div>
                   </div>
                 </div>
@@ -387,6 +447,7 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
                     className="h-9 w-12 shrink-0 cursor-pointer rounded-md border border-border bg-background p-0.5"
                   />
                 </div>
+                <p className="text-[10px] text-muted-foreground">Optional: choose a color to quickly identify this mailbox in the UI.</p>
               </div>
             </div>
           </div>

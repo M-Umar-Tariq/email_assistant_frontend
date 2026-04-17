@@ -23,6 +23,7 @@ import { AddMailboxDialog } from "@/components/add-mailbox-dialog"
 import { MailboxesView } from "@/components/mailboxes-view"
 import { BetaLabel } from "@/components/beta-label"
 import { AiChatProvider } from "@/lib/ai-chat-context"
+import { AiQueryBackgroundIndicator } from "@/components/ai-query-background-indicator"
 import { mailboxes as mailboxesApi } from "@/lib/api"
 
 const AUTO_SYNC_INTERVAL = 60_000 // 1 minute
@@ -135,6 +136,9 @@ export default function AppDashboard() {
     const onShowEmailsFromSender = (e: Event) => {
       const detail = (e as CustomEvent).detail as { from_email?: string; from_name?: string }
       if (detail?.from_email) {
+        setInboxFilter(null)
+        setInitialLabelFilter(null)
+        setPendingInboxMailbox(null)
         setInitialSenderEmail(detail.from_email)
         setInitialSenderName(detail.from_name ?? null)
         setActiveView("inbox")
@@ -336,6 +340,14 @@ export default function AppDashboard() {
                 onNavigateInbox={handleNavigateInbox}
                 onNavigateToEmail={handleNavigateToEmail}
                 onConnectMailbox={() => setShowAddMailbox(true)}
+                onOpenInboxWithMailbox={(id) => {
+                  setInboxFilter(null)
+                  setInitialLabelFilter(null)
+                  setInitialSenderEmail(null)
+                  setInitialSenderName(null)
+                  setPendingInboxMailbox(id)
+                  setActiveView("inbox")
+                }}
               />
             )}
             {activeView === "calendar" && <CalendarView />}
@@ -387,7 +399,17 @@ export default function AppDashboard() {
               />
             )}
             {activeView === "analytics" && (
-              <AnalyticsView onConnectMailbox={() => setShowAddMailbox(true)} />
+              <AnalyticsView
+                onConnectMailbox={() => setShowAddMailbox(true)}
+                onOpenInboxWithMailbox={(id) => {
+                  setInboxFilter(null)
+                  setInitialLabelFilter(null)
+                  setInitialSenderEmail(null)
+                  setInitialSenderName(null)
+                  setPendingInboxMailbox(id)
+                  setActiveView("inbox")
+                }}
+              />
             )}
             {activeView === "feedback" && <FeedbackView />}
             {activeView === "settings" && (
@@ -399,6 +421,10 @@ export default function AppDashboard() {
           </div>
         </main>
 
+        <AiQueryBackgroundIndicator
+          activeView={activeView}
+          onOpenAssistant={() => setActiveView("assistant")}
+        />
         <FloatingAiChat
           activeView={activeView}
           onNavigateToAssistant={() => setActiveView("assistant")}

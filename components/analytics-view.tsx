@@ -185,7 +185,14 @@ function RankIndicator({ rank }: { rank: number }) {
 
 /* ─── Main Component ─────────────────────────────────────────────────── */
 
-export function AnalyticsView({ onConnectMailbox }: { onConnectMailbox?: () => void } = {}) {
+export function AnalyticsView({
+  onConnectMailbox,
+  onOpenInboxWithMailbox,
+}: {
+  onConnectMailbox?: () => void
+  /** Open unified inbox scoped to this connected account (same as Mailboxes → Open inbox). */
+  onOpenInboxWithMailbox?: (mailboxId: string) => void
+} = {}) {
   const [overview, setOverview] = useState<{
     total_received: number
     received_change: string
@@ -560,9 +567,21 @@ export function AnalyticsView({ onConnectMailbox }: { onConnectMailbox?: () => v
                     const maxCount = Math.max(...topSenders.map((s) => s.count), 1)
                     const pct = (sender.count / maxCount) * 100
                     return (
-                      <div
+                      <button
                         key={sender.email}
-                        className="flex items-center gap-3 rounded-xl px-3 py-2.5 transition-all hover:bg-muted/30 group"
+                        type="button"
+                        onClick={() => {
+                          window.dispatchEvent(
+                            new CustomEvent("contacts:showEmailsFrom", {
+                              detail: {
+                                from_email: sender.email,
+                                from_name: sender.name || sender.email,
+                              },
+                            })
+                          )
+                        }}
+                        title={`Open inbox — emails from ${sender.name || sender.email}`}
+                        className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left transition-all hover:bg-muted/30 group cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
                       >
                         <div className="flex items-center justify-center w-5 shrink-0">
                           <RankIndicator rank={i} />
@@ -599,7 +618,7 @@ export function AnalyticsView({ onConnectMailbox }: { onConnectMailbox?: () => v
                             />
                           </div>
                         </div>
-                      </div>
+                      </button>
                     )
                   })}
                   {topSenders.length === 0 && (
@@ -636,9 +655,17 @@ export function AnalyticsView({ onConnectMailbox }: { onConnectMailbox?: () => v
               <CardContent className="px-5 pb-5">
                 <div className="flex flex-col gap-3">
                   {mailboxes.map((mb) => (
-                    <div
+                    <button
                       key={mb.id}
-                      className="flex items-start gap-4 rounded-xl border border-border/50 p-4 transition-all hover:border-border hover:shadow-sm group"
+                      type="button"
+                      onClick={() => onOpenInboxWithMailbox?.(mb.id)}
+                      title={onOpenInboxWithMailbox ? `Open inbox for ${mb.name}` : undefined}
+                      className={cn(
+                        "flex w-full items-start gap-4 rounded-xl border border-border/50 p-4 text-left transition-all hover:border-border hover:shadow-sm group",
+                        onOpenInboxWithMailbox
+                          ? "cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 focus-visible:ring-offset-background"
+                          : "cursor-default"
+                      )}
                     >
                       <div className="flex flex-col items-center gap-2">
                         <div
@@ -705,7 +732,7 @@ export function AnalyticsView({ onConnectMailbox }: { onConnectMailbox?: () => v
                           </div>
                         </div>
                       </div>
-                    </div>
+                    </button>
                   ))}
                   {mailboxes.length === 0 && (
                     <div className="px-4 py-8 text-center">
