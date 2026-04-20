@@ -239,6 +239,16 @@ export const mailboxes = {
 
 // ── Emails ──────────────────────────────────────────────────────────────────
 
+export type DetectedMeetingApi = {
+  title: string;
+  start: string;
+  end: string;
+  location?: string | null;
+  attendees?: string[];
+};
+
+export type MeetingDetectionStatus = "pending" | "added" | "dismissed" | null;
+
 export type EmailListApi = {
   id: string;
   mailbox_id: string;
@@ -261,6 +271,8 @@ export type EmailListApi = {
   snoozed_until: string | null;
   replied_at?: string | null;
   thread_count?: number;
+  detected_meeting?: DetectedMeetingApi | null;
+  meeting_status?: MeetingDetectionStatus;
 };
 
 export type SentReplyApi = {
@@ -368,12 +380,60 @@ export const emails = {
   snooze: (id: string, hours: number) => request<EmailDetailApi>("POST", `/emails/${id}/snooze/`, { hours }),
   archive: (id: string) => request<{ status: string }>("POST", `/emails/${id}/archive/`),
   trash: (id: string) => request<{ status: string }>("POST", `/emails/${id}/trash/`),
+  moveToInbox: (id: string) => request<{ status: string }>("POST", `/emails/${id}/move-to-inbox/`),
   /** Remove the email from this app permanently (local DB + vectors). */
   deletePermanently: (id: string) =>
     request<{ status: string }>("POST", `/emails/${id}/delete/`),
   spam: (id: string) => request<{ status: string }>("POST", `/emails/${id}/spam/`),
   deleteAll: () =>
     request<{ deleted: number }>("POST", "/emails/delete-all/"),
+  /**
+   * Bulk actions — one request for many emails. Mirrors the single-email
+   * endpoints but takes an `email_ids` list so the backend can run a single
+   * Mongo `update_many` plus one IMAP session per mailbox.
+   */
+  bulkArchive: (ids: string[]) =>
+    request<{ processed: number; failed: string[] }>(
+      "POST",
+      "/emails/bulk/archive/",
+      { email_ids: ids },
+    ),
+  bulkTrash: (ids: string[]) =>
+    request<{ processed: number; failed: string[] }>(
+      "POST",
+      "/emails/bulk/trash/",
+      { email_ids: ids },
+    ),
+  bulkSpam: (ids: string[]) =>
+    request<{ processed: number; failed: string[] }>(
+      "POST",
+      "/emails/bulk/spam/",
+      { email_ids: ids },
+    ),
+  bulkMoveToInbox: (ids: string[]) =>
+    request<{ processed: number; failed: string[] }>(
+      "POST",
+      "/emails/bulk/move-to-inbox/",
+      { email_ids: ids },
+    ),
+  bulkDelete: (ids: string[]) =>
+    request<{ processed: number; failed: string[] }>(
+      "POST",
+      "/emails/bulk/delete/",
+      { email_ids: ids },
+    ),
+  bulkUpdate: (ids: string[], data: { read?: boolean; starred?: boolean }) =>
+    request<{ processed: number; failed: string[] }>(
+      "POST",
+      "/emails/bulk/update/",
+      { email_ids: ids, ...data },
+    ),
+  bulkSnooze: (ids: string[], hours: number) =>
+    request<{ processed: number; failed: string[] }>(
+      "POST",
+      "/emails/bulk/snooze/",
+      { email_ids: ids, hours },
+    ),
   send: (data: { mailbox_id: string; to: string[]; cc?: string[]; subject: string; body: string }) =>
     request<{ status: string }>("POST", "/emails/send/", data),
   reply: (emailId: string, data: { mailbox_id: string; to: string[]; subject: string; body: string }) =>
@@ -391,6 +451,32 @@ export const emails = {
     fetchBlobWithAuth(
       `/emails/${encodeURIComponent(emailId)}/attachments/${attachmentIndex}/download/`
     ),
+  /** Emails whose AI-detected meeting the user may add to the calendar. */
+  withMeetings: (params?: {
+    mailbox_id?: string;
+    status?: "pending" | "added" | "dismissed";
+  }) => {
+    const sp = new URLSearchParams();
+    if (params?.mailbox_id && params.mailbox_id !== "all") sp.set("mailbox_id", params.mailbox_id);
+    if (params?.status) sp.set("status", params.status);
+    const qs = sp.toString();
+    return request<{
+      emails: EmailListApi[];
+      total: number;
+      pending: number;
+      added: number;
+      dismissed: number;
+    }>("GET", `/emails/with-meetings/${qs ? `?${qs}` : ""}`);
+  },
+  /** Promote a detected meeting into a real calendar event. */
+  addMeeting: (emailId: string) =>
+    request<{ meeting: CalendarMeeting; email: EmailDetailApi }>(
+      "POST",
+      `/emails/${encodeURIComponent(emailId)}/add-meeting/`
+    ),
+  /** Dismiss the detected-meeting banner on an email. */
+  dismissMeeting: (emailId: string) =>
+    request<EmailDetailApi>("POST", `/emails/${encodeURIComponent(emailId)}/dismiss-meeting/`),
 };
 
 // ── Follow-ups ──────────────────────────────────────────────────────────────
@@ -574,7 +660,15 @@ export const analytics = {
 // ── AI ─────────────────────────────────────────────────────────────────────
 
 export const ai = {
-  ask: (query: string, mailboxId?: string, history?: { role: string; content: string }[]) =>
+  ask: (
+    query: string,
+    mailboxId?: string,
+    history?: {
+      role: string
+      content: string
+      sources?: { emailId?: string; email_id?: string; subject?: string }[]
+    }[],
+  ) =>
     request<{ answer: string; sources: { email_id: string; subject: string }[]; actions: AgentActionApi[] }>(
       "POST", "/ai/ask/", {
         query,
@@ -619,14 +713,31 @@ export type AgentActionApi = {
   description: string;
   status: string;
   to?: string | string[];
+  cc?: string | string[];
   subject?: string;
   body?: string;
   mailbox_id?: string;
   email_id?: string;
+  email_ids?: string[];
+  from_email?: string;
+  keywords?: string;
   instructions?: string;
+  read?: boolean;
+  unread_only?: boolean;
+  date_from?: string;
+  date_to?: string;
+  limit?: number;
+  hours?: number;
+  folder?: string;
+  query?: string;
   requires_approval: boolean;
   timestamp: string;
   execution_details?: string;
+  email?: { id?: string; _id?: string; subject?: string; [key: string]: unknown };
+  emails?: Array<{ id?: string; _id?: string; subject?: string; [key: string]: unknown }>;
+  draft?: unknown;
+  marked?: number;
+  failed?: number;
 };
 
 export type AgentChatResponse = {

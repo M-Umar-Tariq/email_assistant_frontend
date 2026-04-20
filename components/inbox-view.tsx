@@ -18,6 +18,7 @@ import {
   Circle,
   Filter,
   ChevronDown,
+  ChevronLeft,
   Sparkles,
   AlarmClock,
   Send,
@@ -88,13 +89,13 @@ import {
   ai as aiApi,
   settingsApi,
   getStoredUser,
-  calendar as calendarApi,
   type EmailStatsApi,
+  type FolderCountsApi,
   type UniqueSendersApi,
   type SettingsApi,
 } from "@/lib/api"
 import { mapEmailListApi, mapEmailDetailApi, mapMailboxApi } from "@/lib/mappers"
-import type { Email, EmailCategory, Mailbox, SchedulingInfo } from "@/lib/mock-data"
+import type { Email, EmailCategory, Mailbox } from "@/lib/mock-data"
 import { format } from "date-fns"
 import type { InboxFilter } from "@/components/daily-briefing"
 import { ConnectMailboxCta } from "@/components/connect-mailbox-cta"
@@ -250,6 +251,7 @@ function EmailListItem({
   onMarkUnread,
   onStar,
   onDelete,
+  onMoveToInbox,
   onSelect,
   showMailbox = false,
   index = 0,
@@ -269,6 +271,7 @@ function EmailListItem({
   index?: number
   /** Toolbar + row delete control (e.g. "Delete forever" in Trash). */
   deleteTooltip?: string
+  onMoveToInbox?: () => void
 }) {
   const mb = showMailbox ? mailboxes.find((m) => m.id === email.mailbox) : null
   const mbColor = getMailboxColor(email.mailbox, mailboxes)
@@ -500,6 +503,28 @@ function EmailListItem({
               <p className="text-xs">{email.starred ? "Remove star" : "Star"}</p>
             </TooltipContent>
           </Tooltip>
+          {onMoveToInbox && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="icon"
+                  className="h-7 w-7 shrink-0 rounded-md text-muted-foreground hover:bg-primary/10 hover:text-primary sm:h-8 sm:w-8"
+                  onClick={(e) => {
+                    e.stopPropagation()
+                    onMoveToInbox()
+                  }}
+                  aria-label="Move to Inbox"
+                >
+                  <Inbox className="h-3.5 w-3.5 sm:h-4 sm:w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">
+                <p className="text-xs">Move to Inbox</p>
+              </TooltipContent>
+            </Tooltip>
+          )}
           <Tooltip>
             <TooltipTrigger asChild>
               <Button
@@ -625,105 +650,168 @@ function applySuggestedTimeToDate(base: Date, timeStr: string | undefined): Date
   return d
 }
 
-function schedulingToIsoRange(info: SchedulingInfo, fallbackTitle: string) {
-  if (!info.suggestedDate) return null
-  const base = new Date(info.suggestedDate)
-  if (Number.isNaN(base.getTime())) return null
-  const start = applySuggestedTimeToDate(base, info.suggestedTime)
-  const end = new Date(start.getTime() + 60 * 60 * 1000)
-  return {
-    title: (info.title?.trim() || fallbackTitle || "Meeting").slice(0, 500),
-    start: start.toISOString(),
-    end: end.toISOString(),
-    location: info.location?.trim() || undefined,
-    attendees: info.attendees?.filter(Boolean),
-  }
-}
-
 // -- Schedule from Email Widget --
-function ScheduleWidget({ email }: { email: Email }) {
-  const [created, setCreated] = useState(false)
-  const [creating, setCreating] = useState(false)
+/**
+ * Shown above an opened email when the sync detected a meeting.
+ * The user must explicitly confirm ("Add to my calendar") or dismiss —
+ * detections never land on the calendar automatically.
+ */
+function ScheduleWidget({
+  email,
+  onStatusChange,
+}: {
+  email: Email
+  onStatusChange?: (status: "added" | "dismissed") => void
+}) {
+  const initialStatus = email.schedulingInfo?.status ?? "pending"
+  const [status, setStatus] = useState<"pending" | "added" | "dismissed">(initialStatus)
+  const [busy, setBusy] = useState<"add" | "dismiss" | null>(null)
+
+  useEffect(() => {
+    setStatus(email.schedulingInfo?.status ?? "pending")
+  }, [email.schedulingInfo?.status, email.id])
+
   if (!email.schedulingInfo?.detected) return null
+  if (status === "dismissed") return null
 
-  const payload = schedulingToIsoRange(email.schedulingInfo, email.subject)
+  const info = email.schedulingInfo
+  const startDate = info.startIso
+    ? new Date(info.startIso)
+    : info.suggestedDate
+      ? applySuggestedTimeToDate(new Date(info.suggestedDate), info.suggestedTime)
+      : null
+  const endDate = info.endIso ? new Date(info.endIso) : null
+  const hasTimes = !!startDate && !Number.isNaN(startDate.getTime())
 
-  const handleCreate = async () => {
-    if (!payload) {
-      toast.error("Could not read date/time from this email. Add the event manually in Calendar.")
-      return
-    }
-    setCreating(true)
+  const handleAdd = async () => {
+    setBusy("add")
     try {
-      const res = await calendarApi.create({
-        title: payload.title,
-        start: payload.start,
-        end: payload.end,
-        location: payload.location,
-        attendees: payload.attendees,
-      })
-      toast.success("Event added to calendar")
-      if (res.has_overlap && res.overlapping_titles?.length) {
-        toast.warning(`Overlaps with: ${res.overlapping_titles.join(", ")}`)
-      }
-      setCreated(true)
+      const res = await emailsApi.addMeeting(email.id)
+      toast.success("Added to your calendar")
+      setStatus("added")
+      onStatusChange?.("added")
       window.dispatchEvent(new CustomEvent("calendar:updated"))
+      window.dispatchEvent(
+        new CustomEvent("meetings:updated", {
+          detail: { emailId: email.id, meetingId: res?.meeting?.id, action: "added" },
+        }),
+      )
     } catch (e) {
-      toast.error((e as Error).message || "Could not create calendar event")
+      toast.error((e as Error).message || "Could not add this meeting")
     } finally {
-      setCreating(false)
+      setBusy(null)
     }
+  }
+
+  const handleDismiss = async () => {
+    setBusy("dismiss")
+    try {
+      await emailsApi.dismissMeeting(email.id)
+      setStatus("dismissed")
+      onStatusChange?.("dismissed")
+      window.dispatchEvent(
+        new CustomEvent("meetings:updated", {
+          detail: { emailId: email.id, action: "dismissed" },
+        }),
+      )
+    } catch (e) {
+      toast.error((e as Error).message || "Could not dismiss")
+    } finally {
+      setBusy(null)
+    }
+  }
+
+  const formatRange = () => {
+    if (!startDate || Number.isNaN(startDate.getTime())) return "No date detected"
+    const dateStr = startDate.toLocaleDateString("en-US", {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    })
+    const timeStr = startDate.toLocaleTimeString("en-US", {
+      hour: "numeric",
+      minute: "2-digit",
+      hour12: true,
+    })
+    let out = `${dateStr} · ${timeStr}`
+    if (endDate && !Number.isNaN(endDate.getTime())) {
+      out += ` – ${endDate.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", hour12: true })}`
+    }
+    return out
   }
 
   return (
-    <div className="rounded-lg border border-indigo-400/20 bg-indigo-400/5 p-4">
-      <div className="flex items-center gap-2 mb-2">
+    <div className="rounded-lg border border-indigo-400/30 bg-indigo-400/5 p-4">
+      <div className="flex items-center gap-2 mb-1">
         <CalendarPlus className="h-4 w-4 text-indigo-400" />
-        <span className="text-sm font-semibold text-indigo-400">Meeting Detected</span>
+        <span className="text-sm font-semibold text-indigo-400">Meeting detected</span>
+        {status === "added" && (
+          <Badge variant="outline" className="text-[10px] border-emerald-400/30 text-emerald-500 bg-emerald-400/5 font-medium">
+            added
+          </Badge>
+        )}
       </div>
-      {created ? (
-        <div className="flex items-center gap-2 text-sm text-emerald-400">
-          <CheckCircle2 className="h-4 w-4" />
-          Event added to calendar
+      <p className="text-[11px] text-muted-foreground mb-3">
+        {status === "added"
+          ? "This meeting is on your calendar. You can remove it from Calendar any time."
+          : "Smart Mail AI found a meeting in this email. Do you want to add it to your calendar?"}
+      </p>
+
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-xs mb-3">
+        <div>
+          <span className="text-muted-foreground">Title</span>
+          <p className="text-foreground font-medium truncate">{info.title || email.subject || "Meeting"}</p>
         </div>
-      ) : (
-        <>
-          <div className="grid grid-cols-2 gap-2 text-xs mb-3">
-            <div>
-              <span className="text-muted-foreground">Title</span>
-              <p className="text-foreground font-medium">{email.schedulingInfo.title}</p>
-            </div>
-            <div>
-              <span className="text-muted-foreground">Date</span>
-              <p className="text-foreground font-medium">
-                {email.schedulingInfo.suggestedDate && new Date(email.schedulingInfo.suggestedDate).toLocaleDateString("en-US", { weekday: "short", month: "short", day: "numeric" })}
-                {email.schedulingInfo.suggestedTime && ` at ${email.schedulingInfo.suggestedTime}`}
-              </p>
-            </div>
-            {email.schedulingInfo.location && (
-              <div>
-                <span className="text-muted-foreground">Location</span>
-                <p className="text-foreground font-medium">{email.schedulingInfo.location}</p>
-              </div>
-            )}
-            <div>
-              <span className="text-muted-foreground">Attendees</span>
-              <p className="text-foreground font-medium">{email.schedulingInfo.attendees?.length || 0} people</p>
-            </div>
+        <div>
+          <span className="text-muted-foreground">When</span>
+          <p className="text-foreground font-medium">{formatRange()}</p>
+        </div>
+        {info.location && (
+          <div className="sm:col-span-2">
+            <span className="text-muted-foreground">Location</span>
+            <p className="text-foreground font-medium truncate">{info.location}</p>
           </div>
-          {!payload && (
-            <p className="text-[11px] text-amber-500/90 mb-2">Add a detectable date to create this event automatically.</p>
-          )}
+        )}
+        <div>
+          <span className="text-muted-foreground">Attendees</span>
+          <p className="text-foreground font-medium">{info.attendees?.length || 0} people</p>
+        </div>
+      </div>
+
+      {status === "pending" && (
+        <div className="flex flex-wrap items-center gap-2">
           <Button
             size="sm"
             className="bg-indigo-500 text-white hover:bg-indigo-600 gap-1.5 h-7 text-xs"
-            disabled={creating}
-            onClick={handleCreate}
+            disabled={busy !== null || !hasTimes}
+            onClick={handleAdd}
           >
-            {creating ? <RefreshCw className="h-3 w-3 animate-spin" /> : <CalendarPlus className="h-3 w-3" />}
-            Create Calendar Event
+            {busy === "add" ? <RefreshCw className="h-3 w-3 animate-spin" /> : <CalendarPlus className="h-3 w-3" />}
+            Add to my calendar
           </Button>
-        </>
+          <Button
+            size="sm"
+            variant="outline"
+            className="h-7 text-xs gap-1.5"
+            disabled={busy !== null}
+            onClick={handleDismiss}
+          >
+            <X className="h-3 w-3" />
+            No, ignore
+          </Button>
+          {!hasTimes && (
+            <span className="text-[11px] text-amber-500/90">
+              Couldn&apos;t read the date/time — open Calendar to add manually.
+            </span>
+          )}
+        </div>
+      )}
+
+      {status === "added" && (
+        <div className="flex items-center gap-2 text-sm text-emerald-400">
+          <CheckCircle2 className="h-4 w-4" />
+          Added to your calendar
+        </div>
       )}
     </div>
   )
@@ -796,14 +884,17 @@ function TagPopover({
 // -- More Menu --
 function MoreMenu({
   email,
+  inTrashFolder = false,
   onAction,
   onClose,
 }: {
   email: Email
+  inTrashFolder?: boolean
   onAction: (action: string) => void
   onClose: () => void
 }) {
   const items: { key: string; label: string; icon: React.ElementType; className?: string; separator?: boolean }[] = [
+    ...(inTrashFolder ? [{ key: "moveToInbox", label: "Move to Inbox", icon: Inbox }] : []),
     { key: "markUnread", label: "Mark as unread", icon: Eye },
     { key: "snooze", label: "Snooze", icon: AlarmClock },
     { key: "label", label: "Label", icon: Tag },
@@ -1474,6 +1565,7 @@ function EmailDetail({
   onSpam,
   onUpdate,
   onEmailRefreshed,
+  onMoveToInbox,
   folder = "inbox",
   onPermanentDelete,
 }: {
@@ -1488,6 +1580,7 @@ function EmailDetail({
   onSpam: (emailId: string) => void
   onUpdate: (emailId: string, data: { read?: boolean; starred?: boolean; labels?: string[] }) => void
   onEmailRefreshed?: (email: Email) => void
+  onMoveToInbox?: (emailId: string) => void
   /** Current folder; in Trash, delete moves to permanent delete instead of trash. */
   folder?: string
   onPermanentDelete?: (emailId: string) => void
@@ -1535,6 +1628,9 @@ function EmailDetail({
       case "reply": setComposeMode("reply"); break
       case "forward": setComposeMode("forward"); break
       case "archive": onArchive(email.id); break
+      case "moveToInbox":
+        onMoveToInbox?.(email.id)
+        break
       case "star": handleToggleStar(); break
       case "snooze": setShowSnooze(true); break
       case "label": setShowTags(true); break
@@ -1616,6 +1712,23 @@ function EmailDetail({
           </Tooltip>
 
           <Separator orientation="vertical" className="mx-0.5 hidden h-5 sm:mx-1.5 sm:block" />
+
+          {inTrashFolder && onMoveToInbox && (
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-10 w-10 min-h-11 min-w-11 rounded-lg text-muted-foreground transition-all duration-200 hover:bg-primary/10 hover:text-primary sm:h-8 sm:w-8 sm:min-h-0 sm:min-w-0"
+                  onClick={() => onMoveToInbox(email.id)}
+                  aria-label="Move to Inbox"
+                >
+                  <Inbox className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom"><p className="text-xs">Move to Inbox</p></TooltipContent>
+            </Tooltip>
+          )}
 
           {!inTrashFolder && (
             <Tooltip>
@@ -1712,6 +1825,7 @@ function EmailDetail({
             {showMore && (
               <MoreMenu
                 email={email}
+                inTrashFolder={inTrashFolder}
                 onAction={handleMoreAction}
                 onClose={() => setShowMore(false)}
               />
@@ -1860,6 +1974,12 @@ function EmailDetail({
 
               <Separator className="mb-6 bg-border/40" />
 
+              {email.schedulingInfo?.detected && (
+                <div className="mb-6">
+                  <ScheduleWidget email={email} />
+                </div>
+              )}
+
               <div className="max-w-none">
                 {email.bodyIsHtml ? (
                   <EmailHtmlFrame html={sanitizeEmailHtml(email.body)} />
@@ -1921,12 +2041,6 @@ function EmailDetail({
                       </div>
                     ))}
                   </div>
-                </div>
-              )}
-
-              {email.schedulingInfo?.detected && (
-                <div className="mt-6">
-                  <ScheduleWidget email={email} />
                 </div>
               )}
 
@@ -2161,6 +2275,8 @@ export function InboxView({
   const [emailsList, setEmailsList] = useState<Email[]>([])
   /** Server counts for filter dropdown (full inbox, not just loaded page). */
   const [inboxStats, setInboxStats] = useState<EmailStatsApi | null>(null)
+  /** Server counts per folder (inbox/sent/trash/archive/star/spam/snoozed). */
+  const [folderCounts, setFolderCounts] = useState<FolderCountsApi | null>(null)
   const [loading, setLoading] = useState(true)
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -2199,10 +2315,15 @@ export function InboxView({
   const [userSettings, setUserSettings] = useState<SettingsApi | null>(null)
 
   const PAGE_SIZE = 50
-  const [hasMore, setHasMore] = useState(true)
-  const [loadingMore, setLoadingMore] = useState(false)
-  const [bulkSelectingAll, setBulkSelectingAll] = useState(false)
+  /**
+   * Gmail-style pagination: we load exactly one page (PAGE_SIZE) at a time.
+   * `currentPage` is 1-indexed. `hasMoreFromApi` tracks whether the last
+   * batch returned a full PAGE_SIZE (used as a fallback when total isn't known).
+   */
+  const [currentPage, setCurrentPage] = useState(1)
+  const [hasMoreFromApi, setHasMoreFromApi] = useState(true)
   const initialLoadDoneRef = useRef(false)
+  const emailListScrollRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
     if (initialFilter) {
@@ -2252,7 +2373,8 @@ export function InboxView({
       prevFolderRef.current = folder
       setSelectedEmail(null)
       setSearchQuery("")
-      setHasMore(true)
+      setCurrentPage(1)
+      setHasMoreFromApi(true)
       setFilterLabel(null)
       setFilterPreset(null)
       setInboxStats(null)
@@ -2286,16 +2408,32 @@ export function InboxView({
   const clearSenderFilter = useCallback(() => {
     setSenderFilter(null)
     onInitialSenderConsumed?.()
-    setHasMore(true)
+    setCurrentPage(1)
+    setHasMoreFromApi(true)
   }, [onInitialSenderConsumed])
 
-  // Actual total from backend (per mailbox or sum when "all"); fallback to loaded list count
-  const totalFromMailboxes =
-    filterMailbox === "all"
-      ? mailboxesList.reduce((s, m) => s + (m.totalEmails ?? 0), 0)
-      : (mailboxesList.find((m) => m.id === filterMailbox)?.totalEmails ?? 0)
+  // Folder-aware totals from backend. This fixes wrong "of N" counts in
+  // non-inbox folders (Sent/Trash/Archive/Star/Spam/Snoozed).
+  const normalizedFolder = folder && folder !== "" ? folder : "inbox"
+  const folderCountFromApi =
+    normalizedFolder === "inbox"
+      ? (folderCounts?.inbox ?? 0)
+      : normalizedFolder === "sent"
+        ? (folderCounts?.sent ?? 0)
+        : normalizedFolder === "trash"
+          ? (folderCounts?.trash ?? 0)
+          : normalizedFolder === "archive"
+            ? (folderCounts?.archive ?? 0)
+            : normalizedFolder === "star"
+              ? (folderCounts?.star ?? 0)
+              : normalizedFolder === "spam"
+                ? (folderCounts?.spam ?? 0)
+                : normalizedFolder === "snoozed"
+                  ? (folderCounts?.snoozed ?? 0)
+                  : 0
   const loadedCount = emailsList.filter((e) => !snoozedEmails.has(e.id)).length
-  const allCount = totalFromMailboxes > 0 ? totalFromMailboxes : loadedCount
+  const hasServerScopedFilters = Boolean(senderFilter?.from_email || filterLabel)
+  const allCount = !hasServerScopedFilters && folderCountFromApi > 0 ? folderCountFromApi : loadedCount
   // displayedCount reflects the actual visible emails after mailbox/search/filter
   const displayedCount = (() => {
     let list = emailsList.filter((e) => !snoozedEmails.has(e.id))
@@ -2303,8 +2441,9 @@ export function InboxView({
     return list.length
   })()
 
-  const fetchMailboxesAndEmails = useCallback((mailboxId?: string) => {
+  const fetchMailboxesAndEmails = useCallback((mailboxId?: string, pageOverride?: number) => {
     const mbFilter = mailboxId ?? filterMailbox
+    const page = pageOverride ?? currentPage
     const listParams: {
       limit: number
       offset: number
@@ -2313,7 +2452,7 @@ export function InboxView({
       label?: string
       folder?: string
       inbox_preset?: string
-    } = { limit: PAGE_SIZE, offset: 0 }
+    } = { limit: PAGE_SIZE, offset: Math.max(0, (page - 1) * PAGE_SIZE) }
     if (mbFilter !== "all") listParams.mailbox_id = mbFilter
     if (senderFilter?.from_email) listParams.from_email = senderFilter.from_email
     if (filterLabel) listParams.label = filterLabel
@@ -2325,6 +2464,10 @@ export function InboxView({
       !folder || folder === "inbox"
         ? emailsApi.stats(statParams).then(setInboxStats).catch(() => setInboxStats(null))
         : Promise.resolve().then(() => setInboxStats(null))
+    const folderCountsPromise = emailsApi
+      .folderCounts(statParams)
+      .then(setFolderCounts)
+      .catch(() => setFolderCounts(null))
 
     return Promise.all([
       mailboxesApi.list().then((list) => setMailboxesList(list.map(mapMailboxApi))).catch(() => {}),
@@ -2332,40 +2475,20 @@ export function InboxView({
         .list(listParams)
         .then((list) => {
           setEmailsList(list.map(mapEmailListApi))
-          setHasMore(list.length >= PAGE_SIZE)
+          setHasMoreFromApi(list.length >= PAGE_SIZE)
         })
         .catch(() => {}),
       statsPromise,
+      folderCountsPromise,
     ])
-  }, [filterMailbox, senderFilter?.from_email, filterLabel, folder, filterPreset])
+  }, [filterMailbox, senderFilter?.from_email, filterLabel, folder, filterPreset, currentPage])
 
-  const loadMore = useCallback(() => {
-    if (loadingMore || !hasMore) return
-    setLoadingMore(true)
-    const listParams: {
-      limit: number
-      offset: number
-      mailbox_id?: string
-      from_email?: string
-      label?: string
-      folder?: string
-      inbox_preset?: string
-    } = { limit: PAGE_SIZE, offset: emailsList.length }
-    if (filterMailbox !== "all") listParams.mailbox_id = filterMailbox
-    if (senderFilter?.from_email) listParams.from_email = senderFilter.from_email
-    if (filterLabel) listParams.label = filterLabel
-    if (folder && folder !== "inbox") listParams.folder = folder
-    if ((!folder || folder === "inbox") && filterPreset) listParams.inbox_preset = filterPreset
-    emailsApi
-      .list(listParams)
-      .then((list) => {
-        const mapped = list.map(mapEmailListApi)
-        setEmailsList((prev) => [...prev, ...mapped])
-        setHasMore(list.length >= PAGE_SIZE)
-      })
-      .catch(() => {})
-      .finally(() => setLoadingMore(false))
-  }, [loadingMore, hasMore, emailsList.length, filterMailbox, senderFilter?.from_email, filterLabel, folder, filterPreset])
+  // Whenever any server-side filter changes, jump back to page 1 so the
+  // next fetch starts from offset 0 (Gmail-style behavior).
+  useEffect(() => {
+    setCurrentPage(1)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterMailbox, senderFilter?.from_email, filterLabel, folder, filterPreset])
 
   useEffect(() => {
     const isMailboxSwitch = initialLoadDoneRef.current
@@ -2405,8 +2528,9 @@ export function InboxView({
           (s, r) => s + ((r as { flags_updated?: number })?.flags_updated ?? 0),
           0,
         )
-        setHasMore(true)
-        return fetchMailboxesAndEmails().then(() => ({ totalSynced, totalThreadReplies, totalFlagsUpdated }))
+        setHasMoreFromApi(true)
+        setCurrentPage(1)
+        return fetchMailboxesAndEmails(undefined, 1).then(() => ({ totalSynced, totalThreadReplies, totalFlagsUpdated }))
       })
       .then(({ totalSynced, totalThreadReplies, totalFlagsUpdated }) => {
         if (totalSynced > 0 || totalThreadReplies > 0) {
@@ -2417,9 +2541,6 @@ export function InboxView({
             parts.push(`${totalFlagsUpdated} updated from Gmail/mail (read, star, …)`)
           }
           toast.success(`Synced. ${parts.join(", ")}.`)
-          if (totalSynced > 0) {
-            window.dispatchEvent(new CustomEvent("email:sync", { detail: { newCount: totalSynced } }))
-          }
         } else if (totalFlagsUpdated > 0) {
           toast.success(
             `Synced. ${totalFlagsUpdated} message(s) updated from your mail provider (read, star, etc.).`,
@@ -2427,6 +2548,13 @@ export function InboxView({
         } else {
           toast.success("Inbox is up to date.")
         }
+        // Match app auto-sync: notify dashboard (Top Senders, trends) and sidebar even when 0 new messages
+        window.dispatchEvent(
+          new CustomEvent("email:sync", {
+            detail: { newCount: totalSynced, flagsUpdated: totalFlagsUpdated },
+          }),
+        )
+        window.dispatchEvent(new CustomEvent("mailbox:sync-complete"))
       })
       .catch((err) => {
         toast.error(err?.message ?? "Sync failed")
@@ -2536,7 +2664,14 @@ export function InboxView({
   }, [])
 
   const refreshMailboxCounts = useCallback(() => {
-    mailboxesApi.list().then((list) => setMailboxesList(list.map(mapMailboxApi))).catch(() => {})
+    mailboxesApi
+      .list()
+      .then((list) => {
+        setMailboxesList(list.map(mapMailboxApi))
+        // Notify dashboard/settings widgets (Top Senders, trends, etc.) to refetch.
+        window.dispatchEvent(new CustomEvent("mailbox:updated"))
+      })
+      .catch(() => {})
   }, [])
 
   const handleArchive = useCallback((emailId: string) => {
@@ -2583,6 +2718,22 @@ export function InboxView({
     },
     [refreshMailboxCounts]
   )
+
+  const handleMoveToInbox = useCallback((emailId: string) => {
+    emailsApi.moveToInbox(emailId).then(() => {
+      setEmailsList((prev) => prev.filter((e) => e.id !== emailId))
+      setListSelectedIds((prev) => {
+        const next = new Set(prev)
+        next.delete(emailId)
+        return next
+      })
+      setSelectedEmail(null)
+      toast.success("Email moved to inbox")
+      refreshMailboxCounts()
+    }).catch((err) => {
+      toast.error(err?.message ?? "Could not move to inbox")
+    })
+  }, [refreshMailboxCounts])
 
   const runBulkDeletePermanent = useCallback(() => {
     const ids = [...listSelectedIds]
@@ -2666,7 +2817,9 @@ export function InboxView({
   const loadMoreTargetCount =
     filterPreset && inboxStats && (!folder || folder === "inbox")
       ? presetCounts[filterPreset]
-      : allCount
+      : !hasServerScopedFilters
+        ? folderCountFromApi
+        : 0
 
   const filterBadgeCount =
     filterPreset && searchQuery.trim() ? filteredEmails.length : filterPreset ? presetCounts[filterPreset] : 0
@@ -2675,239 +2828,211 @@ export function InboxView({
   const allFilteredSelected =
     filteredEmails.length > 0 && filteredEmails.every((e) => listSelectedIds.has(e.id))
 
-  const fetchAllFilteredIds = useCallback(async () => {
-    const baseParams: {
-      mailbox_id?: string
-      from_email?: string
-      label?: string
-      folder?: string
-      inbox_preset?: string
-    } = {}
-    if (filterMailbox !== "all") baseParams.mailbox_id = filterMailbox
-    if (senderFilter?.from_email) baseParams.from_email = senderFilter.from_email
-    if (filterLabel) baseParams.label = filterLabel
-    if (folder && folder !== "inbox") baseParams.folder = folder
-    if ((!folder || folder === "inbox") && filterPreset) baseParams.inbox_preset = filterPreset
+  /**
+   * Gmail-style "Select all": only toggles the emails visible on the
+   * current page (the PAGE_SIZE subset we just loaded, minus snoozed /
+   * client-search-filtered items). Cross-page selection is intentionally
+   * removed — users move page-by-page using the prev/next arrows.
+   */
+  const handleBulkToggleSelectAll = useCallback(() => {
+    setListSelectedIds((prev) => {
+      const ids = filteredEmails.map((e) => e.id)
+      if (ids.length === 0) return prev
+      const allOn = ids.every((id) => prev.has(id))
+      const next = new Set(prev)
+      if (allOn) ids.forEach((id) => next.delete(id))
+      else ids.forEach((id) => next.add(id))
+      return next
+    })
+  }, [filteredEmails])
 
-    const ids: string[] = []
-    const seen = new Set<string>()
-    let offset = 0
-    while (true) {
-      const batch = await emailsApi.list({ ...baseParams, limit: PAGE_SIZE, offset })
-      if (batch.length === 0) break
-      for (const email of batch) {
-        if (snoozedEmails.has(email.id)) continue
-        if (seen.has(email.id)) continue
-        seen.add(email.id)
-        ids.push(email.id)
-      }
-      if (batch.length < PAGE_SIZE) break
-      offset += batch.length
-    }
-    return ids
-  }, [PAGE_SIZE, filterMailbox, senderFilter?.from_email, filterLabel, folder, filterPreset, snoozedEmails])
-
-  const handleBulkToggleSelectAll = useCallback(async () => {
-    if (bulkSelectingAll) return
-    const isClientSearch = searchQuery.trim().length > 0
-    if (isClientSearch) {
-      setListSelectedIds((prev) => {
-        const ids = filteredEmails.map((e) => e.id)
-        if (ids.length === 0) return prev
-        const allOn = ids.every((id) => prev.has(id))
-        const next = new Set(prev)
-        if (allOn) ids.forEach((id) => next.delete(id))
-        else ids.forEach((id) => next.add(id))
-        return next
-      })
-      return
-    }
-
-    setBulkSelectingAll(true)
-    try {
-      const ids = await fetchAllFilteredIds()
-      if (ids.length === 0) return
-      setListSelectedIds((prev) => {
-        const allOn = ids.every((id) => prev.has(id))
-        const next = new Set(prev)
-        if (allOn) ids.forEach((id) => next.delete(id))
-        else ids.forEach((id) => next.add(id))
-        return next
-      })
-    } catch {
-      toast.error("Could not select all emails")
-    } finally {
-      setBulkSelectingAll(false)
-    }
-  }, [bulkSelectingAll, searchQuery, filteredEmails, fetchAllFilteredIds])
+  /**
+   * All bulk handlers below share the same shape:
+   *   1. Capture selected ids synchronously.
+   *   2. Apply an OPTIMISTIC UI update immediately (list feels instant).
+   *   3. Fire ONE bulk API call for all ids.
+   *   4. On failure, toast + ideally refetch — we keep the optimistic state
+   *      so the UI doesn't rubber-band; a refetch will reconcile if needed.
+   *
+   * This replaces the previous O(N) `Promise.allSettled([emailsApi.X...])`
+   * pattern that took 10+ seconds for 50 emails because each request did
+   * its own Mongo lookup + IMAP login/select/search round-trip.
+   */
 
   const runBulkArchive = () => {
     const ids = [...listSelectedIds]
     if (ids.length === 0) return
-    Promise.allSettled(ids.map((id) => emailsApi.archive(id))).then((results) => {
-      const succeeded = ids.filter((_, i) => results[i].status === "fulfilled")
-      if (succeeded.length === 0) {
-        toast.error("Could not archive")
-        return
-      }
-      const ok = new Set(succeeded)
-      setEmailsList((prev) => prev.filter((e) => !ok.has(e.id)))
-      setListSelectedIds((prev) => {
-        const next = new Set(prev)
-        succeeded.forEach((id) => next.delete(id))
-        return next
+    const ok = new Set(ids)
+    setEmailsList((prev) => prev.filter((e) => !ok.has(e.id)))
+    setListSelectedIds(new Set())
+    setSelectedEmail((cur) => (cur && ok.has(cur.id) ? null : cur))
+    toast.success(`Archiving ${ids.length} email(s)...`)
+    emailsApi.bulkArchive(ids)
+      .then((res) => {
+        toast.success(`Archived ${res.processed} email(s)`)
+        refreshMailboxCounts()
       })
-      setSelectedEmail((cur) => (cur && ok.has(cur.id) ? null : cur))
-      toast.success(`Archived ${succeeded.length} email(s)`)
-      refreshMailboxCounts()
-    })
+      .catch(() => toast.error("Could not archive"))
   }
 
   const runBulkTrash = () => {
     const ids = [...listSelectedIds]
     if (ids.length === 0) return
-    Promise.allSettled(ids.map((id) => emailsApi.trash(id))).then((results) => {
-      const succeeded = ids.filter((_, i) => results[i].status === "fulfilled")
-      if (succeeded.length === 0) {
-        toast.error("Could not delete")
-        return
-      }
-      const ok = new Set(succeeded)
-      setEmailsList((prev) => prev.filter((e) => !ok.has(e.id)))
-      setListSelectedIds((prev) => {
-        const next = new Set(prev)
-        succeeded.forEach((id) => next.delete(id))
-        return next
+    const ok = new Set(ids)
+    setEmailsList((prev) => prev.filter((e) => !ok.has(e.id)))
+    setListSelectedIds(new Set())
+    setSelectedEmail((cur) => (cur && ok.has(cur.id) ? null : cur))
+    toast.success(`Moving ${ids.length} email(s) to trash...`)
+    emailsApi.bulkTrash(ids)
+      .then((res) => {
+        toast.success(`Deleted ${res.processed} email(s)`)
+        refreshMailboxCounts()
       })
-      setSelectedEmail((cur) => (cur && ok.has(cur.id) ? null : cur))
-      toast.success(`Deleted ${succeeded.length} email(s)`)
-      refreshMailboxCounts()
-    })
+      .catch(() => toast.error("Could not delete"))
   }
 
   const runBulkSpam = () => {
     const ids = [...listSelectedIds]
     if (ids.length === 0) return
-    Promise.allSettled(ids.map((id) => emailsApi.spam(id))).then((results) => {
-      const succeeded = ids.filter((_, i) => results[i].status === "fulfilled")
-      if (succeeded.length === 0) {
-        toast.error("Could not report as spam")
-        return
-      }
-      const ok = new Set(succeeded)
-      setEmailsList((prev) => prev.filter((e) => !ok.has(e.id)))
-      setListSelectedIds((prev) => {
-        const next = new Set(prev)
-        succeeded.forEach((id) => next.delete(id))
-        return next
+    const ok = new Set(ids)
+    setEmailsList((prev) => prev.filter((e) => !ok.has(e.id)))
+    setListSelectedIds(new Set())
+    setSelectedEmail((cur) => (cur && ok.has(cur.id) ? null : cur))
+    toast.success(`Reporting ${ids.length} as spam...`)
+    emailsApi.bulkSpam(ids)
+      .then((res) => {
+        toast.success(`Reported ${res.processed} as spam`)
+        refreshMailboxCounts()
       })
-      setSelectedEmail((cur) => (cur && ok.has(cur.id) ? null : cur))
-      toast.success(`Reported ${succeeded.length} as spam`)
-      refreshMailboxCounts()
-    })
+      .catch(() => toast.error("Could not report as spam"))
+  }
+
+  const runBulkMoveToInbox = () => {
+    const ids = [...listSelectedIds]
+    if (ids.length === 0) return
+    const ok = new Set(ids)
+    setEmailsList((prev) => prev.filter((e) => !ok.has(e.id)))
+    setListSelectedIds(new Set())
+    setSelectedEmail((cur) => (cur && ok.has(cur.id) ? null : cur))
+    toast.success(`Moving ${ids.length} email(s) to inbox...`)
+    emailsApi.bulkMoveToInbox(ids)
+      .then((res) => {
+        toast.success(`Moved ${res.processed} email(s) to inbox`)
+        refreshMailboxCounts()
+      })
+      .catch(() => toast.error("Could not move to inbox"))
   }
 
   const runBulkMarkRead = () => {
     const ids = [...listSelectedIds]
     if (ids.length === 0) return
-    Promise.allSettled(ids.map((id) => emailsApi.update(id, { read: true }))).then((results) => {
-      const succeeded = ids.filter((_, i) => results[i].status === "fulfilled")
-      if (succeeded.length === 0) {
-        toast.error("Could not update")
-        return
-      }
-      const ok = new Set(succeeded)
-      setEmailsList((prev) => prev.map((e) => (ok.has(e.id) ? { ...e, read: true } : e)))
-      setSelectedEmail((cur) => (cur && ok.has(cur.id) ? { ...cur, read: true } : cur))
-      toast.success(`Marked ${succeeded.length} as read`)
-    })
+    const ok = new Set(ids)
+    setEmailsList((prev) => prev.map((e) => (ok.has(e.id) ? { ...e, read: true } : e)))
+    setListSelectedIds(new Set())
+    setSelectedEmail((cur) => (cur && ok.has(cur.id) ? { ...cur, read: true } : cur))
+    emailsApi.bulkUpdate(ids, { read: true })
+      .then((res) => toast.success(`Marked ${res.processed} as read`))
+      .catch(() => toast.error("Could not update"))
   }
 
   const runBulkMarkUnread = () => {
     const ids = [...listSelectedIds]
     if (ids.length === 0) return
-    Promise.allSettled(ids.map((id) => emailsApi.update(id, { read: false }))).then((results) => {
-      const succeeded = ids.filter((_, i) => results[i].status === "fulfilled")
-      if (succeeded.length === 0) {
-        toast.error("Could not update")
-        return
-      }
-      const ok = new Set(succeeded)
-      setEmailsList((prev) => prev.map((e) => (ok.has(e.id) ? { ...e, read: false } : e)))
-      setSelectedEmail((cur) => (cur && ok.has(cur.id) ? { ...cur, read: false } : cur))
-      toast.success(`Marked ${succeeded.length} as unread`)
-    })
+    const ok = new Set(ids)
+    setEmailsList((prev) => prev.map((e) => (ok.has(e.id) ? { ...e, read: false } : e)))
+    setListSelectedIds(new Set())
+    setSelectedEmail((cur) => (cur && ok.has(cur.id) ? { ...cur, read: false } : cur))
+    emailsApi.bulkUpdate(ids, { read: false })
+      .then((res) => toast.success(`Marked ${res.processed} as unread`))
+      .catch(() => toast.error("Could not update"))
   }
 
   const runBulkStar = () => {
     const ids = [...listSelectedIds]
     if (ids.length === 0) return
-    Promise.allSettled(ids.map((id) => emailsApi.update(id, { starred: true }))).then((results) => {
-      const succeeded = ids.filter((_, i) => results[i].status === "fulfilled")
-      if (succeeded.length === 0) {
-        toast.error("Could not star")
-        return
-      }
-      const ok = new Set(succeeded)
-      setEmailsList((prev) => prev.map((e) => (ok.has(e.id) ? { ...e, starred: true } : e)))
-      setSelectedEmail((cur) => (cur && ok.has(cur.id) ? { ...cur, starred: true } : cur))
-      toast.success(`Starred ${succeeded.length} email(s)`)
-    })
+    const ok = new Set(ids)
+    setEmailsList((prev) => prev.map((e) => (ok.has(e.id) ? { ...e, starred: true } : e)))
+    setListSelectedIds(new Set())
+    setSelectedEmail((cur) => (cur && ok.has(cur.id) ? { ...cur, starred: true } : cur))
+    emailsApi.bulkUpdate(ids, { starred: true })
+      .then((res) => toast.success(`Starred ${res.processed} email(s)`))
+      .catch(() => toast.error("Could not star"))
   }
 
   const runBulkRemoveStar = () => {
     const ids = [...listSelectedIds]
     if (ids.length === 0) return
-    Promise.allSettled(ids.map((id) => emailsApi.update(id, { starred: false }))).then((results) => {
-      const succeeded = ids.filter((_, i) => results[i].status === "fulfilled")
-      if (succeeded.length === 0) {
-        toast.error("Could not update")
-        return
-      }
-      const ok = new Set(succeeded)
-      setEmailsList((prev) => prev.map((e) => (ok.has(e.id) ? { ...e, starred: false } : e)))
-      setSelectedEmail((cur) => (cur && ok.has(cur.id) ? { ...cur, starred: false } : cur))
-      toast.success(`Removed star from ${succeeded.length} email(s)`)
-    })
+    const ok = new Set(ids)
+    setEmailsList((prev) => prev.map((e) => (ok.has(e.id) ? { ...e, starred: false } : e)))
+    setListSelectedIds(new Set())
+    setSelectedEmail((cur) => (cur && ok.has(cur.id) ? { ...cur, starred: false } : cur))
+    emailsApi.bulkUpdate(ids, { starred: false })
+      .then((res) => toast.success(`Removed star from ${res.processed} email(s)`))
+      .catch(() => toast.error("Could not update"))
   }
 
   const runBulkSnooze = (hours: number) => {
     const ids = [...listSelectedIds]
     if (ids.length === 0) return
-    Promise.allSettled(ids.map((id) => emailsApi.snooze(id, hours))).then((results) => {
-      const succeeded = ids.filter((_, i) => results[i].status === "fulfilled")
-      if (succeeded.length === 0) {
-        toast.error("Could not snooze")
-        return
-      }
-      const ok = new Set(succeeded)
-      setSnoozedEmails((prev) => {
-        const next = new Set(prev)
-        succeeded.forEach((id) => next.add(id))
-        return next
-      })
-      setListSelectedIds((prev) => {
-        const next = new Set(prev)
-        succeeded.forEach((id) => next.delete(id))
-        return next
-      })
-      setSelectedEmail((cur) => (cur && ok.has(cur.id) ? null : cur))
-      toast.success(`Snoozed ${succeeded.length} email(s)`)
+    const ok = new Set(ids)
+    setSnoozedEmails((prev) => {
+      const next = new Set(prev)
+      ids.forEach((id) => next.add(id))
+      return next
     })
+    setListSelectedIds(new Set())
+    setSelectedEmail((cur) => (cur && ok.has(cur.id) ? null : cur))
+    emailsApi.bulkSnooze(ids, hours)
+      .then((res) => toast.success(`Snoozed ${res.processed} email(s)`))
+      .catch(() => toast.error("Could not snooze"))
   }
 
-  const loadMoreRef = useRef<HTMLDivElement | null>(null)
+  /**
+   * Gmail-style pagination math. We derive a best-effort total from
+   * `loadMoreTargetCount` (which reads from mailbox stats / preset counts
+   * when available) and fall back to `hasMoreFromApi` when the backend
+   * doesn't expose a total for the current view (e.g., sender/label
+   * filters, or non-inbox folders).
+   */
+  const knownTotal = loadMoreTargetCount > 0 ? loadMoreTargetCount : 0
+  const pageStart = filteredEmails.length === 0 ? 0 : (currentPage - 1) * PAGE_SIZE + 1
+  const pageEnd = (currentPage - 1) * PAGE_SIZE + filteredEmails.length
+  const totalForDisplay = knownTotal > 0 ? Math.max(knownTotal, pageEnd) : pageEnd
+  const canGoPrevPage = currentPage > 1 && !loading
+  const canGoNextPage =
+    !loading &&
+    !searchQuery.trim() &&
+    (hasMoreFromApi || (knownTotal > 0 && pageEnd < knownTotal))
 
-  useEffect(() => {
-    if (!loadMoreRef.current || loading || loadingMore || !hasMore || searchQuery) return
-    if (displayedCount >= loadMoreTargetCount) return
-    const observer = new IntersectionObserver(
-      ([entry]) => { if (entry.isIntersecting) loadMore() },
-      { rootMargin: "200px" }
-    )
-    observer.observe(loadMoreRef.current)
-    return () => observer.disconnect()
-  }, [loading, loadingMore, hasMore, searchQuery, loadMore, displayedCount, loadMoreTargetCount])
+  const scrollEmailListToTop = useCallback(() => {
+    const node = emailListScrollRef.current
+    if (!node) return
+    const viewport = node.querySelector<HTMLElement>("[data-radix-scroll-area-viewport]")
+    if (viewport) viewport.scrollTo({ top: 0, behavior: "smooth" })
+    else node.scrollTo?.({ top: 0, behavior: "smooth" })
+  }, [])
+
+  const goToPage = useCallback(
+    (nextPage: number) => {
+      if (nextPage < 1) return
+      if (loading) return
+      if (nextPage === currentPage) return
+      setListSelectedIds(new Set())
+      setCurrentPage(nextPage)
+      scrollEmailListToTop()
+    },
+    [currentPage, loading, scrollEmailListToTop],
+  )
+
+  const goToPrevPage = useCallback(() => {
+    if (!canGoPrevPage) return
+    goToPage(currentPage - 1)
+  }, [canGoPrevPage, currentPage, goToPage])
+
+  const goToNextPage = useCallback(() => {
+    if (!canGoNextPage) return
+    goToPage(currentPage + 1)
+  }, [canGoNextPage, currentPage, goToPage])
 
   // Unread count: from API (mailboxesList[].unread) when available; else from loaded emails
   const unreadCountFromApi =
@@ -3001,18 +3126,6 @@ export function InboxView({
                         {unreadCount > 0 && (
                           <span className="font-medium text-primary/80">· {unreadCount} unread</span>
                         )}
-                        {uniqueSenders != null && (
-                          <>
-                            <span>·</span>
-                            <button
-                              type="button"
-                              onClick={() => setShowUniqueSendersDialog(true)}
-                              className="font-medium text-muted-foreground/80 transition-colors hover:text-foreground hover:underline"
-                            >
-                              {uniqueSenders.unique_senders_count} unique sender{uniqueSenders.unique_senders_count !== 1 ? "s" : ""}
-                            </button>
-                          </>
-                        )}
                       </p>
                     )}
                   </div>
@@ -3058,6 +3171,7 @@ export function InboxView({
               onSpam={handleSpam}
               onUpdate={handleUpdate}
               onEmailRefreshed={(updated) => setSelectedEmail(updated)}
+              onMoveToInbox={folder === "trash" ? handleMoveToInbox : undefined}
               folder={folder}
               onPermanentDelete={folder === "trash" ? handleDeletePermanent : undefined}
             />
@@ -3248,27 +3362,21 @@ export function InboxView({
                       variant="outline"
                       size="sm"
                       className="h-8 gap-1 rounded-xl px-2.5 text-xs"
-                      disabled={filteredEmails.length === 0 || bulkSelectingAll}
-                      aria-label={allFilteredSelected ? "Deselect all in list" : "Select all in list"}
+                      disabled={filteredEmails.length === 0}
+                      aria-label={allFilteredSelected ? "Deselect all on this page" : "Select all on this page"}
                       onClick={handleBulkToggleSelectAll}
                     >
                       <CheckSquare className="h-3.5 w-3.5 shrink-0" />
                       <span className="max-[420px]:sr-only">
-                        {bulkSelectingAll ? "Selecting..." : allFilteredSelected ? "Deselect all" : "Select all"}
+                        {allFilteredSelected ? "Deselect all" : "Select all"}
                       </span>
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent side="bottom" className="max-w-[220px]">
                     <p className="text-xs">
-                      {bulkSelectingAll
-                        ? "Selecting emails..."
-                        : searchQuery.trim()
-                          ? allFilteredSelected
-                            ? "Clear selection for this list"
-                            : "Select every loaded email in current search"
-                          : allFilteredSelected
-                            ? "Clear selection for all matching emails"
-                            : "Select every matching email across the inbox"}
+                      {allFilteredSelected
+                        ? "Clear selection on this page"
+                        : `Select all ${filteredEmails.length} email(s) on this page`}
                     </p>
                   </TooltipContent>
                 </Tooltip>
@@ -3289,6 +3397,26 @@ export function InboxView({
                     </TooltipTrigger>
                     <TooltipContent side="bottom">
                       <p className="text-xs">Archive selected</p>
+                    </TooltipContent>
+                  </Tooltip>
+                )}
+                {folder === "trash" && (
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="sm"
+                        className="h-8 gap-1 rounded-xl px-2.5 text-xs"
+                        disabled={bulkActionsDisabled}
+                        onClick={runBulkMoveToInbox}
+                      >
+                        <Inbox className="h-3.5 w-3.5 shrink-0" />
+                        <span className="hidden min-[380px]:inline">Move to Inbox</span>
+                      </Button>
+                    </TooltipTrigger>
+                    <TooltipContent side="bottom">
+                      <p className="text-xs">Move selected to inbox</p>
                     </TooltipContent>
                   </Tooltip>
                 )}
@@ -3388,11 +3516,66 @@ export function InboxView({
                     {filterBadgeCount} result{filterBadgeCount !== 1 ? "s" : ""}
                   </Badge>
                 )}
+
+                {/* Gmail-style pagination (1-50 of 376  ‹  › ) */}
+                {!searchQuery.trim() && filteredEmails.length > 0 && (
+                  <div className="flex items-center gap-1 pl-1 ml-1 border-l border-border/50">
+                    <span
+                      className="text-[11px] text-muted-foreground tabular-nums select-none px-1.5"
+                      aria-live="polite"
+                    >
+                      <span className="font-medium text-foreground/80">
+                        {pageStart.toLocaleString()}-{pageEnd.toLocaleString()}
+                      </span>
+                      <span className="text-muted-foreground/70"> of </span>
+                      <span className="font-medium text-foreground/80">
+                        {totalForDisplay.toLocaleString()}
+                        {knownTotal === 0 && hasMoreFromApi ? "+" : ""}
+                      </span>
+                    </span>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 rounded-lg"
+                          disabled={!canGoPrevPage}
+                          onClick={goToPrevPage}
+                          aria-label="Previous page"
+                        >
+                          <ChevronLeft className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        <p className="text-xs">Newer</p>
+                      </TooltipContent>
+                    </Tooltip>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          type="button"
+                          variant="ghost"
+                          size="sm"
+                          className="h-7 w-7 p-0 rounded-lg"
+                          disabled={!canGoNextPage}
+                          onClick={goToNextPage}
+                          aria-label="Next page"
+                        >
+                          <ChevronRight className="h-4 w-4" />
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent side="bottom">
+                        <p className="text-xs">Older</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </div>
+                )}
               </div>
             </div>
 
             {/* Email List */}
-            <ScrollArea className="flex-1">
+            <ScrollArea ref={emailListScrollRef} className="flex-1">
               {loading ? (
                 <EmailListSkeleton />
               ) : (
@@ -3414,6 +3597,7 @@ export function InboxView({
                             ? setPermanentDeletePrompt({ type: "list", id: email.id })
                             : handleTrash(email.id)
                         }
+                        onMoveToInbox={folder === "trash" ? () => handleMoveToInbox(email.id) : undefined}
                         onSelect={() => handleSelectEmail(email)}
                         showMailbox={filterMailbox === "all"}
                         index={idx}
@@ -3473,42 +3657,37 @@ export function InboxView({
                     </div>
                   )}
 
-                  {/* Load More / Infinite Scroll Trigger */}
-                  {hasMore && filteredEmails.length > 0 && !searchQuery && displayedCount < loadMoreTargetCount && (
-                    <div ref={loadMoreRef} className="flex flex-col items-center gap-3 py-8">
-                      <div className="flex items-center gap-3">
-                        <div className="h-px w-12 bg-border/60" />
-                        <p className="text-[11px] text-muted-foreground/60 font-medium tabular-nums">
-                          {displayedCount} of {loadMoreTargetCount}
-                        </p>
-                        <div className="h-px w-12 bg-border/60" />
-                      </div>
-                      {loadingMore ? (
-                        <div className="flex items-center gap-2 text-xs text-muted-foreground">
-                          <RefreshCw className="h-3.5 w-3.5 animate-spin text-primary/60" />
-                          Loading more...
-                        </div>
-                      ) : (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={loadMore}
-                          className="gap-1.5 text-xs text-muted-foreground hover:text-primary rounded-xl"
-                        >
-                          Load more
-                          <ChevronDown className="h-3 w-3" />
-                        </Button>
-                      )}
-                    </div>
-                  )}
-
-                  {(!hasMore || displayedCount >= loadMoreTargetCount) && filteredEmails.length > 0 && (
-                    <div className="flex items-center justify-center gap-3 py-6">
+                  {/* Bottom pagination (mirrors Gmail: "1-50 of 376  ‹  ›") */}
+                  {filteredEmails.length > 0 && !searchQuery.trim() && (
+                    <div className="flex items-center justify-center gap-2 py-6">
                       <div className="h-px w-8 bg-border/40" />
-                      <p className="text-[11px] text-muted-foreground/50 flex items-center gap-1.5">
-                        <CheckCircle2 className="h-3 w-3 text-emerald-500/50" />
-                        All {displayedCount} emails loaded
-                      </p>
+                      <span className="text-[11px] text-muted-foreground/70 tabular-nums select-none">
+                        {pageStart.toLocaleString()}-{pageEnd.toLocaleString()} of{" "}
+                        {totalForDisplay.toLocaleString()}
+                        {knownTotal === 0 && hasMoreFromApi ? "+" : ""}
+                      </span>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 rounded-lg"
+                        disabled={!canGoPrevPage}
+                        onClick={goToPrevPage}
+                        aria-label="Previous page"
+                      >
+                        <ChevronLeft className="h-4 w-4" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 rounded-lg"
+                        disabled={!canGoNextPage}
+                        onClick={goToNextPage}
+                        aria-label="Next page"
+                      >
+                        <ChevronRight className="h-4 w-4" />
+                      </Button>
                       <div className="h-px w-8 bg-border/40" />
                     </div>
                   )}
@@ -3549,23 +3728,18 @@ export function InboxView({
                   return
                 }
                 const ids = [...listSelectedIds]
-                Promise.allSettled(ids.map((id) => emailsApi.deletePermanently(id))).then((results) => {
-                  const succeeded = ids.filter((_, i) => results[i].status === "fulfilled")
-                  if (succeeded.length === 0) {
-                    toast.error("Could not delete permanently")
-                    return
-                  }
-                  const ok = new Set(succeeded)
-                  setEmailsList((prev) => prev.filter((e) => !ok.has(e.id)))
-                  setListSelectedIds((prev) => {
-                    const next = new Set(prev)
-                    succeeded.forEach((id) => next.delete(id))
-                    return next
+                if (ids.length === 0) return
+                const ok = new Set(ids)
+                setEmailsList((prev) => prev.filter((e) => !ok.has(e.id)))
+                setListSelectedIds(new Set())
+                setSelectedEmail((cur) => (cur && ok.has(cur.id) ? null : cur))
+                toast.success(`Deleting ${ids.length} email(s)...`)
+                emailsApi.bulkDelete(ids)
+                  .then((res) => {
+                    toast.success(`Permanently deleted ${res.processed} email(s)`)
+                    refreshMailboxCounts()
                   })
-                  setSelectedEmail((cur) => (cur && ok.has(cur.id) ? null : cur))
-                  toast.success(`Permanently deleted ${succeeded.length} email(s)`)
-                  refreshMailboxCounts()
-                })
+                  .catch(() => toast.error("Could not delete permanently"))
               }}
             >
               Delete forever

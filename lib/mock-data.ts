@@ -52,11 +52,17 @@ export type FollowUp = {
 
 export type SchedulingInfo = {
   detected: boolean
+  /** Raw start ISO from the detector (preferred over suggestedDate/Time). */
+  startIso?: string
+  /** Raw end ISO from the detector. */
+  endIso?: string
   suggestedDate?: string
   suggestedTime?: string
   attendees?: string[]
   location?: string
   title?: string
+  /** "pending" | "added" | "dismissed" — tracks user's decision on this detection. */
+  status?: "pending" | "added" | "dismissed"
 }
 
 export type ContactIntelligence = {

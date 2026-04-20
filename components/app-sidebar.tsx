@@ -21,6 +21,7 @@ import {
   Menu,
   PanelRight,
   CalendarDays,
+  CalendarPlus,
   Home,
   LayoutGrid,
   Columns2,
@@ -137,6 +138,7 @@ export function AppSidebar({
   const [calendarMailboxFilter, setCalendarMailboxFilter] = useState<string>("all")
   const [inboxExpanded, setInboxExpanded] = useState(false)
   const [folderCounts, setFolderCounts] = useState<FolderCountsApi | null>(null)
+  const [pendingMeetingRequests, setPendingMeetingRequests] = useState(0)
 
   useEffect(() => {
     try {
@@ -186,6 +188,33 @@ export function AppSidebar({
       new CustomEvent("calendar:setMailboxFilter", { detail: { mailboxId: calendarMailboxFilter } }),
     )
   }, [activeView, calendarMailboxFilter])
+
+  // Poll pending meeting-request count so the rail badge stays fresh after sync.
+  useEffect(() => {
+    let cancelled = false
+    const refresh = () => {
+      emailsApi
+        .withMeetings({ status: "pending" })
+        .then((res) => {
+          if (!cancelled) setPendingMeetingRequests(res.pending ?? 0)
+        })
+        .catch(() => {
+          if (!cancelled) setPendingMeetingRequests(0)
+        })
+    }
+    refresh()
+    const onMeetingsUpdated = () => refresh()
+    const onSync = () => refresh()
+    window.addEventListener("meetings:updated", onMeetingsUpdated)
+    window.addEventListener("email:sync", onSync)
+    window.addEventListener("mailbox:sync-complete", onSync)
+    return () => {
+      cancelled = true
+      window.removeEventListener("meetings:updated", onMeetingsUpdated)
+      window.removeEventListener("email:sync", onSync)
+      window.removeEventListener("mailbox:sync-complete", onSync)
+    }
+  }, [])
 
   useEffect(() => {
     if (
@@ -294,6 +323,25 @@ export function AppSidebar({
     "bg-orange-500", "bg-teal-500",
   ]
 
+  /** Calendar rail + detail panel show for grid view and meeting requests (same sidebar). */
+  const calendarSection = activeView === "calendar" || activeView === "meeting-requests"
+
+  /**
+   * Meeting Requests unmounts CalendarView, so sidebar actions that talk to the calendar
+   * must switch back first. Defer dispatches so listeners attach after mount.
+   */
+  const ensureCalendarView = useCallback(
+    (afterMount?: () => void) => {
+      if (activeView !== "meeting-requests") {
+        afterMount?.()
+        return
+      }
+      onViewChange("calendar")
+      if (afterMount) setTimeout(afterMount, 0)
+    },
+    [activeView, onViewChange],
+  )
+
   return (
     <TooltipProvider delayDuration={0}>
       <div className="flex h-full min-h-0 flex-col bg-sidebar border-r border-border">
@@ -357,7 +405,8 @@ export function AppSidebar({
         <div className={cn("flex h-full min-h-0 shrink-0 flex-col items-center border-r border-border bg-sidebar", RAIL_WIDTH)}>
           <div className="flex shrink-0 flex-col items-center gap-2 py-3 w-full px-1.5">
             {railTop.map(({ id, icon: Icon, tip }) => {
-              const isActive = activeView === id
+              const isActive =
+                id === "calendar" ? calendarSection : activeView === id
               return (
                 <Tooltip key={id}>
                   <TooltipTrigger asChild>
@@ -371,9 +420,16 @@ export function AppSidebar({
                       }`}
                     >
                       <Icon className="h-5 w-5" strokeWidth={isActive ? 2.25 : 1.75} />
+                      {id === "calendar" && pendingMeetingRequests > 0 ? (
+                        <span className="pointer-events-none absolute -right-0.5 -top-0.5 inline-flex min-w-[16px] items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary-foreground shadow-sm">
+                          {pendingMeetingRequests > 99 ? "99+" : pendingMeetingRequests}
+                        </span>
+                      ) : null}
                     </button>
                   </TooltipTrigger>
-                  <TooltipContent side="right" sideOffset={10} className="z-[200]"><p>{tip}</p></TooltipContent>
+                  <TooltipContent side="right" sideOffset={10} className="z-[200]">
+                    <p>{tip}</p>
+                  </TooltipContent>
                 </Tooltip>
               )
             })}
@@ -483,27 +539,83 @@ export function AppSidebar({
             panelCollapsed ? "w-0 max-w-0 opacity-0 pointer-events-none" : `${DETAIL_PANEL_WIDTH} opacity-100`,
           )}
         >
-          {activeView === "calendar" ? (
+          {calendarSection ? (
             <>
               <div className="px-3 pt-3 pb-2 border-b border-border/60">
-                <div className="flex items-center gap-2 text-primary">
-                  <CalendarDays className="h-4 w-4 shrink-0" />
-                  <span className="text-sm font-bold">Calendar</span>
-                </div>
-                <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
-                  Add events, switch views, and refresh synced meetings.
-                </p>
+                {activeView === "meeting-requests" ? (
+                  <button
+                    type="button"
+                    onClick={() => onViewChange("calendar")}
+                    className="w-full rounded-lg text-left transition-colors hover:bg-muted/50 -mx-1 px-1 py-0.5"
+                    aria-label="Back to calendar"
+                  >
+                    <div className="flex items-center gap-2 text-primary">
+                      <CalendarDays className="h-4 w-4 shrink-0" />
+                      <span className="text-sm font-bold">Calendar</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
+                      Add events, switch views, and refresh synced meetings.
+                    </p>
+                  </button>
+                ) : (
+                  <div>
+                    <div className="flex items-center gap-2 text-primary">
+                      <CalendarDays className="h-4 w-4 shrink-0" />
+                      <span className="text-sm font-bold">Calendar</span>
+                    </div>
+                    <p className="text-[10px] text-muted-foreground mt-1 leading-snug">
+                      Add events, switch views, and refresh synced meetings.
+                    </p>
+                  </div>
+                )}
               </div>
               <ScrollArea className="flex-1">
                 <div className="px-2 py-3 space-y-3">
                   <Button
                     size="sm"
                     className="w-full gap-2 rounded-lg font-semibold shadow-sm"
-                    onClick={() => window.dispatchEvent(new CustomEvent("calendar:openCreate"))}
+                    onClick={() =>
+                      ensureCalendarView(() =>
+                        window.dispatchEvent(new CustomEvent("calendar:openCreate")),
+                      )
+                    }
                   >
                     <Plus className="h-4 w-4" />
                     New meeting
                   </Button>
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/80 px-2 mb-1.5">
+                      Meeting requests
+                    </p>
+                    <div className="flex flex-col gap-0.5">
+                      <button
+                        type="button"
+                        onClick={() => onViewChange("meeting-requests")}
+                        className={cn(
+                          "group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-all duration-150",
+                          activeView === "meeting-requests"
+                            ? "bg-primary/10 text-primary font-semibold"
+                            : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                        )}
+                      >
+                        <CalendarPlus
+                          className="h-4 w-4 shrink-0"
+                          strokeWidth={activeView === "meeting-requests" ? 2.25 : 1.75}
+                        />
+                        <span className="flex-1 text-left truncate">Meeting Requests</span>
+                        {pendingMeetingRequests > 0 && (
+                          <span
+                            className={cn(
+                              "text-[11px] font-semibold tabular-nums",
+                              activeView === "meeting-requests" ? "text-primary" : "text-muted-foreground",
+                            )}
+                          >
+                            {pendingMeetingRequests}
+                          </span>
+                        )}
+                      </button>
+                    </div>
+                  </div>
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/80 px-2 mb-1.5">
                       View
@@ -522,8 +634,10 @@ export function AppSidebar({
                             key={id}
                             type="button"
                             onClick={() =>
-                              window.dispatchEvent(
-                                new CustomEvent("calendar:setView", { detail: { view: id } }),
+                              ensureCalendarView(() =>
+                                window.dispatchEvent(
+                                  new CustomEvent("calendar:setView", { detail: { view: id } }),
+                                ),
                               )
                             }
                             className={cn(
@@ -547,7 +661,10 @@ export function AppSidebar({
                     <div className="flex flex-col gap-0.5">
                       <button
                         type="button"
-                        onClick={() => setCalendarMailboxFilter("all")}
+                        onClick={() => {
+                          setCalendarMailboxFilter("all")
+                          if (activeView === "meeting-requests") onViewChange("calendar")
+                        }}
                         className={cn(
                           "group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-all duration-150",
                           calendarMailboxFilter === "all"
@@ -568,7 +685,10 @@ export function AppSidebar({
                           <button
                             key={mb.id}
                             type="button"
-                            onClick={() => setCalendarMailboxFilter(mb.id)}
+                            onClick={() => {
+                              setCalendarMailboxFilter(mb.id)
+                              if (activeView === "meeting-requests") onViewChange("calendar")
+                            }}
                             className={cn(
                               "group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-all duration-150",
                               isOn
@@ -606,7 +726,11 @@ export function AppSidebar({
                         size="icon"
                         className="h-8 w-8 shrink-0"
                         aria-label="Previous"
-                        onClick={() => window.dispatchEvent(new CustomEvent("calendar:goPrev"))}
+                        onClick={() =>
+                          ensureCalendarView(() =>
+                            window.dispatchEvent(new CustomEvent("calendar:goPrev")),
+                          )
+                        }
                       >
                         <ChevronLeft className="h-4 w-4" />
                       </Button>
@@ -615,7 +739,11 @@ export function AppSidebar({
                         variant="outline"
                         size="sm"
                         className="h-8 flex-1 min-w-0 text-xs px-1"
-                        onClick={() => window.dispatchEvent(new CustomEvent("calendar:goToday"))}
+                        onClick={() =>
+                          ensureCalendarView(() =>
+                            window.dispatchEvent(new CustomEvent("calendar:goToday")),
+                          )
+                        }
                       >
                         Today
                       </Button>
@@ -625,7 +753,11 @@ export function AppSidebar({
                         size="icon"
                         className="h-8 w-8 shrink-0"
                         aria-label="Next"
-                        onClick={() => window.dispatchEvent(new CustomEvent("calendar:goNext"))}
+                        onClick={() =>
+                          ensureCalendarView(() =>
+                            window.dispatchEvent(new CustomEvent("calendar:goNext")),
+                          )
+                        }
                       >
                         <ChevronRight className="h-4 w-4" />
                       </Button>
@@ -635,7 +767,11 @@ export function AppSidebar({
                     variant="outline"
                     size="sm"
                     className="w-full gap-2 rounded-lg"
-                    onClick={() => window.dispatchEvent(new CustomEvent("calendar:reload"))}
+                    onClick={() =>
+                      ensureCalendarView(() =>
+                        window.dispatchEvent(new CustomEvent("calendar:reload")),
+                      )
+                    }
                   >
                     <RefreshCw className="h-3.5 w-3.5" />
                     Refresh
@@ -747,7 +883,7 @@ export function AppSidebar({
                   {/* Other nav items */}
                   {[
                     { id: "contacts", label: "Contacts", icon: Users, badge: null, iconClassName: "h-4 w-4" },
-                    { id: "assistant", label: "Smart Mail Assistant", icon: AssistantLogoIcon, badge: null, iconClassName: "h-6 w-6" },
+                    { id: "assistant", label: "Smart Mail Assistant", icon: AssistantLogoIcon, badge: null, iconClassName: "h-4 w-4" },
                     { id: "agent", label: "Voice Agent", icon: Mic, badge: null, iconClassName: "h-4 w-4" },
                     ...(mailboxes.length > 0 ? [{ id: "followups" as const, label: "Follow-ups", icon: Clock, badge: badges.followUps || null }] : []),
                     { id: "analytics", label: "Analytics", icon: BarChart3, badge: null, iconClassName: "h-4 w-4" },

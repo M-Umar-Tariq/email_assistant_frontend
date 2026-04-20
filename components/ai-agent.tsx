@@ -325,8 +325,8 @@ export function AiAgent() {
       const result = await agentApi.execute(action)
       if (epochAtStart !== voiceEpochRef.current) return
       const isCompleted = (result.status || "").toLowerCase() === "completed"
-      const failedCount = Number((result as AgentActionApi & { failed?: number }).failed || 0)
-      const markedCount = Number((result as AgentActionApi & { marked?: number }).marked || 1)
+      const failedCount = Number(result.failed || 0)
+      const markedCount = Number(result.marked || 1)
       if (!isCompleted || failedCount > 0 || markedCount <= 0) {
         throw new Error(result.execution_details || "Action ran but no email matched the target.")
       }
@@ -336,6 +336,23 @@ export function AiAgent() {
       const doneMsg = `Done, ${action.label} has been executed.`
       addMessage("assistant", doneMsg)
       window.dispatchEvent(new CustomEvent("email:action-executed"))
+      window.dispatchEvent(new CustomEvent("mailbox:sync-complete"))
+      window.dispatchEvent(
+        new CustomEvent("email:sync", { detail: { newCount: 0, flagsUpdated: markedCount } })
+      )
+
+      if (action.type === "open_email" || action.type === "open_latest_email") {
+        const opened = result.email
+        const openedId =
+          (opened && (opened.id as string | undefined)) ||
+          (opened && (opened._id as string | undefined)) ||
+          action.email_id
+        if (openedId) {
+          window.dispatchEvent(
+            new CustomEvent("assistant:openEmail", { detail: { emailId: openedId } })
+          )
+        }
+      }
       await speak(doneMsg)
       if (runGen !== ttsGenerationRef.current) return
       if (epochAtStart !== voiceEpochRef.current) return

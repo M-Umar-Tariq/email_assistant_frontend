@@ -80,6 +80,140 @@ const ACTION_ICONS: Record<string, typeof Mail> = {
   set_reminder: Clock,
 }
 
+const COMPOSE_ACTIONS = new Set([
+  "send_email",
+  "send_reply",
+  "reply_all",
+  "forward_email",
+  "draft_email",
+])
+
+function formatRecipients(value: unknown): string {
+  if (!value) return ""
+  if (Array.isArray(value)) return value.filter(Boolean).map(String).join(", ")
+  return String(value)
+}
+
+function ActionCard({
+  action,
+  isExecuting,
+  onApprove,
+  onReject,
+}: {
+  action: AgentActionApi
+  isExecuting: boolean
+  onApprove?: (action: AgentActionApi) => void
+  onReject?: (action: AgentActionApi) => void
+}) {
+  const Icon = ACTION_ICONS[action.type] || Mail
+  const isExecuted = action.status === "executed"
+  const isRejected = action.status === "rejected"
+  const showButtons = !isExecuted && !isRejected
+  const isCompose = COMPOSE_ACTIONS.has(action.type)
+
+  const toStr = formatRecipients(action.to)
+  const ccStr = formatRecipients((action as AgentActionApi & { cc?: string | string[] }).cc)
+  const subjectStr = (action.subject || "").trim()
+  const bodyStr = (action.body || "").trim()
+  const hasPreview = isCompose && (toStr || ccStr || subjectStr || bodyStr)
+  const [bodyExpanded, setBodyExpanded] = useState(false)
+  const BODY_SNIPPET = 320
+  const bodyTooLong = bodyStr.length > BODY_SNIPPET
+  const bodyShown = bodyExpanded || !bodyTooLong ? bodyStr : bodyStr.slice(0, BODY_SNIPPET).trimEnd() + "…"
+
+  return (
+    <div
+      className={cn(
+        "rounded-xl border transition-all duration-200",
+        isExecuted
+          ? "border-emerald-400/30 bg-gradient-to-r from-emerald-500/[0.08] to-transparent shadow-sm shadow-emerald-500/5"
+          : isRejected
+            ? "border-red-400/30 bg-gradient-to-r from-red-500/[0.06] to-transparent opacity-60"
+            : "border-amber-400/30 bg-gradient-to-r from-amber-500/[0.08] to-transparent hover:border-amber-400/45 hover:shadow-sm",
+      )}
+    >
+      <div className="flex items-start gap-3 px-4 py-3">
+        <div className={cn(
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
+          isExecuted ? "bg-emerald-500/10" : isRejected ? "bg-red-500/10" : "bg-amber-500/10",
+        )}>
+          <Icon className={cn(
+            "h-5 w-5",
+            isExecuted ? "text-emerald-500" : isRejected ? "text-red-500" : "text-amber-500",
+          )} />
+        </div>
+        <div className="flex-1 min-w-0 text-left">
+          <p className="text-sm font-medium text-foreground">
+            {action.label || action.type.replace(/_/g, " ")}
+          </p>
+          {action.description && (
+            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{action.description}</p>
+          )}
+          {isExecuted && <p className="text-xs text-emerald-500 mt-0.5 font-medium">Executed</p>}
+          {isRejected && <p className="text-xs text-red-500 mt-0.5 font-medium">Rejected</p>}
+        </div>
+        {showButtons && (
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => onApprove?.(action)}
+              disabled={isExecuting}
+              className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100"
+              title="Approve"
+            >
+              {isExecuting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            </button>
+            <button
+              onClick={() => onReject?.(action)}
+              className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-all hover:scale-105"
+              title="Reject"
+            >
+              <XCircle className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+      </div>
+      {hasPreview && (
+        <div className="mx-4 mb-3 rounded-lg border border-border/50 bg-background/40 px-3 py-2.5 space-y-1.5">
+          {toStr && (
+            <div className="flex gap-2 text-xs">
+              <span className="w-12 shrink-0 font-semibold text-muted-foreground uppercase tracking-wide">To</span>
+              <span className="flex-1 break-words text-foreground/90">{toStr}</span>
+            </div>
+          )}
+          {ccStr && (
+            <div className="flex gap-2 text-xs">
+              <span className="w-12 shrink-0 font-semibold text-muted-foreground uppercase tracking-wide">Cc</span>
+              <span className="flex-1 break-words text-foreground/90">{ccStr}</span>
+            </div>
+          )}
+          {subjectStr && (
+            <div className="flex gap-2 text-xs">
+              <span className="w-12 shrink-0 font-semibold text-muted-foreground uppercase tracking-wide">Subj</span>
+              <span className="flex-1 break-words font-medium text-foreground">{subjectStr}</span>
+            </div>
+          )}
+          {bodyStr && (
+            <div className="pt-1 mt-1 border-t border-border/40">
+              <pre className="text-xs text-foreground/85 whitespace-pre-wrap font-sans leading-relaxed">
+                {bodyShown}
+              </pre>
+              {bodyTooLong && (
+                <button
+                  type="button"
+                  onClick={() => setBodyExpanded((v) => !v)}
+                  className="mt-1.5 text-[11px] font-medium text-primary hover:underline"
+                >
+                  {bodyExpanded ? "Show less" : "Show full message"}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
+}
+
 function ChatMessageBubble({
   message,
   index,
@@ -150,70 +284,15 @@ function ChatMessageBubble({
         {/* Action cards */}
         {message.actions && message.actions.length > 0 && (
           <div className="mt-2.5 space-y-2 w-full">
-            {message.actions.map((action) => {
-              const Icon = ACTION_ICONS[action.type] || Mail
-              const isExecuted = action.status === "executed"
-              const isRejected = action.status === "rejected"
-              const isExecuting = executingId === action.id
-              const showButtons = !isExecuted && !isRejected
-
-              return (
-                <div
-                  key={action.id}
-                  className={cn(
-                    "flex items-center gap-3 rounded-xl border px-4 py-3 transition-all duration-200",
-                    isExecuted
-                      ? "border-emerald-400/30 bg-gradient-to-r from-emerald-500/[0.08] to-transparent shadow-sm shadow-emerald-500/5"
-                      : isRejected
-                        ? "border-red-400/30 bg-gradient-to-r from-red-500/[0.06] to-transparent opacity-60"
-                        : "border-amber-400/30 bg-gradient-to-r from-amber-500/[0.08] to-transparent hover:border-amber-400/45 hover:shadow-sm"
-                  )}
-                >
-                  <div className={cn(
-                    "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
-                    isExecuted ? "bg-emerald-500/10" : isRejected ? "bg-red-500/10" : "bg-amber-500/10"
-                  )}>
-                    <Icon className={cn(
-                      "h-5 w-5",
-                      isExecuted ? "text-emerald-500" : isRejected ? "text-red-500" : "text-amber-500"
-                    )} />
-                  </div>
-                  <div className="flex-1 min-w-0 text-left">
-                    <p className="text-sm font-medium text-foreground">
-                      {action.label || action.type.replace(/_/g, " ")}
-                    </p>
-                    {action.description && (
-                      <p className="text-xs text-muted-foreground truncate mt-0.5">{action.description}</p>
-                    )}
-                    {isExecuted && (
-                      <p className="text-xs text-emerald-500 mt-0.5 font-medium">Executed</p>
-                    )}
-                    {isRejected && (
-                      <p className="text-xs text-red-500 mt-0.5 font-medium">Rejected</p>
-                    )}
-                  </div>
-                  {showButtons && (
-                    <div className="flex items-center gap-2 shrink-0">
-                      <button
-                        onClick={() => onApprove?.(action as AgentActionApi)}
-                        disabled={isExecuting}
-                        className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100"
-                        title="Approve"
-                      >
-                        {isExecuting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
-                      </button>
-                      <button
-                        onClick={() => onReject?.(action as AgentActionApi)}
-                        className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-all hover:scale-105"
-                        title="Reject"
-                      >
-                        <XCircle className="h-4 w-4" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
+            {message.actions.map((action) => (
+              <ActionCard
+                key={action.id}
+                action={action}
+                isExecuting={executingId === action.id}
+                onApprove={onApprove}
+                onReject={onReject}
+              />
+            ))}
           </div>
         )}
 
@@ -315,7 +394,12 @@ const CAPABILITIES = [
   },
 ]
 
-export function AiAssistant() {
+type AiAssistantProps = {
+  /** When false, the panel is off-screen but the component stays mounted so async work can finish. */
+  panelVisible?: boolean
+}
+
+export function AiAssistant({ panelVisible = true }: AiAssistantProps) {
   const { user } = useAuth()
   const { messages, setMessages, selectedMailbox, setSelectedMailbox, isQueryLoading, setIsQueryLoading } =
     useAiChat()
@@ -326,8 +410,11 @@ export function AiAssistant() {
   const scrollRef = useRef<HTMLDivElement>(null)
   const scrollBottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const initialDataLoadedRef = useRef(false)
 
   useEffect(() => {
+    if (!panelVisible || initialDataLoadedRef.current) return
+    initialDataLoadedRef.current = true
     aiApi.suggestedQuestions()
       .then((list) =>
         setSuggestedQuestions((list.length ? list : FALLBACK_SUGGESTIONS).slice(0, 4))
@@ -337,7 +424,7 @@ export function AiAssistant() {
       .list()
       .then((list) => setMailboxList(list))
       .catch(() => {})
-  }, [])
+  }, [panelVisible])
 
   const firstName = user?.name?.split(" ")[0] ?? "there"
   const hasConversation = messages.length > 0
@@ -370,8 +457,8 @@ export function AiAssistant() {
     try {
       const result = await agentApi.execute(action)
       const isCompleted = (result.status || "").toLowerCase() === "completed"
-      const failedCount = Number((result as AgentActionApi & { failed?: number }).failed || 0)
-      const markedCount = Number((result as AgentActionApi & { marked?: number }).marked || 1)
+      const failedCount = Number(result.failed || 0)
+      const markedCount = Number(result.marked || 1)
       if (!isCompleted || failedCount > 0 || markedCount <= 0) {
         const detail = result.execution_details || "Action ran but no email matched the target."
         throw new Error(detail)
@@ -386,6 +473,23 @@ export function AiAssistant() {
       )
       toast.success(`${action.label || action.type.replace(/_/g, " ")} executed!`)
       window.dispatchEvent(new CustomEvent("email:action-executed"))
+      window.dispatchEvent(new CustomEvent("mailbox:sync-complete"))
+      window.dispatchEvent(
+        new CustomEvent("email:sync", { detail: { newCount: 0, flagsUpdated: markedCount } })
+      )
+
+      if (action.type === "open_email" || action.type === "open_latest_email") {
+        const opened = result.email
+        const openedId =
+          (opened && (opened.id as string | undefined)) ||
+          (opened && (opened._id as string | undefined)) ||
+          action.email_id
+        if (openedId) {
+          window.dispatchEvent(
+            new CustomEvent("assistant:openEmail", { detail: { emailId: openedId } })
+          )
+        }
+      }
     } catch (e) {
       const detail = e instanceof Error && e.message ? e.message : "Failed to execute action"
       toast.error(detail)
@@ -432,7 +536,11 @@ export function AiAssistant() {
 
     try {
       const mbId = selectedMailbox === "all" ? undefined : selectedMailbox
-      const recent = messages.slice(-8).map((m) => ({ role: m.role, content: m.content }))
+      const recent = messages.slice(-8).map((m) => ({
+        role: m.role,
+        content: m.content,
+        sources: m.sources,
+      }))
       const res = await aiApi.ask(query.trim(), mbId, recent)
       const assistantMessage: ChatMessage = {
         id: `msg-${Date.now() + 1}`,

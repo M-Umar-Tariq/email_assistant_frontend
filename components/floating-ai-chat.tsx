@@ -61,12 +61,147 @@ const ACTION_ICONS: Record<string, typeof Mail> = {
   send_email: Mail,
   draft_reply: Reply,
   send_reply: Reply,
+  reply_all: Reply,
   forward_email: Forward,
   send_whatsapp: MessageSquare,
   set_reminder: Clock,
   trash_email: Trash2,
   archive_email: Archive,
   mark_read: MailOpen,
+  mark_unread: Mail,
+  mark_all_read: MailOpen,
+  mark_all_unread: Mail,
+  snooze_email: Clock,
+  delete_email: Trash2,
+}
+
+const FLOATING_COMPOSE_ACTIONS = new Set([
+  "send_email",
+  "send_reply",
+  "reply_all",
+  "forward_email",
+  "draft_email",
+])
+
+function formatFloatingRecipients(value: unknown): string {
+  if (!value) return ""
+  if (Array.isArray(value)) return value.filter(Boolean).map(String).join(", ")
+  return String(value)
+}
+
+function FloatingActionCard({
+  action,
+  isExecuting,
+  onApprove,
+  onReject,
+}: {
+  action: AgentActionApi
+  isExecuting: boolean
+  onApprove?: (action: AgentActionApi) => void
+  onReject?: (action: AgentActionApi) => void
+}) {
+  const Icon = ACTION_ICONS[action.type] || Mail
+  const isExecuted = action.status === "executed"
+  const isRejected = action.status === "rejected"
+  const showButtons = !isExecuted && !isRejected && action.requires_approval
+  const isCompose = FLOATING_COMPOSE_ACTIONS.has(action.type)
+
+  const toStr = formatFloatingRecipients(action.to)
+  const ccStr = formatFloatingRecipients((action as AgentActionApi & { cc?: string | string[] }).cc)
+  const subjectStr = (action.subject || "").trim()
+  const bodyStr = (action.body || "").trim()
+  const hasPreview = isCompose && (toStr || ccStr || subjectStr || bodyStr)
+  const [bodyExpanded, setBodyExpanded] = useState(false)
+  const BODY_SNIPPET = 220
+  const bodyTooLong = bodyStr.length > BODY_SNIPPET
+  const bodyShown = bodyExpanded || !bodyTooLong ? bodyStr : bodyStr.slice(0, BODY_SNIPPET).trimEnd() + "…"
+
+  return (
+    <div
+      className={cn(
+        "rounded-xl border transition-all text-xs",
+        isExecuted
+          ? "border-emerald-400/25 bg-emerald-500/[0.06]"
+          : isRejected
+            ? "border-red-400/25 bg-red-500/[0.06] opacity-60"
+            : "border-amber-400/25 bg-amber-500/[0.06]",
+      )}
+    >
+      <div className="flex items-start gap-2.5 px-3 py-2">
+        <div className={cn(
+          "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+          isExecuted ? "bg-emerald-500/10" : isRejected ? "bg-red-500/10" : "bg-amber-500/10",
+        )}>
+          <Icon className={cn(
+            "h-3.5 w-3.5",
+            isExecuted ? "text-emerald-500" : isRejected ? "text-red-500" : "text-amber-500",
+          )} />
+        </div>
+        <div className="flex-1 min-w-0 text-left">
+          <p className="font-medium text-foreground truncate">
+            {action.label || action.type.replace(/_/g, " ")}
+          </p>
+          {isExecuted && <p className="text-emerald-500 font-medium">Executed</p>}
+          {isRejected && <p className="text-red-500 font-medium">Rejected</p>}
+        </div>
+        {showButtons && (
+          <div className="flex items-center gap-1.5 shrink-0">
+            <button
+              onClick={() => onApprove?.(action)}
+              disabled={isExecuting}
+              className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-all disabled:opacity-50"
+              title="Approve"
+            >
+              {isExecuting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
+            </button>
+            <button
+              onClick={() => onReject?.(action)}
+              className="flex h-7 w-7 items-center justify-center rounded-md bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-all"
+              title="Reject"
+            >
+              <XCircle className="h-3 w-3" />
+            </button>
+          </div>
+        )}
+      </div>
+      {hasPreview && (
+        <div className="mx-3 mb-2 rounded-lg border border-border/50 bg-background/40 px-2.5 py-2 space-y-1">
+          {toStr && (
+            <div className="flex gap-1.5">
+              <span className="w-10 shrink-0 font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">To</span>
+              <span className="flex-1 break-words text-foreground/90">{toStr}</span>
+            </div>
+          )}
+          {ccStr && (
+            <div className="flex gap-1.5">
+              <span className="w-10 shrink-0 font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">Cc</span>
+              <span className="flex-1 break-words text-foreground/90">{ccStr}</span>
+            </div>
+          )}
+          {subjectStr && (
+            <div className="flex gap-1.5">
+              <span className="w-10 shrink-0 font-semibold text-muted-foreground uppercase tracking-wide text-[10px]">Subj</span>
+              <span className="flex-1 break-words font-medium text-foreground">{subjectStr}</span>
+            </div>
+          )}
+          {bodyStr && (
+            <div className="pt-1 mt-1 border-t border-border/40">
+              <pre className="whitespace-pre-wrap font-sans leading-relaxed text-foreground/85">{bodyShown}</pre>
+              {bodyTooLong && (
+                <button
+                  type="button"
+                  onClick={() => setBodyExpanded((v) => !v)}
+                  className="mt-1 text-[10px] font-medium text-primary hover:underline"
+                >
+                  {bodyExpanded ? "Show less" : "Show full message"}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 function FloatingChatBubble({
@@ -131,63 +266,15 @@ function FloatingChatBubble({
 
         {message.actions && message.actions.length > 0 && (
           <div className="mt-2 space-y-1.5 w-full">
-            {message.actions.map((action) => {
-              const Icon = ACTION_ICONS[action.type] || Mail
-              const isExecuted = action.status === "executed"
-              const isRejected = action.status === "rejected"
-              const isExecuting = executingId === action.id
-              const showButtons = !isExecuted && !isRejected && action.requires_approval
-
-              return (
-                <div
-                  key={action.id}
-                  className={cn(
-                    "flex items-center gap-2.5 rounded-xl border px-3 py-2 transition-all text-xs",
-                    isExecuted
-                      ? "border-emerald-400/25 bg-emerald-500/[0.06]"
-                      : isRejected
-                        ? "border-red-400/25 bg-red-500/[0.06] opacity-60"
-                        : "border-amber-400/25 bg-amber-500/[0.06]"
-                  )}
-                >
-                  <div className={cn(
-                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
-                    isExecuted ? "bg-emerald-500/10" : isRejected ? "bg-red-500/10" : "bg-amber-500/10"
-                  )}>
-                    <Icon className={cn(
-                      "h-3.5 w-3.5",
-                      isExecuted ? "text-emerald-500" : isRejected ? "text-red-500" : "text-amber-500"
-                    )} />
-                  </div>
-                  <div className="flex-1 min-w-0 text-left">
-                    <p className="font-medium text-foreground truncate">
-                      {action.label || action.type.replace(/_/g, " ")}
-                    </p>
-                    {isExecuted && <p className="text-emerald-500 font-medium">Executed</p>}
-                    {isRejected && <p className="text-red-500 font-medium">Rejected</p>}
-                  </div>
-                  {showButtons && (
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        onClick={() => onApprove?.(action as AgentActionApi)}
-                        disabled={isExecuting}
-                        className="flex h-7 w-7 items-center justify-center rounded-md bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-all disabled:opacity-50"
-                        title="Approve"
-                      >
-                        {isExecuting ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3" />}
-                      </button>
-                      <button
-                        onClick={() => onReject?.(action as AgentActionApi)}
-                        className="flex h-7 w-7 items-center justify-center rounded-md bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-all"
-                        title="Reject"
-                      >
-                        <XCircle className="h-3 w-3" />
-                      </button>
-                    </div>
-                  )}
-                </div>
-              )
-            })}
+            {message.actions.map((action) => (
+              <FloatingActionCard
+                key={action.id}
+                action={action}
+                isExecuting={executingId === action.id}
+                onApprove={onApprove}
+                onReject={onReject}
+              />
+            ))}
           </div>
         )}
 
@@ -269,6 +356,9 @@ interface FloatingAiChatProps {
   onNavigateToAssistant?: () => void
 }
 
+/** Views where the floating launcher is hidden (same list as previous `hideOnViews`). */
+const FLOATING_CHAT_HIDDEN_ON_VIEWS = new Set(["assistant", "agent", "inbox", "calendar"])
+
 export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAiChatProps) {
   const { user } = useAuth()
   const { messages, setMessages, selectedMailbox, setSelectedMailbox, isQueryLoading, setIsQueryLoading } =
@@ -282,6 +372,12 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
   const scrollBottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+
+  const shouldHide = Boolean(activeView && FLOATING_CHAT_HIDDEN_ON_VIEWS.has(activeView))
+  const shouldHideRef = useRef(shouldHide)
+  const isOpenRef = useRef(isOpen)
+  shouldHideRef.current = shouldHide
+  isOpenRef.current = isOpen
 
   useEffect(() => {
     mailboxesApi.list().then(setMailboxList).catch(() => {})
@@ -306,17 +402,18 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
 
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
+      if (shouldHideRef.current) return
       if ((e.ctrlKey || e.metaKey) && e.key === "j") {
         e.preventDefault()
         setIsOpen((prev) => !prev)
       }
-      if (e.key === "Escape" && isOpen) {
+      if (e.key === "Escape" && isOpenRef.current) {
         setIsOpen(false)
       }
     }
     window.addEventListener("keydown", handleKeyDown)
     return () => window.removeEventListener("keydown", handleKeyDown)
-  }, [isOpen])
+  }, [])
 
   const handleRefresh = () => {
     setMessages([])
@@ -328,7 +425,13 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
   const handleApproveAction = useCallback(async (action: AgentActionApi) => {
     setExecutingId(action.id)
     try {
-      await agentApi.execute(action)
+      const result = await agentApi.execute(action)
+      const isCompleted = (result.status || "").toLowerCase() === "completed"
+      const failedCount = Number(result.failed || 0)
+      const markedCount = Number(result.marked || 1)
+      if (!isCompleted || failedCount > 0 || markedCount <= 0) {
+        throw new Error(result.execution_details || "Action ran but no email matched the target.")
+      }
       setMessages((prev) =>
         prev.map((msg) => ({
           ...msg,
@@ -338,8 +441,35 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
         }))
       )
       toast.success(`${action.label || action.type.replace(/_/g, " ")} executed!`)
-    } catch {
-      toast.error("Failed to execute action")
+      window.dispatchEvent(new CustomEvent("email:action-executed"))
+      window.dispatchEvent(new CustomEvent("mailbox:sync-complete"))
+      window.dispatchEvent(
+        new CustomEvent("email:sync", { detail: { newCount: 0, flagsUpdated: markedCount } })
+      )
+
+      if (action.type === "open_email" || action.type === "open_latest_email") {
+        const opened = result.email
+        const openedId =
+          (opened && (opened.id as string | undefined)) ||
+          (opened && (opened._id as string | undefined)) ||
+          action.email_id
+        if (openedId) {
+          window.dispatchEvent(
+            new CustomEvent("assistant:openEmail", { detail: { emailId: openedId } })
+          )
+        }
+      }
+    } catch (e) {
+      const detail = e instanceof Error && e.message ? e.message : "Failed to execute action"
+      toast.error(detail)
+      setMessages((prev) =>
+        prev.map((msg) => ({
+          ...msg,
+          actions: msg.actions?.map((a) =>
+            a.id === action.id ? { ...a, status: "failed" } : a
+          ),
+        }))
+      )
     } finally {
       setExecutingId(null)
     }
@@ -375,7 +505,11 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
 
     try {
       const mbId = selectedMailbox === "all" ? undefined : selectedMailbox
-      const recent = messages.slice(-8).map((m) => ({ role: m.role, content: m.content }))
+      const recent = messages.slice(-8).map((m) => ({
+        role: m.role,
+        content: m.content,
+        sources: m.sources,
+      }))
       const res = await aiApi.ask(query.trim(), mbId, recent)
       const assistantMessage: ChatMessage = {
         id: `fc-${Date.now() + 1}`,
@@ -418,11 +552,8 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
     el.style.height = `${Math.min(el.scrollHeight, 100)}px`
   }
 
-  const hideOnViews = ["assistant", "agent", "inbox", "calendar"]
-  const shouldHide = Boolean(activeView && hideOnViews.includes(activeView))
-  if (shouldHide) return null
-
   return (
+    <div className={cn(shouldHide && "hidden pointer-events-none")} aria-hidden={shouldHide}>
     <>
       {/* Backdrop overlay */}
       {isOpen && (
@@ -704,5 +835,6 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
         </div>
       </button>
     </>
+    </div>
   )
 }

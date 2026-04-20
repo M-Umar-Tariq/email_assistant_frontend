@@ -41,7 +41,7 @@ import {
   CalendarDays,
 } from "lucide-react"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
+import { Badge, badgeVariants } from "@/components/ui/badge"
 import { ScrollArea } from "@/components/ui/scroll-area"
 import { Button } from "@/components/ui/button"
 import {
@@ -1461,24 +1461,34 @@ export function DailyBriefing({
               ) : (
                 <>
                   {stats.highPriority > 0 && (
-                    <Badge
-                      variant="outline"
-                      className="gap-1.5 rounded-full border-red-400/25 bg-red-400/5 px-3 py-1.5 text-xs font-semibold text-red-600 shadow-sm shadow-red-400/10 dark:text-red-400"
+                    <button
+                      type="button"
+                      aria-label="Open inbox filtered to today unreplied"
+                      onClick={() => handleCardClick("today_unreplied")}
+                      className={cn(
+                        badgeVariants({ variant: "outline" }),
+                        "gap-1.5 rounded-full border-red-400/25 bg-red-400/5 px-3 py-1.5 text-xs font-semibold text-red-600 shadow-sm shadow-red-400/10 transition-colors hover:bg-red-400/10 dark:text-red-400",
+                      )}
                     >
                       <span className="relative flex h-2 w-2 shrink-0">
                         <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-50" />
                         <span className="relative inline-flex h-2 w-2 rounded-full bg-red-400" />
                       </span>
                       {stats.highPriority} urgent
-                    </Badge>
+                    </button>
                   )}
-                  <Badge
-                    variant="outline"
-                    className="gap-1.5 rounded-full border-primary/25 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary shadow-sm shadow-primary/10"
+                  <button
+                    type="button"
+                    aria-label={`Open inbox: ${stats.unreadTotal} unread`}
+                    onClick={() => handleCardClick("total_unread")}
+                    className={cn(
+                      badgeVariants({ variant: "outline" }),
+                      "gap-1.5 rounded-full border-primary/25 bg-primary/5 px-3 py-1.5 text-xs font-semibold text-primary shadow-sm shadow-primary/10 transition-colors hover:bg-primary/10",
+                    )}
                   >
                     <Mail className="h-3 w-3 shrink-0" />
                     {stats.unreadTotal} unread
-                  </Badge>
+                  </button>
                 </>
               )}
             </div>

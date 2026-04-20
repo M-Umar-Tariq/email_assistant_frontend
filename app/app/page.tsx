@@ -16,6 +16,7 @@ import { LabelsView } from "@/components/labels-view"
 import { FollowupTracker } from "@/components/followup-tracker"
 import { ContactsView } from "@/components/contacts-view"
 import { CalendarView } from "@/components/calendar-view"
+import { MeetingRequestsView } from "@/components/meeting-requests-view"
 import { FeedbackView } from "@/components/feedback-view"
 import { AiAgent } from "@/components/ai-agent"
 import { FloatingAiChat } from "@/components/floating-ai-chat"
@@ -177,6 +178,25 @@ export default function AppDashboard() {
     }
     window.addEventListener("followups:navigate", onNavigateFromFollowups as EventListener)
     return () => window.removeEventListener("followups:navigate", onNavigateFromFollowups as EventListener)
+  }, [])
+
+  useEffect(() => {
+    const onAssistantOpenEmail = (e: Event) => {
+      const detail = (e as CustomEvent).detail || {}
+      const emailId = detail.emailId as string | undefined
+      if (emailId) {
+        setInboxFilter(null)
+        setInitialSenderEmail(null)
+        setInitialSenderName(null)
+        setInitialLabelFilter(null)
+        setPendingInboxMailbox(null)
+        setActiveFolder("inbox")
+        setInitialEmailId(emailId)
+        setActiveView("inbox")
+      }
+    }
+    window.addEventListener("assistant:openEmail", onAssistantOpenEmail as EventListener)
+    return () => window.removeEventListener("assistant:openEmail", onAssistantOpenEmail as EventListener)
   }, [])
 
   // When all mailboxes are removed (e.g. last one deleted), leave follow-ups view
@@ -351,6 +371,9 @@ export default function AppDashboard() {
               />
             )}
             {activeView === "calendar" && <CalendarView />}
+            {activeView === "meeting-requests" && (
+              <MeetingRequestsView onOpenEmail={handleNavigateToEmail} />
+            )}
             {activeView === "mailboxes" && (
               <MailboxesView
                 onAddMailbox={() => setShowAddMailbox(true)}
@@ -390,7 +413,17 @@ export default function AppDashboard() {
               <ContactsView onAddMailboxClick={() => setShowAddMailbox(true)} />
             )}
             {activeView === "agent" && <AiAgent />}
-            {activeView === "assistant" && <AiAssistant />}
+            {/* Keep Assistant mounted so in-flight AI replies / confirmed actions finish after navigation */}
+            <div
+              className={
+                activeView === "assistant"
+                  ? "flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+                  : "hidden"
+              }
+              aria-hidden={activeView !== "assistant"}
+            >
+              <AiAssistant panelVisible={activeView === "assistant"} />
+            </div>
             {activeView === "compose" && (
               <ComposeView
                 initialTo={initialComposeTo}

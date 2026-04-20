@@ -1,5 +1,13 @@
-import type { Email, EmailCategory, Mailbox, BriefingItem } from "@/lib/mock-data"
-import type { EmailListApi, EmailDetailApi, MailboxApi, BriefingApi, FollowUpApi } from "@/lib/api"
+import type { Email, EmailCategory, Mailbox, BriefingItem, SchedulingInfo } from "@/lib/mock-data"
+import type {
+  EmailListApi,
+  EmailDetailApi,
+  MailboxApi,
+  BriefingApi,
+  FollowUpApi,
+  DetectedMeetingApi,
+  MeetingDetectionStatus,
+} from "@/lib/api"
 
 const PREVIEW_MAX_LEN = 240
 
@@ -81,6 +89,37 @@ export function mapMailboxApi(m: MailboxApi & { unread?: number }): Mailbox {
   }
 }
 
+export function mapDetectedMeeting(
+  dm: DetectedMeetingApi | null | undefined,
+  status: MeetingDetectionStatus | undefined,
+): SchedulingInfo | null {
+  if (!dm || !dm.start || !dm.end) return null
+  const start = new Date(dm.start)
+  const valid = !Number.isNaN(start.getTime())
+  const timeStr = valid
+    ? start.toLocaleTimeString("en-US", {
+        hour: "numeric",
+        minute: "2-digit",
+        hour12: true,
+      })
+    : undefined
+  const dateStr = valid ? start.toISOString() : undefined
+  const normStatus: "pending" | "added" | "dismissed" =
+    status === "added" || status === "dismissed" ? status : "pending"
+  return {
+    detected: true,
+    startIso: dm.start,
+    endIso: dm.end,
+    suggestedDate: dateStr,
+    suggestedTime: timeStr,
+    title: dm.title || undefined,
+    location: dm.location || undefined,
+    attendees: dm.attendees || [],
+    status: normStatus,
+  }
+}
+
+
 export function mapEmailListApi(e: EmailListApi): Email {
   return {
     id: e.id,
@@ -110,6 +149,7 @@ export function mapEmailListApi(e: EmailListApi): Email {
     snoozedUntil: e.snoozed_until || null,
     repliedAt: e.replied_at ?? null,
     threadCount: e.thread_count ?? undefined,
+    schedulingInfo: mapDetectedMeeting(e.detected_meeting, e.meeting_status),
   }
 }
 
