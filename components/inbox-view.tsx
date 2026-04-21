@@ -2635,21 +2635,27 @@ export function InboxView({
   }, [filterMailbox])
 
   const handleSelectEmail = useCallback((email: Email) => {
+    // Immediately show email as read in both the detail view and the list
+    const openedAsRead = { ...email, read: true }
+    setSelectedEmail(openedAsRead)
+    if (!email.read) {
+      setEmailsList((prev) => prev.map((e) => (e.id === email.id ? { ...e, read: true } : e)))
+      window.dispatchEvent(new CustomEvent("email:read", { detail: { mailboxId: email.mailbox } }))
+      window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
+    }
+    // Fetch full body in background; only update if user hasn't navigated away
     emailsApi
       .get(email.id)
       .then((detail) => {
-        setSelectedEmail(mapEmailDetailApi(detail))
+        setSelectedEmail((prev) => {
+          if (!prev || prev.id !== email.id) return prev
+          return mapEmailDetailApi(detail)
+        })
         if (!email.read) {
-          emailsApi.update(email.id, { read: true }).then((updated) => {
-            setSelectedEmail(mapEmailDetailApi(updated))
-            setEmailsList((prev) =>
-              prev.map((e) => (e.id === email.id ? { ...e, read: true } : e))
-            )
-            window.dispatchEvent(new CustomEvent("email:read", { detail: { mailboxId: email.mailbox } }))
-          }).catch(() => {})
+          emailsApi.update(email.id, { read: true }).catch(() => {})
         }
       })
-      .catch(() => setSelectedEmail(email))
+      .catch(() => setSelectedEmail((prev) => (prev?.id === email.id ? openedAsRead : prev)))
   }, [])
 
   const handleSnooze = useCallback((emailId: string, hours: number) => {
@@ -2670,6 +2676,8 @@ export function InboxView({
         setMailboxesList(list.map(mapMailboxApi))
         // Notify dashboard/settings widgets (Top Senders, trends, etc.) to refetch.
         window.dispatchEvent(new CustomEvent("mailbox:updated"))
+        // Refresh sidebar folder counts (inbox unread, trash total, etc.)
+        window.dispatchEvent(new CustomEvent("mailbox:sync-complete"))
       })
       .catch(() => {})
   }, [])
@@ -2679,6 +2687,7 @@ export function InboxView({
       setEmailsList((prev) => prev.filter((e) => e.id !== emailId))
       setSelectedEmail(null)
       toast.success("Email archived")
+      window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
       refreshMailboxCounts()
     }).catch(() => {})
   }, [refreshMailboxCounts])
@@ -2693,6 +2702,7 @@ export function InboxView({
       })
       setSelectedEmail(null)
       toast.success("Email deleted")
+      window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
       refreshMailboxCounts()
     }).catch(() => {})
   }, [refreshMailboxCounts])
@@ -2710,6 +2720,7 @@ export function InboxView({
           })
           setSelectedEmail(null)
           toast.success("Email deleted permanently")
+          window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
           refreshMailboxCounts()
         })
         .catch((err) => {
@@ -2729,6 +2740,7 @@ export function InboxView({
       })
       setSelectedEmail(null)
       toast.success("Email moved to inbox")
+      window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
       refreshMailboxCounts()
     }).catch((err) => {
       toast.error(err?.message ?? "Could not move to inbox")
@@ -2755,6 +2767,7 @@ export function InboxView({
       setEmailsList((prev) => prev.filter((e) => e.id !== emailId))
       setSelectedEmail(null)
       toast.success("Reported as spam")
+      window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
       refreshMailboxCounts()
     }).catch((err) => {
       toast.error(err?.message ?? "Failed to report spam")
@@ -2762,20 +2775,42 @@ export function InboxView({
   }, [refreshMailboxCounts])
 
   const handleUpdate = useCallback((emailId: string, data: { read?: boolean; starred?: boolean; labels?: string[] }) => {
+    // If unstarring while in the starred folder, remove the email from the list immediately
+    const removingFromStarred = folder === "starred" && data.starred === false
+    let original: Partial<typeof data> = {}
+    let removedEmail: Email | undefined
+    setEmailsList((prev) => {
+      const target = prev.find((e) => e.id === emailId)
+      if (target) original = Object.fromEntries(Object.keys(data).map((k) => [k, (target as Record<string, unknown>)[k]])) as Partial<typeof data>
+      if (removingFromStarred) {
+        removedEmail = target
+        return prev.filter((e) => e.id !== emailId)
+      }
+      return prev.map((e) => e.id === emailId ? { ...e, ...data } : e)
+    })
+    if (removingFromStarred) {
+      setSelectedEmail((cur) => (cur && cur.id === emailId ? null : cur))
+    }
+    window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
     emailsApi.update(emailId, data).then((updated) => {
       const mapped = mapEmailDetailApi(updated)
-      setSelectedEmail((prev) => prev && prev.id === emailId ? mapped : prev)
-      setEmailsList((prev) =>
-        prev.map((e) =>
-          e.id === emailId
-            ? { ...e, ...data }
-            : e
+      if (!removingFromStarred) {
+        setSelectedEmail((prev) => prev && prev.id === emailId ? mapped : prev)
+        setEmailsList((prev) =>
+          prev.map((e) => e.id === emailId ? { ...e, ...mapped } : e)
         )
-      )
+      }
     }).catch((err) => {
+      if (removingFromStarred && removedEmail) {
+        setEmailsList((prev) => [removedEmail!, ...prev])
+      } else {
+        setEmailsList((prev) =>
+          prev.map((e) => e.id === emailId ? { ...e, ...original } : e)
+        )
+      }
       toast.error(err?.message ?? "Update failed")
     })
-  }, [])
+  }, [folder])
 
   const activeEmails = emailsList.filter((e) => !snoozedEmails.has(e.id))
   const todayAll = activeEmails.filter((e) => isReceivedUtcToday(receivedDateForFilter(e)))
@@ -2862,65 +2897,69 @@ export function InboxView({
   const runBulkArchive = () => {
     const ids = [...listSelectedIds]
     if (ids.length === 0) return
-    const ok = new Set(ids)
-    setEmailsList((prev) => prev.filter((e) => !ok.has(e.id)))
+    setEmailsList((prev) => prev.filter((e) => !ids.includes(e.id)))
     setListSelectedIds(new Set())
-    setSelectedEmail((cur) => (cur && ok.has(cur.id) ? null : cur))
-    toast.success(`Archiving ${ids.length} email(s)...`)
+    setSelectedEmail((cur) => (cur && ids.includes(cur.id) ? null : cur))
+    setLoading(true)
     emailsApi.bulkArchive(ids)
       .then((res) => {
         toast.success(`Archived ${res.processed} email(s)`)
+        window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
         refreshMailboxCounts()
+        fetchMailboxesAndEmails().finally(() => setLoading(false))
       })
-      .catch(() => toast.error("Could not archive"))
+      .catch(() => { toast.error("Could not archive"); setLoading(false) })
   }
 
   const runBulkTrash = () => {
     const ids = [...listSelectedIds]
     if (ids.length === 0) return
-    const ok = new Set(ids)
-    setEmailsList((prev) => prev.filter((e) => !ok.has(e.id)))
+    setEmailsList((prev) => prev.filter((e) => !ids.includes(e.id)))
     setListSelectedIds(new Set())
-    setSelectedEmail((cur) => (cur && ok.has(cur.id) ? null : cur))
-    toast.success(`Moving ${ids.length} email(s) to trash...`)
+    setSelectedEmail((cur) => (cur && ids.includes(cur.id) ? null : cur))
+    setLoading(true)
     emailsApi.bulkTrash(ids)
       .then((res) => {
         toast.success(`Deleted ${res.processed} email(s)`)
+        window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
         refreshMailboxCounts()
+        fetchMailboxesAndEmails().finally(() => setLoading(false))
       })
-      .catch(() => toast.error("Could not delete"))
+      .catch(() => { toast.error("Could not delete"); setLoading(false) })
   }
 
   const runBulkSpam = () => {
     const ids = [...listSelectedIds]
     if (ids.length === 0) return
-    const ok = new Set(ids)
-    setEmailsList((prev) => prev.filter((e) => !ok.has(e.id)))
+    setEmailsList((prev) => prev.filter((e) => !ids.includes(e.id)))
     setListSelectedIds(new Set())
-    setSelectedEmail((cur) => (cur && ok.has(cur.id) ? null : cur))
-    toast.success(`Reporting ${ids.length} as spam...`)
+    setSelectedEmail((cur) => (cur && ids.includes(cur.id) ? null : cur))
+    setLoading(true)
     emailsApi.bulkSpam(ids)
       .then((res) => {
         toast.success(`Reported ${res.processed} as spam`)
+        window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
         refreshMailboxCounts()
+        fetchMailboxesAndEmails().finally(() => setLoading(false))
       })
-      .catch(() => toast.error("Could not report as spam"))
+      .catch(() => { toast.error("Could not report as spam"); setLoading(false) })
   }
 
   const runBulkMoveToInbox = () => {
     const ids = [...listSelectedIds]
     if (ids.length === 0) return
-    const ok = new Set(ids)
-    setEmailsList((prev) => prev.filter((e) => !ok.has(e.id)))
+    setEmailsList((prev) => prev.filter((e) => !ids.includes(e.id)))
     setListSelectedIds(new Set())
-    setSelectedEmail((cur) => (cur && ok.has(cur.id) ? null : cur))
-    toast.success(`Moving ${ids.length} email(s) to inbox...`)
+    setSelectedEmail((cur) => (cur && ids.includes(cur.id) ? null : cur))
+    setLoading(true)
     emailsApi.bulkMoveToInbox(ids)
       .then((res) => {
         toast.success(`Moved ${res.processed} email(s) to inbox`)
+        window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
         refreshMailboxCounts()
+        fetchMailboxesAndEmails().finally(() => setLoading(false))
       })
-      .catch(() => toast.error("Could not move to inbox"))
+      .catch(() => { toast.error("Could not move to inbox"); setLoading(false) })
   }
 
   const runBulkMarkRead = () => {
@@ -2930,6 +2969,7 @@ export function InboxView({
     setEmailsList((prev) => prev.map((e) => (ok.has(e.id) ? { ...e, read: true } : e)))
     setListSelectedIds(new Set())
     setSelectedEmail((cur) => (cur && ok.has(cur.id) ? { ...cur, read: true } : cur))
+    window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
     emailsApi.bulkUpdate(ids, { read: true })
       .then((res) => toast.success(`Marked ${res.processed} as read`))
       .catch(() => toast.error("Could not update"))
@@ -2942,6 +2982,7 @@ export function InboxView({
     setEmailsList((prev) => prev.map((e) => (ok.has(e.id) ? { ...e, read: false } : e)))
     setListSelectedIds(new Set())
     setSelectedEmail((cur) => (cur && ok.has(cur.id) ? { ...cur, read: false } : cur))
+    window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
     emailsApi.bulkUpdate(ids, { read: false })
       .then((res) => toast.success(`Marked ${res.processed} as unread`))
       .catch(() => toast.error("Could not update"))
@@ -2954,6 +2995,7 @@ export function InboxView({
     setEmailsList((prev) => prev.map((e) => (ok.has(e.id) ? { ...e, starred: true } : e)))
     setListSelectedIds(new Set())
     setSelectedEmail((cur) => (cur && ok.has(cur.id) ? { ...cur, starred: true } : cur))
+    window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
     emailsApi.bulkUpdate(ids, { starred: true })
       .then((res) => toast.success(`Starred ${res.processed} email(s)`))
       .catch(() => toast.error("Could not star"))
@@ -2966,6 +3008,7 @@ export function InboxView({
     setEmailsList((prev) => prev.map((e) => (ok.has(e.id) ? { ...e, starred: false } : e)))
     setListSelectedIds(new Set())
     setSelectedEmail((cur) => (cur && ok.has(cur.id) ? { ...cur, starred: false } : cur))
+    window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
     emailsApi.bulkUpdate(ids, { starred: false })
       .then((res) => toast.success(`Removed star from ${res.processed} email(s)`))
       .catch(() => toast.error("Could not update"))
@@ -3224,8 +3267,9 @@ export function InboxView({
               })}
             </div>
 
-            {/* Label Filter Tabs */}
-            {userLabels.length > 0 && (
+            {/* Label Filter Tabs — AI labels only apply to the Inbox folder,
+                so hide this header row on Sent/Trash/Archive/Star/Spam/Snoozed. */}
+            {userLabels.length > 0 && (!folder || folder === "inbox") && (
               <div className="flex items-center gap-1.5 overflow-x-auto border-b border-border/60 bg-card/30 px-4 py-2 sm:px-6 sm:py-2.5">
                 <Tag className="h-3.5 w-3.5 text-muted-foreground/60 shrink-0 mr-1" />
                 <Button
@@ -3729,17 +3773,18 @@ export function InboxView({
                 }
                 const ids = [...listSelectedIds]
                 if (ids.length === 0) return
-                const ok = new Set(ids)
-                setEmailsList((prev) => prev.filter((e) => !ok.has(e.id)))
+                setEmailsList((prev) => prev.filter((e) => !ids.includes(e.id)))
                 setListSelectedIds(new Set())
-                setSelectedEmail((cur) => (cur && ok.has(cur.id) ? null : cur))
-                toast.success(`Deleting ${ids.length} email(s)...`)
+                setSelectedEmail((cur) => (cur && ids.includes(cur.id) ? null : cur))
+                setLoading(true)
                 emailsApi.bulkDelete(ids)
                   .then((res) => {
                     toast.success(`Permanently deleted ${res.processed} email(s)`)
+                    window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
                     refreshMailboxCounts()
+                    fetchMailboxesAndEmails().finally(() => setLoading(false))
                   })
-                  .catch(() => toast.error("Could not delete permanently"))
+                  .catch(() => { toast.error("Could not delete permanently"); setLoading(false) })
               }}
             >
               Delete forever

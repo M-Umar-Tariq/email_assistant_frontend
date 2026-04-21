@@ -22,7 +22,6 @@ import {
   Zap,
   RotateCcw,
   Square,
-  Send,
 } from "lucide-react"
 import {
   agent as agentApi,
@@ -45,7 +44,7 @@ type DisplayMessage = {
   actions?: AgentActionApi[]
 }
 
-type AgentState = "idle" | "listening" | "transcribing" | "review" | "thinking" | "speaking" | "confirming"
+type AgentState = "idle" | "listening" | "transcribing" | "thinking" | "speaking" | "confirming"
 
 /* ─── Constants ──────────────────────────────────────────────────────── */
 
@@ -107,12 +106,25 @@ function nextMsgId(): string {
   return `msg-${++msgIdCounter}-${Date.now()}`
 }
 
+function splitSentences(text: string): string[] {
+  const parts = text.match(/[^.!?]+[.!?]*/g) ?? [text]
+  const result: string[] = []
+  let acc = ""
+  for (const p of parts) {
+    const t = p.trim()
+    if (!t) continue
+    acc = acc ? `${acc} ${t}` : t
+    if (acc.length >= 40) { result.push(acc); acc = "" }
+  }
+  if (acc) result.push(acc)
+  return result.length ? result : [text]
+}
+
 /* ─── Main Component ─────────────────────────────────────────────────── */
 
 export function AiAgent() {
   const [state, setState] = useState<AgentState>("idle")
   const [liveText, setLiveText] = useState("")
-  const [draftText, setDraftText] = useState("")
   const [speakingText, setSpeakingText] = useState("")
   const [error, setError] = useState("")
   const [mailboxList, setMailboxList] = useState<MailboxApi[]>([])
@@ -138,7 +150,7 @@ export function AiAgent() {
   selectedMailboxRef.current = selectedMailbox
   const startListeningRef = useRef<() => void>(() => {})
   const pendingActionsRef = useRef<AgentActionApi[]>([])
-  const typewriterRef = useRef<ReturnType<typeof setInterval> | null>(null)
+  const silenceCheckerRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const scrollAnchorRef = useRef<HTMLDivElement | null>(null)
   const audioContextRef = useRef<AudioContext | null>(null)
   const analyserRef = useRef<AnalyserNode | null>(null)
@@ -182,26 +194,7 @@ export function AiAgent() {
     setTimeout(() => startListeningRef.current(), 300)
   }, [])
 
-  /* ── Typewriter ─────────────────────────────────────────────────── */
-  const startTypewriter = useCallback((text: string) => {
-    if (typewriterRef.current) clearInterval(typewriterRef.current)
-    const words = text.split(" ")
-    let index = 0
-    setSpeakingText("")
-    typewriterRef.current = setInterval(() => {
-      index++
-      setSpeakingText(words.slice(0, index).join(" "))
-      if (index >= words.length) {
-        if (typewriterRef.current) clearInterval(typewriterRef.current)
-        typewriterRef.current = null
-      }
-    }, 140)
-  }, [])
-
-  const stopTypewriter = useCallback(() => {
-    if (typewriterRef.current) { clearInterval(typewriterRef.current); typewriterRef.current = null }
-    setSpeakingText("")
-  }, [])
+  const stopTypewriter = useCallback(() => setSpeakingText(""), [])
 
   /* ── Audio visualization ────────────────────────────────────────── */
   const startAudioVisualization = useCallback(async () => {
@@ -272,49 +265,78 @@ export function AiAgent() {
 
   const speak = useCallback(async (text: string) => {
     const gen = ttsGenerationRef.current
-    try {
-      const res = await agentApi.speak(text.slice(0, 500))
-      if (gen !== ttsGenerationRef.current) return
-      if (!res?.audio) throw new Error("No audio data")
-      const bytes = Uint8Array.from(atob(res.audio), (c) => c.charCodeAt(0))
-      const blob = new Blob([bytes], { type: "audio/mp3" })
+    const sentences = splitSentences(text)
+    setSpeakingText("")
+
+    const fetchAudio = async (sentence: string): Promise<Blob | null> => {
+      try {
+        const res = await agentApi.speak(sentence)
+        if (!res?.audio) return null
+        const bytes = Uint8Array.from(atob(res.audio), (c) => c.charCodeAt(0))
+        return new Blob([bytes], { type: "audio/mp3" })
+      } catch { return null }
+    }
+
+    const playBlob = async (blob: Blob, sentence: string): Promise<void> => {
       const url = URL.createObjectURL(blob)
       ttsBlobUrlRef.current = url
       const el = new Audio(url)
       audioRef.current = el
-      await new Promise<void>((resolve) => {
+      return new Promise<void>((resolve) => {
         let settled = false
         const finish = () => {
           if (settled) return; settled = true
           ttsPlaybackResolveRef.current = null
-          if (ttsBlobUrlRef.current === url) { try { URL.revokeObjectURL(url) } catch { /* ignore */ } ttsBlobUrlRef.current = null }
+          try { URL.revokeObjectURL(url) } catch { /* ignore */ }
+          if (ttsBlobUrlRef.current === url) ttsBlobUrlRef.current = null
           el.onended = null; el.onerror = null; resolve()
         }
         ttsPlaybackResolveRef.current = resolve
         el.onended = () => finish(); el.onerror = () => finish()
-        el.onplay = () => { if (gen === ttsGenerationRef.current) startTypewriter(text) }
+        el.onplay = () => { if (gen === ttsGenerationRef.current) setSpeakingText(prev => prev ? `${prev} ${sentence}` : sentence) }
         void el.play().catch(() => finish())
       })
+    }
+
+    // Pipeline: fetch next sentence while playing current for low latency
+    let nextFetch = fetchAudio(sentences[0])
+    let anyPlayed = false
+
+    for (let i = 0; i < sentences.length; i++) {
       if (gen !== ttsGenerationRef.current) return
-    } catch {
+      const blob = await nextFetch
       if (gen !== ttsGenerationRef.current) return
-      if ("speechSynthesis" in window) {
-        const utterance = new SpeechSynthesisUtterance(text.slice(0, 300))
-        utterance.rate = 1.05
-        await new Promise<void>((resolve) => {
-          let settled = false
-          const finish = () => { if (settled) return; settled = true; ttsPlaybackResolveRef.current = null; resolve() }
-          ttsPlaybackResolveRef.current = resolve
-          utterance.onstart = () => { if (gen === ttsGenerationRef.current) startTypewriter(text) }
-          utterance.onend = () => finish(); utterance.onerror = () => finish()
-          window.speechSynthesis.speak(utterance)
-        })
+      if (i + 1 < sentences.length) nextFetch = fetchAudio(sentences[i + 1])
+
+      if (blob) {
+        anyPlayed = true
+        await playBlob(blob, sentences[i])
       }
       if (gen !== ttsGenerationRef.current) return
-    } finally {
-      stopTypewriter()
     }
-  }, [startTypewriter, stopTypewriter])
+
+    // Fallback to browser SpeechSynthesis if TTS completely failed
+    if (!anyPlayed && "speechSynthesis" in window) {
+      const utterance = new SpeechSynthesisUtterance(text.slice(0, 400))
+      utterance.rate = 1.05
+      const voices = window.speechSynthesis.getVoices()
+      const best = voices.find(v => v.name.toLowerCase().includes("google") && v.lang.startsWith("en"))
+        || voices.find(v => v.lang === "en-US")
+        || voices.find(v => v.lang.startsWith("en"))
+      if (best) utterance.voice = best
+      await new Promise<void>((resolve) => {
+        let settled = false
+        const finish = () => { if (settled) return; settled = true; ttsPlaybackResolveRef.current = null; resolve() }
+        ttsPlaybackResolveRef.current = resolve
+        utterance.onstart = () => { if (gen === ttsGenerationRef.current) setSpeakingText(text) }
+        utterance.onend = () => finish(); utterance.onerror = () => finish()
+        window.speechSynthesis.speak(utterance)
+      })
+    }
+
+    if (gen !== ttsGenerationRef.current) return
+    setSpeakingText("")
+  }, [])
 
   /* ── Execute / reject actions ───────────────────────────────────── */
   const executeAction = useCallback(async (action: AgentActionApi) => {
@@ -479,12 +501,8 @@ export function AiAgent() {
     } finally { sendingRef.current = false }
   }, [speak, addMessage, scrollToLatest, resumeListening])
 
-  const submitVoiceDraft = useCallback(() => {
-    const t = draftText.trim()
-    if (!t) return
-    setDraftText("")
-    sendToAgent(t)
-  }, [draftText, sendToAgent])
+  const sendToAgentRef = useRef(sendToAgent)
+  sendToAgentRef.current = sendToAgent
 
   /* ── MediaRecorder fallback (Whisper STT) for non-Chrome browsers ── */
   const stopMediaRecorder = useCallback(() => {
@@ -510,7 +528,30 @@ export function AiAgent() {
       mediaRecorderRef.current = mr
       mr.ondataavailable = (e) => { if (e.data.size > 0) recordedChunksRef.current.push(e.data) }
       const sttSession = whisperSttSessionRef.current
+
+      // VAD silence detection using the recording stream's audio levels
+      const silenceCtx = new AudioContext()
+      const silenceSource = silenceCtx.createMediaStreamSource(stream)
+      const silenceAnalyser = silenceCtx.createAnalyser()
+      silenceAnalyser.fftSize = 256
+      silenceSource.connect(silenceAnalyser)
+      const silenceData = new Uint8Array(silenceAnalyser.frequencyBinCount)
+      let hadSpeech = false
+      let silenceSince = 0
+      silenceCheckerRef.current = setInterval(() => {
+        if (!mediaRecorderRef.current || mediaRecorderRef.current.state !== "recording") return
+        silenceAnalyser.getByteFrequencyData(silenceData)
+        const avg = silenceData.reduce((a, b) => a + b, 0) / silenceData.length
+        if (avg > 12) { hadSpeech = true; silenceSince = Date.now() }
+        else if (hadSpeech && Date.now() - silenceSince > 1500) {
+          if (silenceCheckerRef.current) { clearInterval(silenceCheckerRef.current); silenceCheckerRef.current = null }
+          if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop()
+        }
+      }, 150)
+
       mr.onstop = async () => {
+        if (silenceCheckerRef.current) { clearInterval(silenceCheckerRef.current); silenceCheckerRef.current = null }
+        silenceCtx.close().catch(() => {})
         bumpWhisperSttSessionAndClearPoll()
         stream.getTracks().forEach(t => t.stop())
         stopAudioVisualization()
@@ -532,9 +573,8 @@ export function AiAgent() {
           if (epochAtStart !== voiceEpochRef.current) return
           const text = normalizeSpeechText(result.text || "")
           if (text.trim()) {
-            setDraftText(text)
             setLiveText("")
-            setState("review")
+            sendToAgentRef.current(text)
           } else {
             setError("No speech detected. Try again.")
             if (pendingActionsRef.current.length > 0) setState("confirming"); else setState("idle")
@@ -606,6 +646,14 @@ export function AiAgent() {
       setLiveText(normalized)
       recognizedTextRef.current = normalized
       lastSpeechTimeRef.current = Date.now()
+      // Auto-stop 1.2 s after last final result → fast submit without manual tap
+      if (final) {
+        if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current)
+        silenceTimerRef.current = setTimeout(() => {
+          silenceTimerRef.current = null
+          recognitionRef.current?.stop()
+        }, 1200)
+      }
     }
     recognition.onerror = (event: any) => {
       const errType = event?.error ?? "unknown"
@@ -637,9 +685,8 @@ export function AiAgent() {
         return
       }
       if (captured) {
-        setDraftText(normalizeSpeechText(captured))
         setLiveText("")
-        setState("review")
+        sendToAgentRef.current(normalizeSpeechText(captured))
       } else if (pendingActionsRef.current.length > 0) {
         setState("confirming")
       } else {
@@ -662,6 +709,7 @@ export function AiAgent() {
   const teardownVoiceResources = useCallback(() => {
     bumpWhisperSttSessionAndClearPoll()
     if (silenceTimerRef.current) { clearTimeout(silenceTimerRef.current); silenceTimerRef.current = null }
+    if (silenceCheckerRef.current) { clearInterval(silenceCheckerRef.current); silenceCheckerRef.current = null }
     recognizedTextRef.current = ""
     sendingRef.current = false
     recognitionRef.current?.stop()
@@ -679,7 +727,6 @@ export function AiAgent() {
     skipRecognitionResultRef.current = true
     teardownVoiceResources()
     setLiveText("")
-    setDraftText("")
     setState("idle")
   }, [teardownVoiceResources])
 
@@ -706,12 +753,6 @@ export function AiAgent() {
     if (state === "speaking") {
       cancel()
       return
-    }
-    if (state === "review") {
-      voiceSessionActiveRef.current = true
-      setDraftText("")
-      setError("")
-      startListening()
     }
   }, [state, startListening, cancel, stopMediaRecorder])
 
@@ -742,7 +783,6 @@ export function AiAgent() {
     pendingActionsRef.current = []
     setState("idle")
     setLiveText("")
-    setDraftText("")
   }, [teardownVoiceResources])
 
   /* ── Animations ─────────────────────────────────────────────────── */
@@ -772,7 +812,6 @@ export function AiAgent() {
     state === "thinking" ? "from-amber-400 to-orange-500" :
     state === "transcribing" ? "from-amber-400 to-orange-500" :
     state === "confirming" ? "from-amber-400 to-yellow-500" :
-    state === "review" ? "from-sky-500 to-blue-600" :
     "from-zinc-400/60 to-zinc-500/60 dark:from-zinc-500/40 dark:to-zinc-600/40"
 
   const stateGlow =
@@ -781,14 +820,12 @@ export function AiAgent() {
     state === "thinking" ? "shadow-amber-500/20" :
     state === "transcribing" ? "shadow-amber-500/20" :
     state === "confirming" ? "shadow-amber-500/20" :
-    state === "review" ? "shadow-sky-500/20" :
     "shadow-transparent"
 
   const stateLabel =
     state === "idle" ? "Tap to speak" :
     state === "listening" ? "Listening..." :
     state === "transcribing" ? "Transcribing..." :
-    state === "review" ? "Review & send" :
     state === "thinking" ? "Thinking..." :
     state === "speaking" ? "Speaking..." :
     "Confirm action"
@@ -857,11 +894,6 @@ export function AiAgent() {
               <span className="text-sm font-light">Transcribing...</span>
             </div>
           )}
-          {state === "review" && draftText && (
-            <p className="text-lg text-foreground/80 font-light leading-relaxed max-w-md animate-in fade-in-0 duration-200">
-              &ldquo;{draftText}&rdquo;
-            </p>
-          )}
           {state === "thinking" && (
             <div className="flex items-center gap-2 text-muted-foreground/60">
               <Loader2 className="h-4 w-4 animate-spin" />
@@ -890,7 +922,6 @@ export function AiAgent() {
             state === "speaking" ? "bg-emerald-500/[0.06]" :
             state === "thinking" ? "bg-amber-500/[0.04]" :
             state === "transcribing" ? "bg-amber-500/[0.05]" :
-            state === "review" ? "bg-sky-500/[0.06]" :
             state === "confirming" ? "bg-amber-500/[0.05]" : ""
           )} />
 
@@ -917,7 +948,6 @@ export function AiAgent() {
                       state === "listening" ? "stroke-blue-500/60 duration-75" :
                       state === "speaking" ? "stroke-emerald-500/50 duration-100" :
                       state === "thinking" || state === "transcribing" ? "stroke-amber-400/40 duration-150" :
-                      state === "review" ? "stroke-sky-400/35 duration-200" :
                       state === "confirming" ? "stroke-amber-400/30 duration-200" :
                       "stroke-muted-foreground/10 duration-500"
                     )}
@@ -932,7 +962,7 @@ export function AiAgent() {
           <button
             onClick={handleMicClick}
             disabled={state === "thinking" || state === "transcribing"}
-            title={state === "review" ? "Record again" : undefined}
+            title={undefined}
             className={cn(
               "relative z-10 flex items-center justify-center rounded-full w-32 h-32",
               "bg-gradient-to-br transition-all duration-500 ease-out",
@@ -973,37 +1003,25 @@ export function AiAgent() {
           {stateLabel}
         </p>
 
-        {/* Stop / Send / hints */}
+        {/* Stop / hints */}
         <div className="min-h-8 flex flex-col items-center gap-2">
           <div className="flex flex-wrap items-center justify-center gap-2">
-            {(state === "listening" || state === "speaking" || state === "thinking" || state === "confirming" || state === "transcribing" || state === "review") && (
+            {(state === "listening" || state === "speaking" || state === "thinking" || state === "confirming" || state === "transcribing") && (
               <button type="button" onClick={cancel} className="flex items-center gap-1.5 px-3 py-1.5 rounded-full text-xs text-muted-foreground hover:text-foreground hover:bg-muted/50 transition-colors">
                 <Square className="h-3 w-3 fill-current" /> Stop
               </button>
             )}
-            {state === "review" && draftText.trim() && (
-              <button
-                type="button"
-                onClick={submitVoiceDraft}
-                className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-medium bg-primary text-primary-foreground hover:opacity-90 transition-colors shadow-sm"
-              >
-                <Send className="h-3.5 w-3.5" /> Send
-              </button>
-            )}
           </div>
           {state === "listening" && (
-            <span className="text-[11px] text-muted-foreground/50 text-center">Tap the orb or Stop when you are done speaking</span>
+            <span className="text-[11px] text-muted-foreground/50 text-center">Speaking will auto-submit — or tap Stop</span>
           )}
           {state === "idle" && (
             <span className="text-[11px] text-muted-foreground/40 flex items-center gap-1.5">
               Press <kbd className="px-1.5 py-0.5 rounded bg-muted/80 border border-border/50 text-[10px] font-mono">Space</kbd> to talk
             </span>
           )}
-          {state === "review" && draftText.trim() && (
-            <span className="text-[11px] text-muted-foreground/50 text-center">Or tap the orb to record again</span>
-          )}
           {state === "confirming" && (
-            <span className="text-[11px] text-muted-foreground/60">Say &ldquo;yes&rdquo; or &ldquo;no&rdquo; — then review and Send</span>
+            <span className="text-[11px] text-muted-foreground/60">Say &ldquo;yes&rdquo; or &ldquo;no&rdquo;</span>
           )}
         </div>
 
@@ -1017,7 +1035,7 @@ export function AiAgent() {
         <div className="max-w-lg mx-auto px-5 pb-4 space-y-3">
 
           {/* Pending actions */}
-          {pendingActions.length > 0 && (state === "confirming" || state === "listening" || state === "idle" || state === "review" || state === "transcribing") && (
+          {pendingActions.length > 0 && (state === "confirming" || state === "listening" || state === "idle" || state === "transcribing") && (
             <div className="space-y-2 animate-in slide-in-from-bottom-4 duration-300">
               <p className="text-[11px] text-amber-500/80 font-medium uppercase tracking-wide flex items-center gap-1.5">
                 <Sparkles className="h-3 w-3" /> Pending

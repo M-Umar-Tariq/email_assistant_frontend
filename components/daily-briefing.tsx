@@ -1309,11 +1309,13 @@ export function DailyBriefing({
     window.addEventListener("mailbox:updated", onRefresh)
     window.addEventListener("mailbox:sync-complete", onRefresh)
     window.addEventListener("email:sync", onRefresh)
+    window.addEventListener("folder-counts:refresh", onRefresh)
     window.addEventListener("calendar:updated", onCalendar)
     return () => {
       window.removeEventListener("mailbox:updated", onRefresh)
       window.removeEventListener("mailbox:sync-complete", onRefresh)
       window.removeEventListener("email:sync", onRefresh)
+      window.removeEventListener("folder-counts:refresh", onRefresh)
       window.removeEventListener("calendar:updated", onCalendar)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps

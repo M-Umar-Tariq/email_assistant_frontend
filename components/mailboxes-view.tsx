@@ -13,6 +13,7 @@ import {
   RefreshCw,
   AlertCircle,
   Clock,
+  Trash2,
 } from "lucide-react"
 import { mailboxes as mailboxesApi } from "@/lib/api"
 import { mapMailboxApi } from "@/lib/mappers"
@@ -83,6 +84,8 @@ export function MailboxesView({
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([])
   const [loading, setLoading] = useState(true)
   const [editing, setEditing] = useState<Mailbox | null>(null)
+  const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const refresh = useCallback(() => {
     mailboxesApi
@@ -90,6 +93,20 @@ export function MailboxesView({
       .then((list) => setMailboxes(list.map(mapMailboxApi)))
       .catch(() => {})
   }, [])
+
+  const handleDelete = useCallback(async (mb: Mailbox) => {
+    setDeleting(true)
+    try {
+      await mailboxesApi.delete(mb.id)
+      window.dispatchEvent(new CustomEvent("mailbox:updated"))
+      setConfirmDeleteId(null)
+      refresh()
+    } catch {
+      /* ignore */
+    } finally {
+      setDeleting(false)
+    }
+  }, [refresh])
 
   useEffect(() => {
     setLoading(true)
@@ -302,6 +319,42 @@ export function MailboxesView({
                             <Settings2 className="h-3.5 w-3.5" />
                             Rename &amp; color
                           </Button>
+                          {confirmDeleteId === mb.id ? (
+                            <div className="flex items-center gap-1.5">
+                              <Button
+                                type="button"
+                                variant="destructive"
+                                size="sm"
+                                className="gap-1.5 rounded-xl"
+                                onClick={() => handleDelete(mb)}
+                                disabled={deleting}
+                              >
+                                {deleting && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+                                Confirm delete
+                              </Button>
+                              <Button
+                                type="button"
+                                variant="ghost"
+                                size="sm"
+                                className="rounded-xl"
+                                onClick={() => setConfirmDeleteId(null)}
+                                disabled={deleting}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : (
+                            <Button
+                              type="button"
+                              variant="ghost"
+                              size="sm"
+                              className="gap-1.5 rounded-xl text-destructive hover:text-destructive hover:bg-destructive/10"
+                              onClick={() => setConfirmDeleteId(mb.id)}
+                            >
+                              <Trash2 className="h-3.5 w-3.5" />
+                              Delete mailbox
+                            </Button>
+                          )}
                         </div>
                       </div>
                     </div>
@@ -321,7 +374,6 @@ export function MailboxesView({
             if (!open) setEditing(null)
           }}
           onSaved={refresh}
-          onDeleted={refresh}
         />
       )}
     </div>

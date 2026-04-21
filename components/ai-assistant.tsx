@@ -602,9 +602,13 @@ export function AiAssistant({ panelVisible = true }: AiAssistantProps) {
             </div>
             <div className="min-w-0">
               <h1 className="text-base font-extrabold tracking-tight text-foreground sm:text-lg">
-                Smart Mail Assistant
+                Smart Mail{" "}
+                <span className="bg-gradient-to-r from-primary to-sky-500 bg-clip-text text-transparent">
+                  Assistant
+                </span>
               </h1>
-              <p className="mt-0.5 text-[11px] font-medium text-muted-foreground/80">
+              <p className="mt-0.5 flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground/80">
+                <Sparkles className="h-2.5 w-2.5 text-primary/60" />
                 Ask anything or take actions on your emails
               </p>
             </div>
@@ -713,18 +717,28 @@ export function AiAssistant({ panelVisible = true }: AiAssistantProps) {
         <div className="flex min-h-0 min-w-0 flex-1 flex-col items-center justify-center overflow-y-auto px-4 py-5 sm:px-6 sm:py-8">
           <div className="animate-entrance flex w-full max-w-xl flex-col items-center">
             {/* Animated hero icon */}
-            <div className="group relative mb-4 sm:mb-7">
-              <div className="absolute -inset-4 animate-gradient rounded-full bg-gradient-to-r from-primary/25 via-blue-500/10 to-violet-500/15 opacity-70 blur-3xl sm:-inset-6" />
-              <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 shadow-xl shadow-primary/15 ring-1 ring-primary/15 transition-transform duration-500 group-hover:rotate-1 group-hover:scale-105 sm:h-[4.5rem] sm:w-[4.5rem]">
+            <div className="group relative mb-4 sm:mb-6">
+              <div className="absolute -inset-4 animate-gradient rounded-full bg-gradient-to-r from-primary/25 via-blue-500/15 to-violet-500/20 opacity-80 blur-3xl sm:-inset-8" />
+              <div className="relative flex h-16 w-16 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/25 to-primary/5 shadow-xl shadow-primary/15 ring-1 ring-primary/15 transition-all duration-500 group-hover:rotate-1 group-hover:scale-105 sm:h-[4.5rem] sm:w-[4.5rem]">
                 <Image src={smartMailLogo} alt="Smart Mail Assistant" className="h-10 w-10 object-contain transition-transform duration-500 group-hover:scale-105 sm:h-11 sm:w-11" />
               </div>
               <div className="absolute -bottom-1 -right-1 flex h-5 w-5 items-center justify-center rounded-full border-2 border-background bg-emerald-500 shadow-lg sm:h-6 sm:w-6">
                 <div className="h-1.5 w-1.5 rounded-full bg-white sm:h-2 sm:w-2" />
+                <div className="absolute inset-0 animate-ping rounded-full bg-emerald-400 opacity-40" />
               </div>
             </div>
 
-            <h2 className="mb-1.5 text-center text-xl font-extrabold tracking-tight text-foreground sm:mb-2 sm:text-2xl">
-              Hi {firstName}, how can I help?
+            {/* AI-powered pill */}
+            <div className="mb-3 inline-flex items-center gap-1.5 rounded-full border border-primary/20 bg-primary/5 px-3 py-1 text-[11px] font-medium text-primary shadow-sm shadow-primary/5 backdrop-blur-sm">
+              <Sparkles className="h-3 w-3" />
+              AI-powered email workspace
+            </div>
+
+            <h2 className="mb-2 text-center text-xl font-extrabold tracking-tight text-foreground sm:text-[26px]">
+              Hi {firstName},{" "}
+              <span className="bg-gradient-to-r from-primary via-sky-500 to-violet-500 bg-clip-text text-transparent">
+                how can I help?
+              </span>
             </h2>
             <p className="mb-4 max-w-md text-center text-sm leading-relaxed text-muted-foreground/85 sm:mb-8">
               I can search, summarize, answer questions, and take actions like sending,
@@ -760,24 +774,6 @@ export function AiAssistant({ panelVisible = true }: AiAssistantProps) {
               ))}
             </div>
 
-            {/* Suggestion chips */}
-            <div className="flex w-full flex-wrap justify-center gap-2">
-              {suggestedQuestions.slice(0, 4).map((q, i) => (
-                <button
-                  key={q}
-                  onClick={() => handleSend(q)}
-                  className={cn(
-                    "group/chip flex items-center gap-2 rounded-full border border-border/60 bg-card/70 px-3 py-2 text-xs font-medium text-muted-foreground backdrop-blur-sm",
-                    "transition-all duration-200 hover:-translate-y-0.5 hover:border-primary/35 hover:bg-primary/5 hover:text-foreground hover:shadow-md hover:shadow-primary/8 active:translate-y-0",
-                    "animate-fade-in-up sm:px-4 sm:py-2.5",
-                  )}
-                  style={{ animationDelay: `${i * 80 + 500}ms` }}
-                >
-                  <span>{q}</span>
-                  <ArrowRight className="h-3 w-3 opacity-0 -translate-x-1 group-hover/chip:opacity-100 group-hover/chip:translate-x-0 transition-all duration-200" />
-                </button>
-              ))}
-            </div>
           </div>
         </div>
       ) : (
@@ -803,14 +799,19 @@ export function AiAssistant({ panelVisible = true }: AiAssistantProps) {
       )}
 
       {/* ── Input Area ──────────────────────────────────────────────── */}
-      <div className="shrink-0 border-t border-border/60 bg-gradient-to-t from-background via-background/95 to-muted/[0.08] backdrop-blur-md">
-        <div className="mx-auto w-full max-w-3xl px-4 pb-6 pt-3 sm:pb-3.5">
+      <div className="relative shrink-0 border-t border-border/60 bg-gradient-to-t from-background via-background/95 to-muted/[0.08] backdrop-blur-md">
+        {/* Subtle ambient glow behind input */}
+        <div
+          aria-hidden
+          className="pointer-events-none absolute inset-x-0 bottom-0 h-32 bg-gradient-to-t from-primary/[0.04] to-transparent"
+        />
+        <div className="relative mx-auto w-full max-w-3xl px-4 pb-6 pt-3 sm:pb-3.5">
           <form
             onSubmit={(e) => {
               e.preventDefault()
               handleSend(input)
             }}
-            className="relative mx-auto flex w-full max-w-lg items-end gap-2 rounded-2xl border border-border/50 bg-card/85 px-4 py-2.5 shadow-lg shadow-black/[0.03] backdrop-blur-md transition-all duration-200 focus-within:border-primary/35 focus-within:shadow-xl focus-within:shadow-primary/10 focus-within:ring-2 focus-within:ring-primary/15 sm:max-w-none"
+            className="group/input relative mx-auto flex w-full max-w-lg items-end gap-2 rounded-2xl border border-border/50 bg-card/85 px-4 py-2.5 shadow-lg shadow-black/[0.03] backdrop-blur-md transition-all duration-300 focus-within:border-primary/40 focus-within:bg-card/95 focus-within:shadow-xl focus-within:shadow-primary/10 focus-within:ring-4 focus-within:ring-primary/10 sm:max-w-none"
           >
             <textarea
               ref={inputRef}
@@ -827,22 +828,38 @@ export function AiAssistant({ panelVisible = true }: AiAssistantProps) {
               size="icon"
               disabled={!input.trim() || isQueryLoading}
               className={cn(
-                "h-10 w-10 shrink-0 rounded-xl transition-all duration-300",
+                "group/send relative h-10 w-10 shrink-0 overflow-hidden rounded-xl transition-all duration-300",
                 input.trim()
-                  ? "bg-primary text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/30 hover:scale-[1.02] active:scale-[0.98]"
-                  : "bg-muted/80 text-muted-foreground"
+                  ? "bg-gradient-to-br from-primary to-sky-500 text-primary-foreground shadow-lg shadow-primary/25 hover:shadow-xl hover:shadow-primary/35 hover:scale-[1.05] active:scale-[0.95]"
+                  : "bg-muted/80 text-muted-foreground",
               )}
             >
+              {/* Shimmer sweep on active */}
+              {input.trim() && (
+                <span className="pointer-events-none absolute inset-0 -translate-x-full bg-gradient-to-r from-transparent via-white/25 to-transparent transition-transform duration-700 group-hover/send:translate-x-full" />
+              )}
               <Send
                 className={cn(
-                  "h-4 w-4 transition-transform duration-200",
-                  input.trim() && "-translate-x-[1px] -translate-y-[1px]"
+                  "relative h-4 w-4 transition-all duration-300",
+                  input.trim() && "-translate-x-[1px] -translate-y-[1px] group-hover/send:translate-x-0 group-hover/send:translate-y-0 group-hover/send:rotate-12",
                 )}
               />
             </Button>
           </form>
-          <p className="mx-auto mt-2.5 max-w-lg text-center text-[10px] font-semibold tracking-wide text-muted-foreground/55 sm:max-w-none">
-            Press Enter to send &middot; Shift+Enter for new line
+          <p className="mx-auto mt-2.5 flex max-w-lg items-center justify-center gap-1.5 text-center text-[10px] font-semibold tracking-wide text-muted-foreground/55 sm:max-w-none">
+            Press{" "}
+            <kbd className="rounded border border-border/60 bg-muted/50 px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground/80">
+              Enter
+            </kbd>{" "}
+            to send &middot;{" "}
+            <kbd className="rounded border border-border/60 bg-muted/50 px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground/80">
+              Shift
+            </kbd>
+            +
+            <kbd className="rounded border border-border/60 bg-muted/50 px-1.5 py-0.5 font-mono text-[9px] text-muted-foreground/80">
+              Enter
+            </kbd>{" "}
+            for new line
           </p>
         </div>
       </div>

@@ -123,6 +123,17 @@
 .dark .rounded-2xl { border-radius: 0.75rem; }
 .dark .rounded-xl  { border-radius: 0.625rem; }
 
+/* Dark-mode sidebar: make text pure white. Scoped to .bg-sidebar so the rest
+   of the app keeps its muted palette. Rebinds both --muted-foreground
+   (used by text-muted-foreground with various /50, /70, /80 opacities)
+   and --foreground (used by text-foreground). */
+.dark .bg-sidebar,
+.dark .bg-sidebar * {
+  --muted-foreground: 0 0% 100%;
+  --foreground: 0 0% 100%;
+  --sidebar-foreground: 0 0% 100%;
+}
+
 @keyframes waveform {
   0%, 100% {
     height: 4px;

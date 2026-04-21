@@ -230,7 +230,10 @@ export function AppSidebar({
   }, [])
 
   const refreshFolderCounts = useCallback(() => {
-    emailsApi.folderCounts().then(setFolderCounts).catch(() => {})
+    emailsApi.folderCounts().then((counts) => {
+      setFolderCounts(counts)
+      setBadges((prev) => ({ ...prev, unread: counts.inbox }))
+    }).catch(() => {})
   }, [])
 
   useEffect(() => {
@@ -249,6 +252,7 @@ export function AppSidebar({
     const onEmailRead = (e: Event) => {
       const mailboxId = (e as CustomEvent).detail?.mailboxId
       setBadges((prev) => ({ ...prev, unread: Math.max(0, prev.unread - 1) }))
+      setFolderCounts((prev) => prev ? { ...prev, inbox: Math.max(0, prev.inbox - 1) } : prev)
       if (mailboxId) {
         setMailboxes((prev) =>
           prev.map((mb) =>
@@ -286,11 +290,13 @@ export function AppSidebar({
     window.addEventListener("email:sync", onEmailSync)
     window.addEventListener("mailbox:sync-complete", onMailboxSyncComplete)
     window.addEventListener("labels:updated", onLabelsUpdated)
+    window.addEventListener("folder-counts:refresh", refreshFolderCounts)
     return () => {
       window.removeEventListener("email:read", onEmailRead)
       window.removeEventListener("email:sync", onEmailSync)
       window.removeEventListener("mailbox:sync-complete", onMailboxSyncComplete)
       window.removeEventListener("labels:updated", onLabelsUpdated)
+      window.removeEventListener("folder-counts:refresh", refreshFolderCounts)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
@@ -592,10 +598,10 @@ export function AppSidebar({
                         type="button"
                         onClick={() => onViewChange("meeting-requests")}
                         className={cn(
-                          "group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-all duration-150",
+                          "group flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-[13px] transition-all duration-150",
                           activeView === "meeting-requests"
-                            ? "bg-primary/10 text-primary font-semibold"
-                            : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                            ? "border-primary/30 bg-primary/15 text-primary font-semibold shadow-sm"
+                            : "border-transparent bg-primary/[0.04] text-foreground/90 hover:border-primary/20 hover:bg-primary/[0.08] hover:text-foreground",
                         )}
                       >
                         <CalendarPlus
@@ -606,8 +612,10 @@ export function AppSidebar({
                         {pendingMeetingRequests > 0 && (
                           <span
                             className={cn(
-                              "text-[11px] font-semibold tabular-nums",
-                              activeView === "meeting-requests" ? "text-primary" : "text-muted-foreground",
+                              "min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-[11px] font-semibold tabular-nums",
+                              activeView === "meeting-requests"
+                                ? "bg-primary/20 text-primary"
+                                : "bg-primary/10 text-primary/90",
                             )}
                           >
                             {pendingMeetingRequests}

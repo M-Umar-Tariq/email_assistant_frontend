@@ -98,6 +98,7 @@ export default function AppDashboard() {
 
   const handleNavigateInbox = useCallback((filter: InboxFilter) => {
     setInboxFilter(filter)
+    setActiveFolder("inbox")
     setActiveView("inbox")
   }, [])
 
@@ -110,11 +111,13 @@ export default function AppDashboard() {
   }, [])
 
   const handleSelectLabelForInbox = useCallback((labelName: string) => {
-    // Clear briefing / sender filters so inbox isn't double-filtered (empty list)
+    // Labels apply only to the Inbox folder — force folder back so label
+    // filtering doesn't silently run against Sent/Trash/Archive/etc.
     setInboxFilter(null)
     setInitialSenderEmail(null)
     setInitialSenderName(null)
     setInitialLabelFilter(labelName)
+    setActiveFolder("inbox")
     setActiveView("inbox")
   }, [])
 
