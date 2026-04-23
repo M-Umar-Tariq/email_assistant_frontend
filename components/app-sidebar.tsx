@@ -575,47 +575,59 @@ export function AppSidebar({
                   </div>
                 )}
               </div>
+
+              {/* Prominent Meeting Request Action Button */}
+              <div className="px-4 py-5 border-b border-border/40 bg-muted/5">
+                <Button
+                  onClick={() =>
+                    ensureCalendarView(() =>
+                      window.dispatchEvent(new CustomEvent("calendar:openCreate")),
+                    )
+                  }
+                  className="group relative h-12 w-full overflow-hidden rounded-xl bg-gradient-to-r from-blue-600 via-indigo-600 to-violet-600 p-0 shadow-lg shadow-blue-500/20 transition-all duration-300 hover:shadow-blue-500/40 hover:-translate-y-0.5 active:scale-[0.98] border-none"
+                  aria-label="Schedule a new meeting"
+                >
+                  <div className="absolute inset-0 bg-white/10 opacity-0 group-hover:opacity-100 transition-opacity" />
+                  <div className="relative flex items-center justify-center gap-2 px-4 py-2 w-full h-full">
+                    <div className="flex h-6 w-6 items-center justify-center rounded-full bg-white/20 transition-transform duration-500 group-hover:rotate-90">
+                      <Plus className="h-4 w-4 text-white" />
+                    </div>
+                    <span className="text-[15px] font-bold tracking-wide text-white drop-shadow-sm">
+                      Schedule Meeting
+                    </span>
+                  </div>
+                </Button>
+              </div>
+
               <ScrollArea className="flex-1">
-                <div className="px-2 py-3 space-y-3">
-                  <Button
-                    size="sm"
-                    className="w-full gap-2 rounded-lg font-semibold shadow-sm"
-                    onClick={() =>
-                      ensureCalendarView(() =>
-                        window.dispatchEvent(new CustomEvent("calendar:openCreate")),
-                      )
-                    }
-                  >
-                    <Plus className="h-4 w-4" />
-                    New meeting
-                  </Button>
+                <div className="px-2 py-3 space-y-4">
                   <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/80 px-2 mb-1.5">
-                      Meeting requests
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/80 px-2 mb-2">
+                      Incoming Requests
                     </p>
-                    <div className="flex flex-col gap-0.5">
+                    <div className="flex flex-col gap-0.5 px-1">
                       <button
                         type="button"
                         onClick={() => onViewChange("meeting-requests")}
                         className={cn(
-                          "group flex w-full items-center gap-2.5 rounded-lg border px-3 py-2 text-[13px] transition-all duration-150",
+                          "group flex w-full items-center gap-3 rounded-xl border-2 px-3 py-2.5 text-[13px] transition-all duration-200",
                           activeView === "meeting-requests"
-                            ? "border-primary/30 bg-primary/15 text-primary font-semibold shadow-sm"
-                            : "border-transparent bg-primary/[0.04] text-foreground/90 hover:border-primary/20 hover:bg-primary/[0.08] hover:text-foreground",
+                            ? "border-primary/40 bg-primary/10 text-primary font-bold shadow-sm"
+                            : "border-transparent bg-primary/[0.03] text-foreground/80 hover:border-primary/20 hover:bg-primary/[0.06] hover:text-foreground",
                         )}
                       >
                         <CalendarPlus
-                          className="h-4 w-4 shrink-0"
-                          strokeWidth={activeView === "meeting-requests" ? 2.25 : 1.75}
+                          className="h-4.5 w-4.5 shrink-0"
+                          strokeWidth={activeView === "meeting-requests" ? 2.5 : 2}
                         />
-                        <span className="flex-1 text-left truncate">Meeting Requests</span>
+                        <span className="flex-1 text-left truncate font-medium">Meeting Requests</span>
                         {pendingMeetingRequests > 0 && (
                           <span
                             className={cn(
-                              "min-w-[1.25rem] rounded-full px-1.5 py-0.5 text-center text-[11px] font-semibold tabular-nums",
+                              "flex h-5 min-w-[1.25rem] items-center justify-center rounded-full px-1.5 text-[10px] font-bold tabular-nums shadow-sm",
                               activeView === "meeting-requests"
-                                ? "bg-primary/20 text-primary"
-                                : "bg-primary/10 text-primary/90",
+                                ? "bg-primary text-primary-foreground"
+                                : "bg-primary/20 text-primary",
                             )}
                           >
                             {pendingMeetingRequests}

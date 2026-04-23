@@ -1,7 +1,7 @@
 "use client"
 
 import { useState } from "react"
-import { Mail, Loader2, CheckCircle2, Eye, EyeOff } from "lucide-react"
+import { Mail, Loader2, CheckCircle2, Eye, EyeOff, AlertCircle } from "lucide-react"
 import {
   Dialog,
   DialogContent,
@@ -160,7 +160,9 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
       setCreatedMailboxName(mb.name || emailTrimmed)
       setStep(2)
     } catch (err: unknown) {
-      setError((err as Error)?.message ?? "Failed to add mailbox")
+      const msg = (err as Error)?.message ?? "Failed to add mailbox"
+      setError(msg)
+      toast.error(msg, { duration: 6000 })
     } finally {
       setSubmitting(false)
     }
@@ -466,7 +468,10 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
           </div>
 
           {error && (
-            <p className="mt-2 text-sm text-red-400">{error}</p>
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2.5">
+              <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+              <p className="text-sm text-red-400">{error}</p>
+            </div>
           )}
           </div>
 
@@ -547,7 +552,10 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
               )}
             </div>
             {error && (
-              <p className="text-sm text-red-400 mt-3">{error}</p>
+              <div className="mt-3 flex items-start gap-2 rounded-lg border border-red-500/40 bg-red-500/10 px-3 py-2.5">
+                <AlertCircle className="mt-0.5 h-4 w-4 shrink-0 text-red-400" />
+                <p className="text-sm text-red-400">{error}</p>
+              </div>
             )}
           </div>
           <DialogFooter className="px-5 py-3 border-t border-border bg-muted/10 shrink-0 flex-wrap gap-2">

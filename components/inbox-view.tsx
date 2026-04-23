@@ -2693,59 +2693,59 @@ export function InboxView({
   }, [refreshMailboxCounts])
 
   const handleTrash = useCallback((emailId: string) => {
-    emailsApi.trash(emailId).then(() => {
-      setEmailsList((prev) => prev.filter((e) => e.id !== emailId))
-      setListSelectedIds((prev) => {
-        const next = new Set(prev)
-        next.delete(emailId)
-        return next
-      })
-      setSelectedEmail(null)
-      toast.success("Email deleted")
-      window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
-      refreshMailboxCounts()
-    }).catch(() => {})
-  }, [refreshMailboxCounts])
+    // Optimistic: remove from UI immediately without waiting for API
+    let restored: ReturnType<typeof emailsList.find> | undefined
+    setEmailsList((prev) => {
+      restored = prev.find((e) => e.id === emailId)
+      return prev.filter((e) => e.id !== emailId)
+    })
+    setListSelectedIds((prev) => { const next = new Set(prev); next.delete(emailId); return next })
+    setSelectedEmail(null)
+    toast.success("Email deleted")
+    window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
+    refreshMailboxCounts()
+    emailsApi.trash(emailId).catch(() => {
+      if (restored) setEmailsList((prev) => [restored!, ...prev])
+      toast.error("Could not delete email")
+    })
+  }, [emailsList, refreshMailboxCounts])
 
   const handleDeletePermanent = useCallback(
     (emailId: string) => {
-      emailsApi
-        .deletePermanently(emailId)
-        .then(() => {
-          setEmailsList((prev) => prev.filter((e) => e.id !== emailId))
-          setListSelectedIds((prev) => {
-            const next = new Set(prev)
-            next.delete(emailId)
-            return next
-          })
-          setSelectedEmail(null)
-          toast.success("Email deleted permanently")
-          window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
-          refreshMailboxCounts()
-        })
-        .catch((err) => {
-          toast.error(err?.message ?? "Could not delete permanently")
-        })
+      let restored: ReturnType<typeof emailsList.find> | undefined
+      setEmailsList((prev) => {
+        restored = prev.find((e) => e.id === emailId)
+        return prev.filter((e) => e.id !== emailId)
+      })
+      setListSelectedIds((prev) => { const next = new Set(prev); next.delete(emailId); return next })
+      setSelectedEmail(null)
+      toast.success("Email deleted permanently")
+      window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
+      refreshMailboxCounts()
+      emailsApi.deletePermanently(emailId).catch((err) => {
+        if (restored) setEmailsList((prev) => [restored!, ...prev])
+        toast.error(err?.message ?? "Could not delete permanently")
+      })
     },
-    [refreshMailboxCounts]
+    [emailsList, refreshMailboxCounts]
   )
 
   const handleMoveToInbox = useCallback((emailId: string) => {
-    emailsApi.moveToInbox(emailId).then(() => {
-      setEmailsList((prev) => prev.filter((e) => e.id !== emailId))
-      setListSelectedIds((prev) => {
-        const next = new Set(prev)
-        next.delete(emailId)
-        return next
-      })
-      setSelectedEmail(null)
-      toast.success("Email moved to inbox")
-      window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
-      refreshMailboxCounts()
-    }).catch((err) => {
+    let restored: ReturnType<typeof emailsList.find> | undefined
+    setEmailsList((prev) => {
+      restored = prev.find((e) => e.id === emailId)
+      return prev.filter((e) => e.id !== emailId)
+    })
+    setListSelectedIds((prev) => { const next = new Set(prev); next.delete(emailId); return next })
+    setSelectedEmail(null)
+    toast.success("Email moved to inbox")
+    window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
+    refreshMailboxCounts()
+    emailsApi.moveToInbox(emailId).catch((err) => {
+      if (restored) setEmailsList((prev) => [restored!, ...prev])
       toast.error(err?.message ?? "Could not move to inbox")
     })
-  }, [refreshMailboxCounts])
+  }, [emailsList, refreshMailboxCounts])
 
   const runBulkDeletePermanent = useCallback(() => {
     const ids = [...listSelectedIds]
