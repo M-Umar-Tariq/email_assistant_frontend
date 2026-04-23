@@ -22,6 +22,7 @@ import {
   Zap,
   RotateCcw,
   Square,
+  Search,
 } from "lucide-react"
 import {
   agent as agentApi,
@@ -31,6 +32,7 @@ import {
   type AgentSuggestion,
 } from "@/lib/api"
 import { cn } from "@/lib/utils"
+import { toast } from "sonner"
 
 /* ─── Types ──────────────────────────────────────────────────────────── */
 
@@ -57,7 +59,7 @@ const ACTION_ICONS: Record<string, typeof Mail> = {
   read_emails: MailOpen,
   open_email: MailOpen,
   open_latest_email: MailOpen,
-  search_emails: Inbox,
+  search_emails: Search,
   send_email: Mail,
   draft_email: Mail,
   draft_reply: Reply,
@@ -75,6 +77,134 @@ const ACTION_ICONS: Record<string, typeof Mail> = {
   snooze_email: Clock,
   send_whatsapp: MessageSquare,
   set_reminder: Clock,
+}
+
+const COMPOSE_ACTIONS = new Set([
+  "send_email", "send_reply", "reply_all", "forward_email", "draft_email", "draft_reply",
+])
+
+function formatRecipients(value: unknown): string {
+  if (!value) return ""
+  if (Array.isArray(value)) return value.filter(Boolean).map(String).join(", ")
+  return String(value)
+}
+
+function VoiceActionCard({
+  action,
+  isExecuting,
+  onApprove,
+  onReject,
+}: {
+  action: AgentActionApi
+  isExecuting: boolean
+  onApprove: (action: AgentActionApi) => void
+  onReject: (action: AgentActionApi) => void
+}) {
+  const Icon = ACTION_ICONS[action.type] || Mail
+  const isExecuted = action.status === "executed"
+  const isRejected = action.status === "rejected"
+  const showButtons = !isExecuted && !isRejected
+  const isCompose = COMPOSE_ACTIONS.has(action.type)
+
+  const toStr = formatRecipients(action.to)
+  const ccStr = formatRecipients((action as AgentActionApi & { cc?: string | string[] }).cc)
+  const subjectStr = (action.subject || "").trim()
+  const bodyStr = (action.body || "").trim()
+  const hasPreview = isCompose && (toStr || ccStr || subjectStr || bodyStr)
+  const [bodyExpanded, setBodyExpanded] = useState(false)
+  const BODY_SNIPPET = 280
+  const bodyTooLong = bodyStr.length > BODY_SNIPPET
+  const bodyShown = bodyExpanded || !bodyTooLong ? bodyStr : bodyStr.slice(0, BODY_SNIPPET).trimEnd() + "…"
+
+  return (
+    <div className={cn(
+      "rounded-xl border transition-all duration-200",
+      isExecuted
+        ? "border-emerald-400/30 bg-gradient-to-r from-emerald-500/[0.08] to-transparent shadow-sm shadow-emerald-500/5"
+        : isRejected
+          ? "border-red-400/30 bg-gradient-to-r from-red-500/[0.06] to-transparent opacity-60"
+          : "border-amber-400/30 bg-gradient-to-r from-amber-500/[0.08] to-transparent hover:border-amber-400/45",
+    )}>
+      <div className="flex items-start gap-3 px-4 py-3">
+        <div className={cn(
+          "flex h-10 w-10 shrink-0 items-center justify-center rounded-xl",
+          isExecuted ? "bg-emerald-500/10" : isRejected ? "bg-red-500/10" : "bg-amber-500/10",
+        )}>
+          <Icon className={cn(
+            "h-5 w-5",
+            isExecuted ? "text-emerald-500" : isRejected ? "text-red-500" : "text-amber-500",
+          )} />
+        </div>
+        <div className="flex-1 min-w-0 text-left">
+          <p className="text-sm font-medium text-foreground">
+            {action.label || action.type.replace(/_/g, " ")}
+          </p>
+          {action.description && !isExecuted && !isRejected && (
+            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-2">{action.description}</p>
+          )}
+          {isExecuted && <p className="text-xs text-emerald-500 mt-0.5 font-medium">Executed</p>}
+          {isRejected && <p className="text-xs text-red-500 mt-0.5 font-medium">Rejected</p>}
+        </div>
+        {showButtons && (
+          <div className="flex items-center gap-2 shrink-0">
+            <button
+              onClick={() => onApprove(action)}
+              disabled={isExecuting}
+              className="flex h-9 w-9 items-center justify-center rounded-lg bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-all hover:scale-105 disabled:opacity-50 disabled:hover:scale-100"
+              title="Approve"
+            >
+              {isExecuting ? <Loader2 className="h-4 w-4 animate-spin" /> : <Check className="h-4 w-4" />}
+            </button>
+            <button
+              onClick={() => onReject(action)}
+              className="flex h-9 w-9 items-center justify-center rounded-lg bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-all hover:scale-105"
+              title="Reject"
+            >
+              <XCircle className="h-4 w-4" />
+            </button>
+          </div>
+        )}
+      </div>
+      {hasPreview && (
+        <div className="mx-4 mb-3 rounded-lg border border-border/50 bg-background/40 px-3 py-2.5 space-y-1.5">
+          {toStr && (
+            <div className="flex gap-2 text-xs">
+              <span className="w-12 shrink-0 font-semibold text-muted-foreground uppercase tracking-wide">To</span>
+              <span className="flex-1 break-words text-foreground/90">{toStr}</span>
+            </div>
+          )}
+          {ccStr && (
+            <div className="flex gap-2 text-xs">
+              <span className="w-12 shrink-0 font-semibold text-muted-foreground uppercase tracking-wide">Cc</span>
+              <span className="flex-1 break-words text-foreground/90">{ccStr}</span>
+            </div>
+          )}
+          {subjectStr && (
+            <div className="flex gap-2 text-xs">
+              <span className="w-12 shrink-0 font-semibold text-muted-foreground uppercase tracking-wide">Subj</span>
+              <span className="flex-1 break-words font-medium text-foreground">{subjectStr}</span>
+            </div>
+          )}
+          {bodyStr && (
+            <div className="pt-1 mt-1 border-t border-border/40">
+              <pre className="text-xs text-foreground/85 whitespace-pre-wrap font-sans leading-relaxed">
+                {bodyShown}
+              </pre>
+              {bodyTooLong && (
+                <button
+                  type="button"
+                  onClick={() => setBodyExpanded(v => !v)}
+                  className="mt-1.5 text-[11px] font-medium text-primary hover:underline"
+                >
+                  {bodyExpanded ? "Show less" : "Show full message"}
+                </button>
+              )}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  )
 }
 
 /* ─── Helpers ────────────────────────────────────────────────────────── */
@@ -352,11 +482,13 @@ export function AiAgent() {
       if (!isCompleted || failedCount > 0 || markedCount <= 0) {
         throw new Error(result.execution_details || "Action ran but no email matched the target.")
       }
-      setPendingActions(prev => prev.filter(a => a.id !== action.id))
+
+      // Mark as executed (stays visible, turns green) then auto-remove after 3s
+      setPendingActions(prev => prev.map(a => a.id === action.id ? { ...a, status: "executed" } : a))
       pendingActionsRef.current = pendingActionsRef.current.filter(a => a.id !== action.id)
-      setState("speaking")
-      const doneMsg = `Done, ${action.label} has been executed.`
-      addMessage("assistant", doneMsg)
+      setTimeout(() => setPendingActions(prev => prev.filter(a => a.id !== action.id)), 3000)
+
+      toast.success(`${action.label} executed!`)
       window.dispatchEvent(new CustomEvent("email:action-executed"))
       window.dispatchEvent(new CustomEvent("mailbox:sync-complete"))
       window.dispatchEvent(
@@ -375,6 +507,10 @@ export function AiAgent() {
           )
         }
       }
+
+      setState("speaking")
+      const doneMsg = `Done, ${action.label} has been executed.`
+      addMessage("assistant", doneMsg)
       await speak(doneMsg)
       if (runGen !== ttsGenerationRef.current) return
       if (epochAtStart !== voiceEpochRef.current) return
@@ -382,8 +518,9 @@ export function AiAgent() {
       else setState("confirming")
     } catch (e) {
       if (epochAtStart !== voiceEpochRef.current) return
+      const detail = e instanceof Error && e.message ? e.message : "Action could not be completed."
+      toast.error(detail)
       setState("speaking")
-      const detail = e instanceof Error && e.message ? e.message : "Sorry, I couldn't complete that action."
       const errMsg = `Sorry, I couldn't complete that action. ${detail}`
       addMessage("assistant", errMsg)
       await speak(errMsg)
@@ -395,8 +532,10 @@ export function AiAgent() {
 
   const rejectAction = useCallback(async (action: AgentActionApi) => {
     try { await agentApi.reject(action.id) } catch { /* ignore */ }
-    setPendingActions(prev => prev.filter(a => a.id !== action.id))
+    // Mark as rejected (stays visible, turns red) then auto-remove after 2s
+    setPendingActions(prev => prev.map(a => a.id === action.id ? { ...a, status: "rejected" } : a))
     pendingActionsRef.current = pendingActionsRef.current.filter(a => a.id !== action.id)
+    setTimeout(() => setPendingActions(prev => prev.filter(a => a.id !== action.id)), 2000)
     if (pendingActionsRef.current.length === 0) { setState("idle"); resumeListening() }
   }, [resumeListening])
 
@@ -459,7 +598,7 @@ export function AiAgent() {
   const handleVoiceConfirmationRef = useRef(handleVoiceConfirmation)
   handleVoiceConfirmationRef.current = handleVoiceConfirmation
 
-  /* ── Send to agent ──────────────────────────────────────────────── */
+  /* ── Send to agent (streaming pipeline: LLM tokens → sentences → TTS in parallel) ── */
   const sendToAgent = useCallback(async (text: string) => {
     if (!text.trim() || sendingRef.current) return
     if (pendingActionsRef.current.length > 0) { await handleVoiceConfirmationRef.current(text); return }
@@ -470,33 +609,154 @@ export function AiAgent() {
     addMessage("user", text.trim())
     historyRef.current.push({ role: "user", content: text.trim() })
     scrollToLatest()
+
+    const fetchAudioBlob = async (sentence: string): Promise<Blob | null> => {
+      try {
+        const res = await agentApi.speak(sentence)
+        if (!res?.audio) return null
+        const bytes = Uint8Array.from(atob(res.audio), c => c.charCodeAt(0))
+        return new Blob([bytes], { type: "audio/mp3" })
+      } catch { return null }
+    }
+
+    const playBlobInline = (blob: Blob, sentence: string): Promise<void> => {
+      const url = URL.createObjectURL(blob)
+      ttsBlobUrlRef.current = url
+      const el = new Audio(url)
+      audioRef.current = el
+      return new Promise<void>((resolve) => {
+        let settled = false
+        const finish = () => {
+          if (settled) return; settled = true
+          ttsPlaybackResolveRef.current = null
+          try { URL.revokeObjectURL(url) } catch { /* ignore */ }
+          if (ttsBlobUrlRef.current === url) ttsBlobUrlRef.current = null
+          el.onended = null; el.onerror = null; resolve()
+        }
+        ttsPlaybackResolveRef.current = resolve
+        el.onended = () => finish(); el.onerror = () => finish()
+        el.onplay = () => { if (runGen === ttsGenerationRef.current) setSpeakingText(prev => prev ? `${prev} ${sentence}` : sentence) }
+        void el.play().catch(() => finish())
+      })
+    }
+
+    const tSend = performance.now()
+
     try {
       const recent = historyRef.current.slice(-10)
       const mbId = selectedMailboxRef.current === "all" ? undefined : selectedMailboxRef.current
-      const res = await agentApi.chat(text.trim(), recent, mbId)
+
+      // Sentence accumulation + in-flight TTS fetches
+      const sentenceTexts: string[] = []
+      const ttsFetches: Array<Promise<Blob | null>> = []
+      let tokenBuf = ""
+      let finalContent = ""
+      let finalActions: AgentActionApi[] = []
+      let finalSources: { email_id: string; subject: string }[] = []
+      let spokenAny = false
+      let tFirstToken: number | null = null
+      let tFirstSentence: number | null = null
+
+      const tryFlushSentence = () => {
+        // First clause: fire ASAP on . ! ? , ; : at >=12 chars (kicks TTS earlier).
+        // Subsequent: require sentence-ending punctuation at >=20 chars (better prosody).
+        const isFirst = sentenceTexts.length === 0
+        const re = isFirst ? /^(.*?[.!?,;:]+)(\s+|$)/ : /^(.*?[.!?]+)(\s+|$)/
+        const minLen = isFirst ? 12 : 20
+        const m = tokenBuf.match(re)
+        if (m && m[1].trim().length >= minLen) {
+          const sentence = m[1].trim()
+          tokenBuf = tokenBuf.slice(m[0].length)
+          if (tFirstSentence === null) {
+            tFirstSentence = performance.now()
+            console.log(`%c[3] First sentence ready: ${((tFirstSentence - tSend) / 1000).toFixed(2)}s  — firing TTS`, "color:#34d399")
+          }
+          sentenceTexts.push(sentence)
+          ttsFetches.push(fetchAudioBlob(sentence))
+          if (!spokenAny) { spokenAny = true; setState("speaking") }
+          return true
+        }
+        return false
+      }
+
+      for await (const event of agentApi.chatStream(text.trim(), recent, mbId)) {
+        if (epochAtStart !== voiceEpochRef.current || runGen !== ttsGenerationRef.current) return
+        if (event.type === "token" && event.content) {
+          if (tFirstToken === null) {
+            tFirstToken = performance.now()
+            console.log(`%c[2] First LLM token:     ${((tFirstToken - tSend) / 1000).toFixed(2)}s  (RAG + queue)`, "color:#f59e0b")
+          }
+          tokenBuf += event.content
+          finalContent += event.content
+          while (tryFlushSentence()) { /* drain */ }
+        } else if (event.type === "done") {
+          if (tokenBuf.trim().length >= 5) {
+            if (tFirstSentence === null) {
+              tFirstSentence = performance.now()
+              console.log(`%c[3] First sentence ready: ${((tFirstSentence - tSend) / 1000).toFixed(2)}s  — firing TTS`, "color:#34d399")
+            }
+            sentenceTexts.push(tokenBuf.trim())
+            ttsFetches.push(fetchAudioBlob(tokenBuf.trim()))
+          }
+          const tDone = performance.now()
+          console.log(`%c[4] LLM stream done:     ${((tDone - tSend) / 1000).toFixed(2)}s  (${sentenceTexts.length} sentence(s))`, "color:#f59e0b")
+          finalActions = event.actions ?? []
+          finalSources = event.sources ?? []
+          finalContent = event.content ?? finalContent
+        }
+      }
+
       if (epochAtStart !== voiceEpochRef.current) return
-      const reply = res.content || "I didn't catch that, could you try again?"
-      historyRef.current.push({ role: "assistant", content: reply })
-      const actions = res.actions ?? []
-      if (actions.length > 0) { pendingActionsRef.current = actions; setPendingActions(actions) }
-      addMessage("assistant", reply, actions.length > 0 ? actions : undefined)
-      setState("speaking"); await speak(reply)
-      if (runGen !== ttsGenerationRef.current) return
-      if (epochAtStart !== voiceEpochRef.current) return
-      if (actions.length > 0) {
-        setState("speaking")
-        const summary = actions.map(a => a.label).join(", ")
-        await speak(`I need your confirmation to ${summary}. Say yes or no.`)
-        if (runGen !== ttsGenerationRef.current) return
-        if (epochAtStart !== voiceEpochRef.current) return
+
+      if (sentenceTexts.length === 0 && !finalContent) {
+        console.groupEnd()
+        addMessage("assistant", "I didn't catch that, could you try again?")
+        setState("speaking"); await speak("I didn't catch that, could you try again?")
+        setState("idle"); resumeListening()
+        return
+      }
+
+      historyRef.current.push({ role: "assistant", content: finalContent })
+      if (finalActions.length > 0) { pendingActionsRef.current = finalActions; setPendingActions(finalActions) }
+      addMessage("assistant", finalContent, finalActions.length > 0 ? finalActions : undefined)
+
+      setState("speaking")
+      setSpeakingText("")
+
+      // Play sentences in order — TTS fetches are already in flight
+      for (let i = 0; i < sentenceTexts.length; i++) {
+        if (runGen !== ttsGenerationRef.current || epochAtStart !== voiceEpochRef.current) return
+        const blob = await ttsFetches[i]
+        if (runGen !== ttsGenerationRef.current || epochAtStart !== voiceEpochRef.current) return
+        if (i === 0) {
+          const tAudio = performance.now()
+          console.log(`%c[5] First audio ready:   ${((tAudio - tSend) / 1000).toFixed(2)}s  (TTS latency)`, "color:#34d399")
+        }
+        if (blob) {
+          if (i === 0) {
+            const tPlay = performance.now()
+            console.log(`%c[6] First audio playing: ${((tPlay - tSend) / 1000).toFixed(2)}s  ← perceived latency`, "color:#4ade80;font-weight:bold")
+          }
+          await playBlobInline(blob, sentenceTexts[i])
+        }
+      }
+
+      if (runGen !== ttsGenerationRef.current || epochAtStart !== voiceEpochRef.current) return
+      setSpeakingText("")
+
+      const tEnd = performance.now()
+      console.log(`%c[7] All audio done:      ${((tEnd - tSend) / 1000).toFixed(2)}s  (full response)`, "color:#a78bfa")
+      console.groupEnd()
+
+      if (finalActions.length > 0) {
         setState("confirming"); resumeListening()
       } else { setState("idle"); resumeListening() }
     } catch {
+      console.groupEnd()
       if (epochAtStart !== voiceEpochRef.current) return
       addMessage("assistant", "I couldn't process that, please try again.")
       setState("speaking"); await speak("I couldn't process that, please try again.")
-      if (runGen !== ttsGenerationRef.current) return
-      if (epochAtStart !== voiceEpochRef.current) return
+      if (runGen !== ttsGenerationRef.current || epochAtStart !== voiceEpochRef.current) return
       setState("idle"); resumeListening()
     } finally { sendingRef.current = false }
   }, [speak, addMessage, scrollToLatest, resumeListening])
@@ -543,7 +803,7 @@ export function AiAgent() {
         silenceAnalyser.getByteFrequencyData(silenceData)
         const avg = silenceData.reduce((a, b) => a + b, 0) / silenceData.length
         if (avg > 12) { hadSpeech = true; silenceSince = Date.now() }
-        else if (hadSpeech && Date.now() - silenceSince > 1500) {
+        else if (hadSpeech && Date.now() - silenceSince > 800) {
           if (silenceCheckerRef.current) { clearInterval(silenceCheckerRef.current); silenceCheckerRef.current = null }
           if (mediaRecorderRef.current?.state === "recording") mediaRecorderRef.current.stop()
         }
@@ -568,18 +828,26 @@ export function AiAgent() {
         }
         const audioBlob = new Blob(chunks, { type: mr.mimeType || "audio/webm" })
         setState("transcribing")
+        const t0 = performance.now()
+        console.group("%c🎙 Voice Agent — timing", "color:#a78bfa;font-weight:bold")
+        console.log(`Audio size: ${(audioBlob.size / 1024).toFixed(1)} KB`)
         try {
           const result = await agentApi.transcribe(audioBlob)
-          if (epochAtStart !== voiceEpochRef.current) return
+          const tTranscribed = performance.now()
+          console.log(`%c[1] STT (Whisper):       ${((tTranscribed - t0) / 1000).toFixed(2)}s`, "color:#60a5fa")
+          if (epochAtStart !== voiceEpochRef.current) { console.groupEnd(); return }
           const text = normalizeSpeechText(result.text || "")
           if (text.trim()) {
+            console.log(`     Transcript: "${text.trim()}"`)
             setLiveText("")
             sendToAgentRef.current(text)
           } else {
+            console.groupEnd()
             setError("No speech detected. Try again.")
             if (pendingActionsRef.current.length > 0) setState("confirming"); else setState("idle")
           }
         } catch {
+          console.groupEnd()
           if (epochAtStart !== voiceEpochRef.current) return
           setError("Transcription failed. Please try again.")
           if (pendingActionsRef.current.length > 0) setState("confirming"); else setState("idle")
@@ -730,13 +998,20 @@ export function AiAgent() {
     setState("idle")
   }, [teardownVoiceResources])
 
+  // Keep a ref so the unmount cleanup always calls the latest version without
+  // re-subscribing the effect (which would fire the cleanup on every render
+  // that produces a new teardownVoiceResources reference, briefly killing
+  // the recognition that was just started).
+  const teardownVoiceResourcesRef = useRef(teardownVoiceResources)
+  teardownVoiceResourcesRef.current = teardownVoiceResources
+
   useEffect(() => () => {
     voiceEpochRef.current += 1
     voiceSessionActiveRef.current = false
     skipRecorderTranscribeRef.current = true
     skipRecognitionResultRef.current = true
-    teardownVoiceResources()
-  }, [teardownVoiceResources])
+    teardownVoiceResourcesRef.current()
+  }, [])
 
   const handleMicClick = useCallback(() => {
     if (state === "listening") {
@@ -1034,34 +1309,23 @@ export function AiAgent() {
       <div className="shrink-0 max-h-[40%] overflow-y-auto">
         <div className="max-w-lg mx-auto px-5 pb-4 space-y-3">
 
-          {/* Pending actions */}
-          {pendingActions.length > 0 && (state === "confirming" || state === "listening" || state === "idle" || state === "transcribing") && (
+          {/* Pending / executed / rejected actions */}
+          {pendingActions.length > 0 && (
             <div className="space-y-2 animate-in slide-in-from-bottom-4 duration-300">
-              <p className="text-[11px] text-amber-500/80 font-medium uppercase tracking-wide flex items-center gap-1.5">
-                <Sparkles className="h-3 w-3" /> Pending
-              </p>
-              {pendingActions.map(action => {
-                const Icon = ACTION_ICONS[action.type] || Mail
-                return (
-                  <div key={action.id} className="flex items-center gap-3 rounded-2xl border border-border/40 bg-card/50 backdrop-blur-sm px-4 py-3 transition-all hover:border-border/60">
-                    <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-amber-500/10">
-                      <Icon className="h-4 w-4 text-amber-500" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-foreground">{action.label}</p>
-                      {action.description && <p className="text-xs text-muted-foreground/60 truncate">{action.description}</p>}
-                    </div>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button onClick={() => executeAction(action)} disabled={executingId === action.id} className="flex h-8 w-8 items-center justify-center rounded-full bg-emerald-500/10 text-emerald-500 hover:bg-emerald-500/20 transition-all disabled:opacity-50" title="Confirm">
-                        {executingId === action.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Check className="h-3.5 w-3.5" />}
-                      </button>
-                      <button onClick={() => rejectAction(action)} className="flex h-8 w-8 items-center justify-center rounded-full bg-red-500/10 text-red-500 hover:bg-red-500/20 transition-all" title="Reject">
-                        <XCircle className="h-3.5 w-3.5" />
-                      </button>
-                    </div>
-                  </div>
-                )
-              })}
+              {pendingActions.some(a => !a.status || a.status === "awaiting_approval") && (
+                <p className="text-[11px] text-amber-500/80 font-medium uppercase tracking-wide flex items-center gap-1.5">
+                  <Sparkles className="h-3 w-3" /> Actions
+                </p>
+              )}
+              {pendingActions.map(action => (
+                <VoiceActionCard
+                  key={action.id}
+                  action={action}
+                  isExecuting={executingId === action.id}
+                  onApprove={executeAction}
+                  onReject={rejectAction}
+                />
+              ))}
             </div>
           )}
 

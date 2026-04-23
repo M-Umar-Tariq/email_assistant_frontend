@@ -803,6 +803,47 @@ export const agent = {
     request<AgentActionApi>("POST", "/agent/execute/", actionData),
   reject: (actionId: string) =>
     request<{ id: string; status: string }>("POST", `/agent/reject/${actionId}/`),
+  async *chatStream(
+    message: string,
+    history?: { role: string; content: string }[],
+    mailboxId?: string
+  ): AsyncGenerator<{ type: string; content?: string; actions?: AgentActionApi[]; sources?: { email_id: string; subject: string }[]; message?: string }> {
+    const url = `${API_BASE}/agent/chat/stream/`;
+    const token = getAccessToken();
+    const headers: Record<string, string> = { "Content-Type": "application/json" };
+    if (token) headers["Authorization"] = `Bearer ${token}`;
+
+    const res = await fetch(url, {
+      method: "POST",
+      headers,
+      body: JSON.stringify({
+        message,
+        history,
+        mailbox_id: mailboxId === "all" ? undefined : mailboxId,
+      }),
+      credentials: "include",
+    });
+
+    if (!res.ok || !res.body) throw new Error(`Stream failed: ${res.status}`);
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let buf = "";
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buf += decoder.decode(value, { stream: true });
+      const lines = buf.split("\n");
+      buf = lines.pop() ?? "";
+      for (const line of lines) {
+        if (!line.startsWith("data: ")) continue;
+        const data = line.slice(6).trim();
+        if (data === "[DONE]") return;
+        try { yield JSON.parse(data); } catch { /* ignore malformed */ }
+      }
+    }
+  },
   speak: (text: string) =>
     request<{ audio: string; format: string }>("POST", "/agent/speak/", { text }),
   transcribe: async (audioBlob: Blob): Promise<{ text: string }> => {
