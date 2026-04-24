@@ -45,7 +45,6 @@ import {
   MailX,
   FileText,
   Download,
-  Mic,
   Mail,
   SlidersHorizontal,
 } from "lucide-react"
@@ -884,17 +883,21 @@ function TagPopover({
 // -- More Menu --
 function MoreMenu({
   email,
-  inTrashFolder = false,
+  folder = "inbox",
   onAction,
   onClose,
 }: {
   email: Email
-  inTrashFolder?: boolean
+  folder?: string
   onAction: (action: string) => void
   onClose: () => void
 }) {
+  const inTrashFolder = folder === "trash"
+  const inArchiveFolder = folder === "archive"
+  const inSpamFolder = folder === "spam"
+  const inSnoozedFolder = folder === "snoozed"
   const items: { key: string; label: string; icon: React.ElementType; className?: string; separator?: boolean }[] = [
-    ...(inTrashFolder ? [{ key: "moveToInbox", label: "Move to Inbox", icon: Inbox }] : []),
+    ...(inTrashFolder || inArchiveFolder || inSpamFolder || inSnoozedFolder ? [{ key: "moveToInbox", label: "Move to Inbox", icon: Inbox }] : []),
     { key: "markUnread", label: "Mark as unread", icon: Eye },
     { key: "snooze", label: "Snooze", icon: AlarmClock },
     { key: "label", label: "Label", icon: Tag },
@@ -1098,77 +1101,16 @@ const SUGGESTED_PROMPTS = [
   { text: "Translate this email to Urdu", icon: Forward },
 ]
 
-const SpeechRecognition =
-  typeof window !== "undefined"
-    ? (window as unknown as { SpeechRecognition?: new () => any }).SpeechRecognition ||
-      (window as unknown as { webkitSpeechRecognition?: new () => any }).webkitSpeechRecognition
-    : null
-
 function EmailAiChat({ emailId, attachments, onClose }: { emailId: string; attachments?: { filename: string; content_type: string; size: number; has_text: boolean }[]; onClose: () => void }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [input, setInput] = useState("")
   const [loading, setLoading] = useState(false)
-  const [isListening, setIsListening] = useState(false)
-  const [voiceError, setVoiceError] = useState<string | null>(null)
-  const recognitionRef = useRef<InstanceType<NonNullable<typeof SpeechRecognition>> | null>(null)
-  const transcriptRef = useRef("")
 
   const messagesEndRef = useCallback((node: HTMLDivElement | null) => {
     node?.scrollIntoView({ behavior: "smooth" })
   }, [])
 
   const sendMessageRef = useRef<(query: string) => void>(() => {})
-
-  const startVoiceInput = useCallback(() => {
-    setVoiceError(null)
-    setInput("")
-    transcriptRef.current = ""
-    if (!SpeechRecognition) {
-      setVoiceError("Voice input is not supported in this browser. Try Chrome or Edge.")
-      return
-    }
-    const recognition = new SpeechRecognition()
-    recognition.continuous = true
-    recognition.interimResults = true
-    recognition.lang = "en-US"
-
-    recognition.onresult = (event: { results: Iterable<{ [0]: { transcript: string } }> }) => {
-      let full = ""
-      for (const r of event.results) {
-        full += r[0].transcript
-      }
-      const trimmed = full.trim()
-      transcriptRef.current = trimmed
-      setInput(trimmed)
-    }
-
-    recognition.onerror = () => {
-      setIsListening(false)
-      recognitionRef.current = null
-    }
-
-    recognition.onend = () => {
-      setIsListening(false)
-      recognitionRef.current = null
-      if (transcriptRef.current.trim()) {
-        sendMessageRef.current(transcriptRef.current.trim())
-        setInput("")
-        transcriptRef.current = ""
-      }
-    }
-
-    recognitionRef.current = recognition
-    recognition.start()
-    setIsListening(true)
-  }, [])
-
-  const stopVoiceInput = useCallback(() => {
-    if (recognitionRef.current) {
-      recognitionRef.current.stop()
-      recognitionRef.current = null
-    }
-    setIsListening(false)
-  }, [])
 
   const hasReadableAttachments = attachments?.some((a) => a.has_text) ?? false
   const allPrompts = hasReadableAttachments
@@ -1338,9 +1280,6 @@ function EmailAiChat({ emailId, attachments, onClose }: { emailId: string; attac
 
       {/* Input */}
       <div className="border-t border-border p-3 bg-background">
-        {voiceError && (
-          <p className="text-xs text-destructive mb-2 px-1">{voiceError}</p>
-        )}
         <form
           onSubmit={(e) => { e.preventDefault(); sendMessage(input) }}
           className="flex items-center gap-2"
@@ -1348,24 +1287,10 @@ function EmailAiChat({ emailId, attachments, onClose }: { emailId: string; attac
           <Input
             value={input}
             onChange={(e) => setInput(e.target.value)}
-            placeholder={isListening ? "Listening…" : "Ask about this email…"}
+            placeholder="Ask about this email…"
             disabled={loading}
-            readOnly={isListening}
             className="flex-1 h-9 text-sm rounded-full px-4 bg-muted/50 border-border"
           />
-          {SpeechRecognition && (
-            <Button
-              type="button"
-              size="icon"
-              variant={isListening ? "destructive" : "outline"}
-              disabled={loading}
-              onClick={() => (isListening ? stopVoiceInput() : startVoiceInput())}
-              className={`h-9 w-9 rounded-full shrink-0 ${isListening ? "animate-pulse" : ""}`}
-              title={isListening ? "Stop listening" : "Voice input"}
-            >
-              <Mic className="h-3.5 w-3.5" />
-            </Button>
-          )}
           <Button
             type="submit"
             size="icon"
@@ -1713,7 +1638,7 @@ function EmailDetail({
 
           <Separator orientation="vertical" className="mx-0.5 hidden h-5 sm:mx-1.5 sm:block" />
 
-          {inTrashFolder && onMoveToInbox && (
+          {(inTrashFolder || folder === "archive" || folder === "spam" || folder === "snoozed") && onMoveToInbox && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -1730,7 +1655,7 @@ function EmailDetail({
             </Tooltip>
           )}
 
-          {!inTrashFolder && (
+          {folder !== "archive" && folder !== "spam" && folder !== "snoozed" && !inTrashFolder && (
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -1825,7 +1750,7 @@ function EmailDetail({
             {showMore && (
               <MoreMenu
                 email={email}
-                inTrashFolder={inTrashFolder}
+                folder={folder}
                 onAction={handleMoreAction}
                 onClose={() => setShowMore(false)}
               />
@@ -2277,6 +2202,8 @@ export function InboxView({
   const [inboxStats, setInboxStats] = useState<EmailStatsApi | null>(null)
   /** Server counts per folder (inbox/sent/trash/archive/star/spam/snoozed). */
   const [folderCounts, setFolderCounts] = useState<FolderCountsApi | null>(null)
+  /** Total count for current filtered view from backend (sender/label/search). */
+  const [filteredTotal, setFilteredTotal] = useState<number>(0)
   const [loading, setLoading] = useState(true)
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -2433,7 +2360,7 @@ export function InboxView({
                   : 0
   const loadedCount = emailsList.filter((e) => !snoozedEmails.has(e.id)).length
   const hasServerScopedFilters = Boolean(senderFilter?.from_email || filterLabel)
-  const allCount = !hasServerScopedFilters && folderCountFromApi > 0 ? folderCountFromApi : loadedCount
+  const allCount = hasServerScopedFilters ? filteredTotal : folderCountFromApi > 0 ? folderCountFromApi : loadedCount
   // displayedCount reflects the actual visible emails after mailbox/search/filter
   const displayedCount = (() => {
     let list = emailsList.filter((e) => !snoozedEmails.has(e.id))
@@ -2473,9 +2400,10 @@ export function InboxView({
       mailboxesApi.list().then((list) => setMailboxesList(list.map(mapMailboxApi))).catch(() => {}),
       emailsApi
         .list(listParams)
-        .then((list) => {
-          setEmailsList(list.map(mapEmailListApi))
-          setHasMoreFromApi(list.length >= PAGE_SIZE)
+        .then((res) => {
+          setEmailsList(res.emails.map(mapEmailListApi))
+          setFilteredTotal(res.total)
+          setHasMoreFromApi(res.emails.length >= PAGE_SIZE)
         })
         .catch(() => {}),
       statsPromise,
@@ -2852,9 +2780,9 @@ export function InboxView({
   const loadMoreTargetCount =
     filterPreset && inboxStats && (!folder || folder === "inbox")
       ? presetCounts[filterPreset]
-      : !hasServerScopedFilters
-        ? folderCountFromApi
-        : 0
+      : hasServerScopedFilters
+        ? filteredTotal
+        : folderCountFromApi
 
   const filterBadgeCount =
     filterPreset && searchQuery.trim() ? filteredEmails.length : filterPreset ? presetCounts[filterPreset] : 0
@@ -3214,7 +3142,7 @@ export function InboxView({
               onSpam={handleSpam}
               onUpdate={handleUpdate}
               onEmailRefreshed={(updated) => setSelectedEmail(updated)}
-              onMoveToInbox={folder === "trash" ? handleMoveToInbox : undefined}
+              onMoveToInbox={folder === "trash" || folder === "archive" || folder === "spam" || folder === "snoozed" ? handleMoveToInbox : undefined}
               folder={folder}
               onPermanentDelete={folder === "trash" ? handleDeletePermanent : undefined}
             />
@@ -3444,7 +3372,7 @@ export function InboxView({
                     </TooltipContent>
                   </Tooltip>
                 )}
-                {folder === "trash" && (
+                {(folder === "trash" || folder === "archive" || folder === "spam" || folder === "snoozed") && (
                   <Tooltip>
                     <TooltipTrigger asChild>
                       <Button
@@ -3641,7 +3569,7 @@ export function InboxView({
                             ? setPermanentDeletePrompt({ type: "list", id: email.id })
                             : handleTrash(email.id)
                         }
-                        onMoveToInbox={folder === "trash" ? () => handleMoveToInbox(email.id) : undefined}
+                        onMoveToInbox={folder === "trash" || folder === "archive" || folder === "spam" || folder === "snoozed" ? () => handleMoveToInbox(email.id) : undefined}
                         onSelect={() => handleSelectEmail(email)}
                         showMailbox={filterMailbox === "all"}
                         index={idx}

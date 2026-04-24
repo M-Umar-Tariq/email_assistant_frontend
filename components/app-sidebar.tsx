@@ -904,7 +904,7 @@ export function AppSidebar({
                   {[
                     { id: "contacts", label: "Contacts", icon: Users, badge: null, iconClassName: "h-4 w-4" },
                     { id: "assistant", label: "Smart Mail Assistant", icon: AssistantLogoIcon, badge: null, iconClassName: "h-4 w-4" },
-                    { id: "agent", label: "Voice Agent", icon: Mic, badge: null, iconClassName: "h-4 w-4" },
+                    // { id: "agent", label: "Voice Agent", icon: Mic, badge: null, iconClassName: "h-4 w-4" },
                     ...(mailboxes.length > 0 ? [{ id: "followups" as const, label: "Follow-ups", icon: Clock, badge: badges.followUps || null }] : []),
                     { id: "analytics", label: "Analytics", icon: BarChart3, badge: null, iconClassName: "h-4 w-4" },
                   ].map(({ id, label, icon: Icon, badge, iconClassName }) => {

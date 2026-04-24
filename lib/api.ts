@@ -372,7 +372,7 @@ export const emails = {
     if (params?.limit != null) sp.set("limit", String(params.limit));
     if (params?.offset != null) sp.set("offset", String(params.offset));
     const q = sp.toString();
-    return request<EmailListApi[]>("GET", `/emails/${q ? `?${q}` : ""}`);
+    return request<{ emails: EmailListApi[]; total: number }>("GET", `/emails/${q ? `?${q}` : ""}`);
   },
   get: (id: string) => request<EmailDetailApi>("GET", `/emails/${id}/`),
   update: (id: string, data: { read?: boolean; starred?: boolean; labels?: string[] }) =>

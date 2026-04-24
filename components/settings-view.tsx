@@ -264,8 +264,8 @@ export function SettingsView({
   const handleExportData = () => {
     setExporting(true)
     emailsApi.list({ limit: 999999 })
-      .then((emails) => {
-        const blob = new Blob([JSON.stringify(emails, null, 2)], { type: "application/json" })
+      .then((res) => {
+        const blob = new Blob([JSON.stringify(res.emails, null, 2)], { type: "application/json" })
         const url = URL.createObjectURL(blob)
         const a = document.createElement("a")
         a.href = url

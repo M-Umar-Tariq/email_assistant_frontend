@@ -11,6 +11,9 @@ const _jetbrainsMono = JetBrains_Mono({ subsets: ['latin'], variable: '--font-je
 export const metadata: Metadata = {
   title: 'Smart Mail AI Beta — AI Inbox That Makes Decisions For You',
   description: 'Unified AI layer for all your mailboxes. Daily briefings, smart search, compose assistance, and actionable insights.',
+  icons: {
+    icon: '/favicon.png',
+  },
 }
 
 export const viewport: Viewport = {

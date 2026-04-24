@@ -191,20 +191,28 @@ export function FollowupTracker() {
       setLoading(false)
       return
     }
+
+    // Show existing follow-ups immediately, then auto-detect new ones in background
+    followUps
+      .list()
+      .then((list) => {
+        const mapped = list.map(mapFollowUpApi)
+        setItems(mapped)
+        FOLLOWUPS_CACHE = { items: mapped, timestamp: Date.now() }
+      })
+      .catch(() => {})
+      .finally(() => setLoading(false))
+
+    // Run AI auto-detection in background; refresh list when done
     followUps
       .autoToday()
-      .catch(() => {})
-      .finally(() => {
-        followUps
-          .list()
-          .then((list) => {
-            const mapped = list.map(mapFollowUpApi)
-            setItems(mapped)
-            FOLLOWUPS_CACHE = { items: mapped, timestamp: Date.now() }
-          })
-          .catch(() => {})
-          .finally(() => setLoading(false))
+      .then(() => followUps.list())
+      .then((list) => {
+        const mapped = list.map(mapFollowUpApi)
+        setItems(mapped)
+        FOLLOWUPS_CACHE = { items: mapped, timestamp: Date.now() }
       })
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
