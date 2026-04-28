@@ -297,6 +297,9 @@ export function AiAgent() {
   const whisperInterimPollRef = useRef<ReturnType<typeof setInterval> | null>(null)
   const whisperSttSessionRef = useRef(0)
   const whisperInterimBusyRef = useRef(false)
+  const refreshMailboxList = useCallback(() => {
+    mailboxesApi.list().then(setMailboxList).catch(() => {})
+  }, [])
 
   const bumpWhisperSttSessionAndClearPoll = useCallback(() => {
     if (whisperInterimPollRef.current) {
@@ -474,7 +477,12 @@ export function AiAgent() {
     const runGen = ttsGenerationRef.current
     setExecutingId(action.id)
     try {
-      const result = await agentApi.execute(action)
+      const scopedMailboxId = selectedMailboxRef.current !== "all" ? selectedMailboxRef.current : undefined
+      const scopedAction =
+        !action.mailbox_id && scopedMailboxId
+          ? { ...action, mailbox_id: scopedMailboxId }
+          : action
+      const result = await agentApi.execute(scopedAction)
       if (epochAtStart !== voiceEpochRef.current) return
       const isCompleted = (result.status || "").toLowerCase() === "completed"
       const failedCount = Number(result.failed || 0)
@@ -969,9 +977,26 @@ export function AiAgent() {
 
   /* ── Init ───────────────────────────────────────────────────────── */
   useEffect(() => {
-    mailboxesApi.list().then(setMailboxList).catch(() => {})
+    refreshMailboxList()
     agentApi.suggestions().then(setSuggestions).catch(() => {})
-  }, [])
+  }, [refreshMailboxList])
+
+  useEffect(() => {
+    const onMailboxChange = () => refreshMailboxList()
+    window.addEventListener("mailbox:updated", onMailboxChange)
+    window.addEventListener("mailbox:sync-complete", onMailboxChange)
+    return () => {
+      window.removeEventListener("mailbox:updated", onMailboxChange)
+      window.removeEventListener("mailbox:sync-complete", onMailboxChange)
+    }
+  }, [refreshMailboxList])
+
+  useEffect(() => {
+    if (selectedMailbox === "all") return
+    if (!mailboxList.some((m) => m.id === selectedMailbox)) {
+      setSelectedMailbox("all")
+    }
+  }, [mailboxList, selectedMailbox])
 
   /* ── Cancel / teardown ───────────────────────────────────────────── */
   const teardownVoiceResources = useCallback(() => {

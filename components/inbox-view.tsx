@@ -1265,6 +1265,7 @@ function EmailAiChat({ emailId, attachments, onClose }: { emailId: string; attac
                   <Image src={smartMailLogo} alt="Assistant loading" className="h-3.5 w-3.5 object-contain animate-spin" />
                 </div>
                 <div className="bg-muted/70 rounded-2xl rounded-tl-sm px-3.5 py-2.5">
+                  <p className="text-xs text-muted-foreground mb-1">Thinking about your request...</p>
                   <div className="flex items-center gap-1.5">
                     <span className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: "0ms" }} />
                     <span className="w-1.5 h-1.5 rounded-full bg-primary/40 animate-bounce" style={{ animationDelay: "150ms" }} />
@@ -1517,6 +1518,7 @@ function EmailDetail({
   const [composeMode, setComposeMode] = useState<ComposeMode | null>(null)
   const [sentReply, setSentReply] = useState<string | null>(null)
   const [permanentDeleteOpen, setPermanentDeleteOpen] = useState(false)
+  const detailScrollRef = useRef<HTMLDivElement>(null)
   const inTrashFolder = folder === "trash" && Boolean(onPermanentDelete)
 
   useEffect(() => {
@@ -1524,6 +1526,22 @@ function EmailDetail({
       setComposeMode("reply")
     }
   }, [initialComposeMode])
+
+  useEffect(() => {
+    if ((email.threadReplies?.length ?? 0) === 0 && (email.sentReplies?.length ?? 0) === 0) return
+    const root = detailScrollRef.current
+    if (!root) return
+
+    const scrollToBottom = () => {
+      const viewport = root.querySelector("[data-radix-scroll-area-viewport]") as HTMLDivElement | null
+      if (!viewport) return
+      viewport.scrollTo({ top: viewport.scrollHeight, behavior: "smooth" })
+    }
+
+    requestAnimationFrame(scrollToBottom)
+    const timer = window.setTimeout(scrollToBottom, 250)
+    return () => window.clearTimeout(timer)
+  }, [email.id, email.threadReplies?.length, email.sentReplies?.length])
 
   const handleToggleStar = () => {
     onUpdate(email.id, { starred: !email.starred })
@@ -1776,7 +1794,7 @@ function EmailDetail({
       <div className="flex flex-1 overflow-hidden">
         {/* Email Content */}
         <div className={`flex flex-col ${showAiChat ? "flex-1" : "w-full"} overflow-hidden`}>
-          <ScrollArea className="flex-1">
+          <ScrollArea ref={detailScrollRef} className="flex-1">
             <div className="w-full min-w-0">
               <div className="mx-auto max-w-4xl px-4 py-4 pb-24 sm:p-6 sm:pb-8">
               <div className="mb-4 flex animate-fade-in-up items-start justify-between gap-3 sm:mb-5">

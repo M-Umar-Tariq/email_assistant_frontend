@@ -329,6 +329,7 @@ function FloatingTypingIndicator() {
         <Bot className="h-3.5 w-3.5 text-primary" />
       </div>
       <div className="rounded-2xl rounded-tl-sm bg-muted/50 border border-border/40 px-4 py-3">
+        <p className="mb-1.5 text-[11px] font-medium text-foreground/80">Thinking...</p>
         <div className="flex items-center gap-1">
           <div className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: "0ms", animationDuration: "1s" }} />
           <div className="h-1.5 w-1.5 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: "150ms", animationDuration: "1s" }} />
@@ -372,6 +373,9 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
   const scrollBottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  const refreshMailboxList = useCallback(() => {
+    mailboxesApi.list().then(setMailboxList).catch(() => {})
+  }, [])
 
   const shouldHide = Boolean(activeView && FLOATING_CHAT_HIDDEN_ON_VIEWS.has(activeView))
   const shouldHideRef = useRef(shouldHide)
@@ -380,8 +384,25 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
   isOpenRef.current = isOpen
 
   useEffect(() => {
-    mailboxesApi.list().then(setMailboxList).catch(() => {})
-  }, [])
+    refreshMailboxList()
+  }, [refreshMailboxList])
+
+  useEffect(() => {
+    const onMailboxChange = () => refreshMailboxList()
+    window.addEventListener("mailbox:updated", onMailboxChange)
+    window.addEventListener("mailbox:sync-complete", onMailboxChange)
+    return () => {
+      window.removeEventListener("mailbox:updated", onMailboxChange)
+      window.removeEventListener("mailbox:sync-complete", onMailboxChange)
+    }
+  }, [refreshMailboxList])
+
+  useEffect(() => {
+    if (selectedMailbox === "all") return
+    if (!mailboxList.some((m) => m.id === selectedMailbox)) {
+      setSelectedMailbox("all")
+    }
+  }, [mailboxList, selectedMailbox, setSelectedMailbox])
 
   const firstName = user?.name?.split(" ")[0] ?? "there"
   const hasConversation = messages.length > 0
@@ -425,7 +446,12 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
   const handleApproveAction = useCallback(async (action: AgentActionApi) => {
     setExecutingId(action.id)
     try {
-      const result = await agentApi.execute(action)
+      const scopedMailboxId = selectedMailbox !== "all" ? selectedMailbox : undefined
+      const scopedAction =
+        !action.mailbox_id && scopedMailboxId
+          ? { ...action, mailbox_id: scopedMailboxId }
+          : action
+      const result = await agentApi.execute(scopedAction)
       const isCompleted = (result.status || "").toLowerCase() === "completed"
       const failedCount = Number(result.failed || 0)
       const markedCount = Number(result.marked || 1)
@@ -473,7 +499,7 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
     } finally {
       setExecutingId(null)
     }
-  }, [])
+  }, [selectedMailbox])
 
   const handleRejectAction = useCallback(async (action: AgentActionApi) => {
     try {

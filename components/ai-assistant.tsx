@@ -351,6 +351,7 @@ function TypingIndicator() {
         <Bot className="h-4 w-4 text-primary" />
       </div>
       <div className="rounded-2xl rounded-tl-md glass-card border border-border/50 px-5 py-4 shadow-sm">
+        <p className="mb-2 text-xs font-medium text-foreground/80">Working on your reply...</p>
         <div className="flex items-center gap-1.5">
           <div className="h-2 w-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: "0ms", animationDuration: "1s" }} />
           <div className="h-2 w-2 rounded-full bg-primary/60 animate-bounce" style={{ animationDelay: "150ms", animationDuration: "1s" }} />
@@ -411,6 +412,12 @@ export function AiAssistant({ panelVisible = true }: AiAssistantProps) {
   const scrollBottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const initialDataLoadedRef = useRef(false)
+  const refreshMailboxList = useCallback(() => {
+    mailboxesApi
+      .list()
+      .then((list) => setMailboxList(list))
+      .catch(() => {})
+  }, [])
 
   useEffect(() => {
     if (!panelVisible || initialDataLoadedRef.current) return
@@ -420,11 +427,25 @@ export function AiAssistant({ panelVisible = true }: AiAssistantProps) {
         setSuggestedQuestions((list.length ? list : FALLBACK_SUGGESTIONS).slice(0, 4))
       )
       .catch(() => {})
-    mailboxesApi
-      .list()
-      .then((list) => setMailboxList(list))
-      .catch(() => {})
-  }, [panelVisible])
+    refreshMailboxList()
+  }, [panelVisible, refreshMailboxList])
+
+  useEffect(() => {
+    const onMailboxChange = () => refreshMailboxList()
+    window.addEventListener("mailbox:updated", onMailboxChange)
+    window.addEventListener("mailbox:sync-complete", onMailboxChange)
+    return () => {
+      window.removeEventListener("mailbox:updated", onMailboxChange)
+      window.removeEventListener("mailbox:sync-complete", onMailboxChange)
+    }
+  }, [refreshMailboxList])
+
+  useEffect(() => {
+    if (selectedMailbox === "all") return
+    if (!mailboxList.some((m) => m.id === selectedMailbox)) {
+      setSelectedMailbox("all")
+    }
+  }, [mailboxList, selectedMailbox, setSelectedMailbox])
 
   const firstName = user?.name?.split(" ")[0] ?? "there"
   const hasConversation = messages.length > 0
@@ -446,16 +467,18 @@ export function AiAssistant({ panelVisible = true }: AiAssistantProps) {
         setSuggestedQuestions((list.length ? list : FALLBACK_SUGGESTIONS).slice(0, 4))
       )
       .catch(() => {})
-    mailboxesApi
-      .list()
-      .then((list) => setMailboxList(list))
-      .catch(() => {})
+    refreshMailboxList()
   }
 
   const handleApproveAction = useCallback(async (action: AgentActionApi) => {
     setExecutingId(action.id)
     try {
-      const result = await agentApi.execute(action)
+      const scopedMailboxId = selectedMailbox !== "all" ? selectedMailbox : undefined
+      const scopedAction =
+        !action.mailbox_id && scopedMailboxId
+          ? { ...action, mailbox_id: scopedMailboxId }
+          : action
+      const result = await agentApi.execute(scopedAction)
       const isCompleted = (result.status || "").toLowerCase() === "completed"
       const failedCount = Number(result.failed || 0)
       const markedCount = Number(result.marked || 1)
@@ -504,7 +527,7 @@ export function AiAssistant({ panelVisible = true }: AiAssistantProps) {
     } finally {
       setExecutingId(null)
     }
-  }, [])
+  }, [selectedMailbox, setMessages])
 
   const handleRejectAction = useCallback(async (action: AgentActionApi) => {
     try {
