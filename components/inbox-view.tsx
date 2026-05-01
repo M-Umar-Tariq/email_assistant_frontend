@@ -2366,6 +2366,8 @@ export function InboxView({
   const [currentPage, setCurrentPage] = useState(1)
   const [hasMoreFromApi, setHasMoreFromApi] = useState(true)
   const initialLoadDoneRef = useRef(false)
+  /** Ignore stale list/stats responses when folder or filters change faster than the network (fixes wrong-folder emails). */
+  const inboxListFetchSeqRef = useRef(0)
   const emailListScrollRef = useRef<HTMLDivElement | null>(null)
 
   useEffect(() => {
@@ -2485,6 +2487,7 @@ export function InboxView({
   })()
 
   const fetchMailboxesAndEmails = useCallback((mailboxId?: string, pageOverride?: number) => {
+    const seq = ++inboxListFetchSeqRef.current
     const mbFilter = mailboxId ?? filterMailbox
     const page = pageOverride ?? currentPage
     const listParams: {
@@ -2546,7 +2549,8 @@ export function InboxView({
         if (
           typeof parsed.ts === "number" &&
           Date.now() - parsed.ts < INBOX_LIST_CACHE_TTL_MS &&
-          Array.isArray(parsed.emails)
+          Array.isArray(parsed.emails) &&
+          seq === inboxListFetchSeqRef.current
         ) {
           setEmailsList(parsed.emails)
           setFilteredTotal(typeof parsed.total === "number" ? parsed.total : parsed.emails.length)
@@ -2564,18 +2568,43 @@ export function InboxView({
     const statParams = mbFilter !== "all" ? { mailbox_id: mbFilter } : undefined
     const statsPromise =
       !folder || folder === "inbox"
-        ? emailsApi.stats(statParams).then(setInboxStats).catch(() => setInboxStats(null))
-        : Promise.resolve().then(() => setInboxStats(null))
+        ? emailsApi
+            .stats(statParams)
+            .then((s) => {
+              if (seq !== inboxListFetchSeqRef.current) return
+              setInboxStats(s)
+            })
+            .catch(() => {
+              if (seq !== inboxListFetchSeqRef.current) return
+              setInboxStats(null)
+            })
+        : Promise.resolve().then(() => {
+            if (seq !== inboxListFetchSeqRef.current) return
+            setInboxStats(null)
+          })
     const folderCountsPromise = emailsApi
       .folderCounts(statParams)
-      .then(setFolderCounts)
-      .catch(() => setFolderCounts(null))
+      .then((c) => {
+        if (seq !== inboxListFetchSeqRef.current) return
+        setFolderCounts(c)
+      })
+      .catch(() => {
+        if (seq !== inboxListFetchSeqRef.current) return
+        setFolderCounts(null)
+      })
 
     return Promise.all([
-      mailboxesApi.list().then((list) => setMailboxesList(list.map(mapMailboxApi))).catch(() => {}),
+      mailboxesApi
+        .list()
+        .then((list) => {
+          if (seq !== inboxListFetchSeqRef.current) return
+          setMailboxesList(list.map(mapMailboxApi))
+        })
+        .catch(() => {}),
       emailsApi
         .list(listParams)
         .then((res) => {
+          if (seq !== inboxListFetchSeqRef.current) return
           const mapped = res.emails.map(mapEmailListApi)
           setEmailsList(mapped)
           setFilteredTotal(res.total)
@@ -2603,6 +2632,8 @@ export function InboxView({
       statsPromise,
       folderCountsPromise,
     ])
+      .then(() => seq)
+      .catch(() => seq)
   }, [filterMailbox, senderFilter?.from_email, filterLabel, folder, filterPreset, currentPage, aiFilter])
 
   // Whenever any server-side filter changes, jump back to page 1 so the
@@ -2623,12 +2654,16 @@ export function InboxView({
           : (mailboxesList.find((m) => m.id === filterMailbox)?.totalEmails ?? 0)
       if (totalForSelected === 0) {
         setLoading(false)
-        fetchMailboxesAndEmails().then(() => {})
+        fetchMailboxesAndEmails().then((doneSeq) => {
+          if (doneSeq !== inboxListFetchSeqRef.current) return
+          initialLoadDoneRef.current = true
+        })
         return
       }
       setLoading(true)
     }
-    fetchMailboxesAndEmails().finally(() => {
+    fetchMailboxesAndEmails().then((doneSeq) => {
+      if (doneSeq !== inboxListFetchSeqRef.current) return
       setLoading(false)
       initialLoadDoneRef.current = true
     })
@@ -2664,7 +2699,11 @@ export function InboxView({
         )
         setHasMoreFromApi(true)
         setCurrentPage(1)
-        return fetchMailboxesAndEmails(undefined, 1).then(() => ({ totalSynced, totalThreadReplies, totalFlagsUpdated }))
+        return fetchMailboxesAndEmails(undefined, 1).then(() => ({
+          totalSynced,
+          totalThreadReplies,
+          totalFlagsUpdated,
+        }))
       })
       .then(({ totalSynced, totalThreadReplies, totalFlagsUpdated }) => {
         if (totalSynced > 0 || totalThreadReplies > 0) {
@@ -2811,8 +2850,10 @@ export function InboxView({
         setMailboxesList(list.map(mapMailboxApi))
         // Notify dashboard/settings widgets (Top Senders, trends, etc.) to refetch.
         window.dispatchEvent(new CustomEvent("mailbox:updated"))
-        // Refresh sidebar folder counts (inbox unread, trash total, etc.)
-        window.dispatchEvent(new CustomEvent("mailbox:sync-complete"))
+        // Do NOT dispatch `mailbox:sync-complete` here — the inbox listens for it and refetches
+        // the full email list. After trash/move/inbox API calls the DB may lag briefly; that
+        // refetch would revive the row the user just removed optimistically (double-click bug).
+        // Sidebar counts use `folder-counts:refresh` (already fired by callers) + mailbox:updated.
       })
       .catch(() => {})
   }, [])
@@ -3052,7 +3093,9 @@ export function InboxView({
         toast.success(`Archived ${res.processed} email(s)`)
         window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
         refreshMailboxCounts()
-        fetchMailboxesAndEmails().finally(() => setLoading(false))
+        fetchMailboxesAndEmails().then((doneSeq) => {
+          if (doneSeq === inboxListFetchSeqRef.current) setLoading(false)
+        })
       })
       .catch(() => { toast.error("Could not archive"); setLoading(false) })
   }
@@ -3069,7 +3112,9 @@ export function InboxView({
         toast.success(`Deleted ${res.processed} email(s)`)
         window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
         refreshMailboxCounts()
-        fetchMailboxesAndEmails().finally(() => setLoading(false))
+        fetchMailboxesAndEmails().then((doneSeq) => {
+          if (doneSeq === inboxListFetchSeqRef.current) setLoading(false)
+        })
       })
       .catch(() => { toast.error("Could not delete"); setLoading(false) })
   }
@@ -3086,7 +3131,9 @@ export function InboxView({
         toast.success(`Reported ${res.processed} as spam`)
         window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
         refreshMailboxCounts()
-        fetchMailboxesAndEmails().finally(() => setLoading(false))
+        fetchMailboxesAndEmails().then((doneSeq) => {
+          if (doneSeq === inboxListFetchSeqRef.current) setLoading(false)
+        })
       })
       .catch(() => { toast.error("Could not report as spam"); setLoading(false) })
   }
@@ -3103,7 +3150,9 @@ export function InboxView({
         toast.success(`Moved ${res.processed} email(s) to inbox`)
         window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
         refreshMailboxCounts()
-        fetchMailboxesAndEmails().finally(() => setLoading(false))
+        fetchMailboxesAndEmails().then((doneSeq) => {
+          if (doneSeq === inboxListFetchSeqRef.current) setLoading(false)
+        })
       })
       .catch(() => { toast.error("Could not move to inbox"); setLoading(false) })
   }
@@ -3972,7 +4021,9 @@ export function InboxView({
                     toast.success(`Permanently deleted ${res.processed} email(s)`)
                     window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
                     refreshMailboxCounts()
-                    fetchMailboxesAndEmails().finally(() => setLoading(false))
+                    fetchMailboxesAndEmails().then((doneSeq) => {
+                      if (doneSeq === inboxListFetchSeqRef.current) setLoading(false)
+                    })
                   })
                   .catch(() => { toast.error("Could not delete permanently"); setLoading(false) })
               }}
