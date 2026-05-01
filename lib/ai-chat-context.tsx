@@ -1,6 +1,6 @@
 "use client"
 
-import React, { createContext, useContext, useState } from "react"
+import React, { createContext, useContext, useMemo, useState } from "react"
 import type { ChatMessage } from "@/lib/mock-data"
 
 type AiChatContextType = {
@@ -27,18 +27,16 @@ export function AiChatProvider({ children }: { children: React.ReactNode }) {
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [selectedMailbox, setSelectedMailbox] = useState<string>("all")
   const [isQueryLoading, setIsQueryLoading] = useState(false)
-  return (
-    <AiChatContext.Provider
-      value={{
-        messages,
-        setMessages,
-        selectedMailbox,
-        setSelectedMailbox,
-        isQueryLoading,
-        setIsQueryLoading,
-      }}
-    >
-      {children}
-    </AiChatContext.Provider>
+  const value = useMemo(
+    () => ({
+      messages,
+      setMessages,
+      selectedMailbox,
+      setSelectedMailbox,
+      isQueryLoading,
+      setIsQueryLoading,
+    }),
+    [messages, selectedMailbox, isQueryLoading],
   )
+  return <AiChatContext.Provider value={value}>{children}</AiChatContext.Provider>
 }

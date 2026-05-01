@@ -1,6 +1,6 @@
 "use client"
 
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Mail, Loader2, CheckCircle2, Eye, EyeOff, AlertCircle } from "lucide-react"
 import {
   Dialog,
@@ -81,12 +81,20 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
   const [showPassword, setShowPassword] = useState(false)
   const [error, setError] = useState("")
   const [submitting, setSubmitting] = useState(false)
+  const [oauthConnecting, setOauthConnecting] = useState(false)
   const [step, setStep] = useState<1 | 2>(1)
   const [selectedProvider, setSelectedProvider] = useState<"gmail" | "outlook" | "yahoo" | "other">("gmail")
   const [createdMailboxId, setCreatedMailboxId] = useState<string | null>(null)
   const [createdMailboxName, setCreatedMailboxName] = useState<string | null>(null)
   const [initialSyncMode, setInitialSyncMode] = useState<"only_new" | "past">("only_new")
   const [pastSyncCount, setPastSyncCount] = useState<string>("500")
+  const onOpenChangeRef = useRef(onOpenChange)
+  const onSuccessRef = useRef(onSuccess)
+
+  useEffect(() => {
+    onOpenChangeRef.current = onOpenChange
+    onSuccessRef.current = onSuccess
+  }, [onOpenChange, onSuccess])
 
   const reset = () => {
     setName("")
@@ -165,8 +173,37 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
       toast.error(msg, { duration: 6000 })
     } finally {
       setSubmitting(false)
+      setOauthConnecting(false)
     }
   }
+
+  useEffect(() => {
+    if (typeof window === "undefined") return
+    const params = new URLSearchParams(window.location.search)
+    const gmailConnect = params.get("gmail_connect")
+    if (!gmailConnect) return
+    const mailboxId = params.get("mailbox_id")
+    const mailboxName = params.get("mailbox_name")
+    if (gmailConnect === "success") {
+      toast.success("Gmail connected successfully.")
+      window.dispatchEvent(new CustomEvent("mailbox:updated"))
+      onSuccessRef.current?.()
+      if (mailboxId) {
+        setCreatedMailboxId(mailboxId)
+        setCreatedMailboxName(mailboxName || "Gmail")
+        setStep(2)
+        onOpenChangeRef.current(true)
+      }
+    } else {
+      toast.error("Gmail connect failed. Please try again.")
+    }
+    params.delete("gmail_connect")
+    params.delete("mailbox_id")
+    params.delete("mailbox_name")
+    const next = params.toString()
+    const nextUrl = `${window.location.pathname}${next ? `?${next}` : ""}${window.location.hash}`
+    window.history.replaceState({}, "", nextUrl)
+  }, [])
 
   const handleSyncContinue = () => {
     if (!createdMailboxId) return
@@ -244,6 +281,21 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
     reset()
     onOpenChange(false)
     onSuccess?.()
+  }
+
+  const handleGoogleConnect = async () => {
+    setError("")
+    setOauthConnecting(true)
+    try {
+      const { auth_url } = await mailboxes.googleStart()
+      if (!auth_url) throw new Error("Google auth URL not returned by server.")
+      window.location.assign(auth_url)
+    } catch (err: unknown) {
+      const msg = (err as Error)?.message ?? "Failed to start Gmail connect"
+      setError(msg)
+      toast.error(msg, { duration: 6000 })
+      setOauthConnecting(false)
+    }
   }
 
   return (
@@ -336,6 +388,29 @@ export function AddMailboxDialog({ open, onOpenChange, onSuccess }: Props) {
                   </div>
                   <p className="text-[10px] text-muted-foreground">Use app password if your provider has 2-step verification; otherwise mailbox password.</p>
                 </div>
+                {selectedProvider === "gmail" && (
+                  <div className="space-y-2 rounded-md border border-border bg-background/50 p-2.5">
+                    <p className="text-[11px] text-muted-foreground">
+                      Prefer one-click sign-in? Connect Gmail with Google OAuth (no app password needed).
+                    </p>
+                    <Button
+                      type="button"
+                      variant="secondary"
+                      onClick={handleGoogleConnect}
+                      disabled={submitting || oauthConnecting}
+                      className="h-8 w-full"
+                    >
+                      {oauthConnecting ? (
+                        <>
+                          <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                          Redirecting to Google...
+                        </>
+                      ) : (
+                        "Connect Gmail with Google"
+                      )}
+                    </Button>
+                  </div>
+                )}
                 <div className="space-y-1">
                   <Label htmlFor="mb-name" className="text-xs text-muted-foreground">Display name</Label>
                   <Input

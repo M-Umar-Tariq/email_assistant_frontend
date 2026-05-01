@@ -3,9 +3,8 @@
 import Link from "next/link"
 import Image from "next/image"
 import { usePathname } from "next/navigation"
-import { useEffect, useState, useCallback } from "react"
+import { useEffect, useState, useCallback, useRef } from "react"
 import {
-  LayoutDashboard,
   Inbox,
   PenSquare,
   BarChart3,
@@ -52,6 +51,7 @@ import { AccountMenu } from "@/components/mailbox-account-menu"
 import { BetaLabel } from "@/components/beta-label"
 import smartMailLogo from "@/logo/Smart Mail Logo.png"
 import smartMailLogoGray from "@/logo/Smart Mail Logo Gray.png"
+import smartMailLogoWhite from "@/logo/Smart Mail Logo White.png"
 
 const NAV_PANEL_STORAGE_KEY = "smart-mail-ai:nav-panel"
 
@@ -85,11 +85,14 @@ const railBottom = [
 ]
 
 function AssistantLogoIcon({ className }: { className?: string }) {
+  const { resolvedTheme } = useTheme()
+  const assistantLogo = resolvedTheme === "dark" ? smartMailLogoWhite : smartMailLogoGray
   return (
     <Image
-      src={smartMailLogoGray}
+      key={resolvedTheme ?? "light"}
+      src={assistantLogo}
       alt="Smart Mail Assistant"
-      className={cn("h-3 w-3 object-contain", className)}
+      className={cn("h-4 w-4 object-contain", className)}
     />
   )
 }
@@ -116,6 +119,10 @@ export function AppSidebar({
   onSelectLabel,
   activeFolder,
   onFolderChange,
+  selectedMailboxScope = "all",
+  onMailboxScopeChange,
+  /** When true (e.g. Inbox AI filter drawer open), hide only the wide detail column — icon rail stays. */
+  collapseDetailForAi = false,
 }: {
   activeView: string
   onViewChange: (view: string) => void
@@ -124,6 +131,9 @@ export function AppSidebar({
   onSelectLabel?: (label: string) => void
   activeFolder?: EmailFolder
   onFolderChange?: (folder: EmailFolder) => void
+  selectedMailboxScope?: string
+  onMailboxScopeChange?: (mailboxId: string) => void
+  collapseDetailForAi?: boolean
 }) {
   const pathname = usePathname()
   const { user, logout } = useAuth()
@@ -132,13 +142,16 @@ export function AppSidebar({
   const [badges, setBadges] = useState({ unread: 0, followUps: 0 })
   const [labelRules, setLabelRules] = useState<AiLabelRule[]>([])
   const [panelCollapsed, setPanelCollapsed] = useState(false)
-  const [activeMailboxFilter, setActiveMailboxFilter] = useState<string>("all")
+  /** Wide labels column hidden when user collapses nav or Inbox AI drawer needs rail-only layout. */
+  const detailHidden = panelCollapsed || collapseDetailForAi
+  const [activeMailboxFilter, setActiveMailboxFilter] = useState<string>(selectedMailboxScope)
   const [calendarSidebarView, setCalendarSidebarView] = useState<"month" | "week" | "day">("month")
   /** Which mailbox the calendar shows (synced with CalendarView via custom event). */
   const [calendarMailboxFilter, setCalendarMailboxFilter] = useState<string>("all")
-  const [inboxExpanded, setInboxExpanded] = useState(false)
-  const [folderCounts, setFolderCounts] = useState<FolderCountsApi | null>(null)
+  const [expandedMailboxSection, setExpandedMailboxSection] = useState<string>(selectedMailboxScope || "all")
+  const [folderCountsByScope, setFolderCountsByScope] = useState<Record<string, FolderCountsApi>>({})
   const [pendingMeetingRequests, setPendingMeetingRequests] = useState(0)
+  const mailboxIdsRef = useRef<string[]>([])
 
   useEffect(() => {
     try {
@@ -151,6 +164,19 @@ export function AppSidebar({
   }, [])
 
   const toggleNavPanel = useCallback(() => {
+    // If Inbox AI filter drawer is forcing rail-only mode, a nav-toggle click
+    // should prioritize reopening left nav and requesting the right drawer close.
+    if (collapseDetailForAi) {
+      setPanelCollapsed(false)
+      try {
+        localStorage.setItem(NAV_PANEL_STORAGE_KEY, "0")
+      } catch {
+        /* ignore */
+      }
+      window.dispatchEvent(new CustomEvent("inbox:closeAiFilterSidebar"))
+      return
+    }
+
     setPanelCollapsed((c) => {
       const next = !c
       try {
@@ -160,7 +186,16 @@ export function AppSidebar({
       }
       return next
     })
-  }, [])
+  }, [collapseDetailForAi])
+
+  useEffect(() => {
+    setActiveMailboxFilter(selectedMailboxScope || "all")
+    setExpandedMailboxSection(selectedMailboxScope || "all")
+  }, [selectedMailboxScope])
+
+  useEffect(() => {
+    mailboxIdsRef.current = mailboxes.map((mb) => mb.id)
+  }, [mailboxes])
 
   useEffect(() => {
     const onFilterChanged = (e: Event) => {
@@ -229,15 +264,31 @@ export function AppSidebar({
     mailboxesApi.list().then((list) => setMailboxes(list.map(mapMailboxApi))).catch(() => { })
   }, [])
 
-  const refreshFolderCounts = useCallback(() => {
-    emailsApi.folderCounts().then((counts) => {
-      setFolderCounts(counts)
-      setBadges((prev) => ({ ...prev, unread: counts.inbox }))
-    }).catch(() => {})
+  const refreshFolderCounts = useCallback((mailboxIds?: string[]) => {
+    const scopeIds = ["all", ...(mailboxIds ?? mailboxIdsRef.current)]
+    Promise.all(
+      scopeIds.map(async (scopeId) => {
+        const counts = await emailsApi.folderCounts(
+          scopeId !== "all" ? { mailbox_id: scopeId } : undefined,
+        )
+        return [scopeId, counts] as const
+      }),
+    )
+      .then((entries) => {
+        const next = Object.fromEntries(entries) as Record<string, FolderCountsApi>
+        setFolderCountsByScope(next)
+        const allCounts = next.all
+        if (allCounts) setBadges((prev) => ({ ...prev, unread: allCounts.inbox }))
+      })
+      .catch(() => {})
   }, [])
 
   useEffect(() => {
-    mailboxesApi.list().then((list) => setMailboxes(list.map(mapMailboxApi))).catch(() => { })
+    mailboxesApi.list().then((list) => {
+      const mapped = list.map(mapMailboxApi)
+      setMailboxes(mapped)
+      refreshFolderCounts(mapped.map((mb) => mb.id))
+    }).catch(() => { })
     briefing.get().then((b) => setBadges({
       unread: b.stats.unread_total,
       followUps: b.stats.overdue_follow_ups + b.stats.pending_follow_ups,
@@ -245,14 +296,13 @@ export function AppSidebar({
     settingsApi.get().then((s) => {
       setLabelRules((s.ai_label_rules ?? []).filter((r) => r.name?.trim()))
     }).catch(() => { })
-    refreshFolderCounts()
   }, [mailboxListKey, refreshFolderCounts])
 
   useEffect(() => {
     const onEmailRead = (e: Event) => {
       const mailboxId = (e as CustomEvent).detail?.mailboxId
       setBadges((prev) => ({ ...prev, unread: Math.max(0, prev.unread - 1) }))
-      setFolderCounts((prev) => prev ? { ...prev, inbox: Math.max(0, prev.inbox - 1) } : prev)
+      refreshFolderCounts()
       if (mailboxId) {
         setMailboxes((prev) =>
           prev.map((mb) =>
@@ -266,6 +316,7 @@ export function AppSidebar({
       if (newCount > 0) {
         setBadges((prev) => ({ ...prev, unread: prev.unread + newCount }))
         mailboxesApi.list().then((list) => setMailboxes(list.map(mapMailboxApi))).catch(() => { })
+        refreshFolderCounts()
       }
     }
     const onMailboxSyncComplete = () => {
@@ -286,20 +337,22 @@ export function AppSidebar({
         setLabelRules((s.ai_label_rules ?? []).filter((r) => r.name?.trim()))
       }).catch(() => {})
     }
+    const onFolderCountsRefresh = () => {
+      refreshFolderCounts()
+    }
     window.addEventListener("email:read", onEmailRead)
     window.addEventListener("email:sync", onEmailSync)
     window.addEventListener("mailbox:sync-complete", onMailboxSyncComplete)
     window.addEventListener("labels:updated", onLabelsUpdated)
-    window.addEventListener("folder-counts:refresh", refreshFolderCounts)
+    window.addEventListener("folder-counts:refresh", onFolderCountsRefresh)
     return () => {
       window.removeEventListener("email:read", onEmailRead)
       window.removeEventListener("email:sync", onEmailSync)
       window.removeEventListener("mailbox:sync-complete", onMailboxSyncComplete)
       window.removeEventListener("labels:updated", onLabelsUpdated)
-      window.removeEventListener("folder-counts:refresh", refreshFolderCounts)
+      window.removeEventListener("folder-counts:refresh", onFolderCountsRefresh)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [refreshFolderCounts, refreshMailboxes])
 
   const POLL_INTERVAL_MS = 60_000
   useEffect(() => {
@@ -360,10 +413,10 @@ export function AppSidebar({
                   type="button"
                   onClick={toggleNavPanel}
                   className="flex h-11 w-11 items-center justify-center rounded-xl text-foreground hover:bg-muted/70 transition-colors"
-                  aria-label={panelCollapsed ? "Expand navigation panel" : "Collapse navigation panel"}
-                  aria-expanded={!panelCollapsed}
+                  aria-label={detailHidden ? "Expand navigation panel" : "Collapse navigation panel"}
+                  aria-expanded={!detailHidden}
                 >
-                  {panelCollapsed ? (
+                  {detailHidden ? (
                     <PanelRight className="h-5 w-5" strokeWidth={1.75} />
                   ) : (
                     <Menu className="h-5 w-5" strokeWidth={1.75} />
@@ -371,14 +424,14 @@ export function AppSidebar({
                 </button>
               </TooltipTrigger>
               <TooltipContent side="bottom" sideOffset={6} className="z-[200]">
-                <p>{panelCollapsed ? "Show menu" : "Hide menu"}</p>
+                <p>{detailHidden ? "Show menu" : "Hide menu"}</p>
               </TooltipContent>
             </Tooltip>
           </div>
           <div
             className={cn(
-              "flex min-w-0 flex-1 items-center justify-center bg-sidebar px-3 transition-[width,opacity] duration-200",
-              panelCollapsed ? "w-0 max-w-0 overflow-hidden p-0 opacity-0" : `${DETAIL_PANEL_WIDTH} opacity-100`,
+              "flex min-w-0 flex-1 items-center justify-center bg-sidebar px-3 transition-[width,opacity] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
+              detailHidden ? "w-0 max-w-0 overflow-hidden p-0 opacity-0" : `${DETAIL_PANEL_WIDTH} opacity-100`,
             )}
           >
             <Link
@@ -410,9 +463,23 @@ export function AppSidebar({
         {/* ─── LEFT: Icon rail — Home, Calendar, Mailboxes | space | Theme, Feedback, Settings, Account ─── */}
         <div className={cn("flex h-full min-h-0 shrink-0 flex-col items-center border-r border-border bg-sidebar", RAIL_WIDTH)}>
           <div className="flex shrink-0 flex-col items-center gap-2 py-3 w-full px-1.5">
-            {railTop.map(({ id, icon: Icon, tip }) => {
+            {(
+              [
+                ...railTop,
+                { id: "contacts", icon: Users, tip: "Contacts" },
+                { id: "assistant", icon: AssistantLogoIcon, tip: "Smart Mail Assistant" },
+                ...(mailboxes.length > 0 ? [{ id: "followups", icon: Clock, tip: "Follow-ups" }] : []),
+                { id: "analytics", icon: BarChart3, tip: "Analytics" },
+              ] as const
+            ).map(({ id, icon: Icon, tip }) => {
               const isActive =
                 id === "calendar" ? calendarSection : activeView === id
+              const countBadge =
+                id === "calendar"
+                  ? pendingMeetingRequests
+                  : id === "followups"
+                    ? (badges.followUps ?? 0)
+                    : 0
               return (
                 <Tooltip key={id}>
                   <TooltipTrigger asChild>
@@ -425,10 +492,13 @@ export function AppSidebar({
                           : "text-muted-foreground hover:text-foreground hover:bg-muted/60"
                       }`}
                     >
-                      <Icon className="h-5 w-5" strokeWidth={isActive ? 2.25 : 1.75} />
-                      {id === "calendar" && pendingMeetingRequests > 0 ? (
+                      <Icon
+                        className={id === "assistant" ? "h-7 w-7" : "h-5 w-5"}
+                        strokeWidth={isActive ? 2.25 : 1.75}
+                      />
+                      {countBadge > 0 ? (
                         <span className="pointer-events-none absolute -right-0.5 -top-0.5 inline-flex min-w-[16px] items-center justify-center rounded-full bg-primary px-1.5 py-0.5 text-[10px] font-semibold leading-none text-primary-foreground shadow-sm">
-                          {pendingMeetingRequests > 99 ? "99+" : pendingMeetingRequests}
+                          {countBadge > 99 ? "99+" : countBadge}
                         </span>
                       ) : null}
                     </button>
@@ -459,6 +529,7 @@ export function AppSidebar({
                 <p>Mailboxes</p>
               </TooltipContent>
             </Tooltip>
+
           </div>
 
           <div className="min-h-0 flex-1" />
@@ -541,8 +612,8 @@ export function AppSidebar({
         {/* ─── RIGHT: Detail Panel ─── */}
         <div
           className={cn(
-            "flex min-w-0 flex-col overflow-hidden bg-sidebar transition-[width,max-width,opacity] duration-200 ease-out",
-            panelCollapsed ? "w-0 max-w-0 opacity-0 pointer-events-none" : `${DETAIL_PANEL_WIDTH} opacity-100`,
+            "flex min-w-0 flex-col overflow-hidden bg-sidebar transition-[width,max-width,opacity] duration-300 ease-[cubic-bezier(0.4,0,0.2,1)]",
+            detailHidden ? "w-0 max-w-0 opacity-0 pointer-events-none" : `${DETAIL_PANEL_WIDTH} opacity-100`,
           )}
         >
           {calendarSection ? (
@@ -638,6 +709,70 @@ export function AppSidebar({
                   </div>
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/80 px-2 mb-1.5">
+                      Mailbox
+                    </p>
+                    <div className="rounded-xl border border-border/60 bg-muted/20 p-2 shadow-sm">
+                      <div className="flex flex-col gap-0.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCalendarMailboxFilter("all")
+                            if (activeView === "meeting-requests") onViewChange("calendar")
+                          }}
+                          className={cn(
+                            "group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-all duration-150",
+                            calendarMailboxFilter === "all"
+                              ? "bg-primary/10 text-primary font-semibold"
+                              : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                          )}
+                        >
+                          <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-dashed border-border/80 text-[9px] font-medium text-muted-foreground">
+                            All
+                          </span>
+                          <span className="flex-1 text-left truncate">All mailboxes</span>
+                        </button>
+                        {mailboxes.map((mb) => {
+                          const isOn = calendarMailboxFilter === mb.id
+                          const isPending = mb.syncStatus === "pending"
+                          const isError = mb.syncStatus === "error" || mb.syncStatus === "cancelled"
+                          return (
+                            <button
+                              key={mb.id}
+                              type="button"
+                              onClick={() => {
+                                setCalendarMailboxFilter(mb.id)
+                                if (activeView === "meeting-requests") onViewChange("calendar")
+                              }}
+                              className={cn(
+                                "group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-all duration-150",
+                                isOn
+                                  ? "bg-primary/10 text-primary font-semibold"
+                                  : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                              )}
+                            >
+                              <span className="flex h-4 w-4 shrink-0 items-center justify-center">
+                                <Circle
+                                  className="h-2.5 w-2.5"
+                                  fill={isPending ? "transparent" : isError ? "var(--destructive)" : mb.color}
+                                  stroke={isPending ? mb.color : isError ? "var(--destructive)" : mb.color}
+                                  strokeWidth={isPending ? 2 : 1.5}
+                                />
+                              </span>
+                              <span className="flex-1 text-left truncate">{mb.name}</span>
+                            </button>
+                          )
+                        })}
+                      </div>
+                    </div>
+                    {mailboxes.length === 0 && (
+                      <p className="text-[10px] text-muted-foreground/80 px-2 mt-1.5 leading-snug">
+                        Connect a mailbox to filter meetings by account.
+                      </p>
+                    )}
+                  </div>
+                  <div className="mx-1 border-t border-border/60" />
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/80 px-2 mb-1.5">
                       View
                     </p>
                     <div className="flex flex-col gap-0.5">
@@ -673,67 +808,6 @@ export function AppSidebar({
                         )
                       })}
                     </div>
-                  </div>
-                  <div>
-                    <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/80 px-2 mb-1.5">
-                      Mailbox
-                    </p>
-                    <div className="flex flex-col gap-0.5">
-                      <button
-                        type="button"
-                        onClick={() => {
-                          setCalendarMailboxFilter("all")
-                          if (activeView === "meeting-requests") onViewChange("calendar")
-                        }}
-                        className={cn(
-                          "group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-all duration-150",
-                          calendarMailboxFilter === "all"
-                            ? "bg-primary/10 text-primary font-semibold"
-                            : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-                        )}
-                      >
-                        <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-dashed border-border/80 text-[9px] font-medium text-muted-foreground">
-                          All
-                        </span>
-                        <span className="flex-1 text-left truncate">All mailboxes</span>
-                      </button>
-                      {mailboxes.map((mb) => {
-                        const isOn = calendarMailboxFilter === mb.id
-                        const isPending = mb.syncStatus === "pending"
-                        const isError = mb.syncStatus === "error" || mb.syncStatus === "cancelled"
-                        return (
-                          <button
-                            key={mb.id}
-                            type="button"
-                            onClick={() => {
-                              setCalendarMailboxFilter(mb.id)
-                              if (activeView === "meeting-requests") onViewChange("calendar")
-                            }}
-                            className={cn(
-                              "group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-all duration-150",
-                              isOn
-                                ? "bg-primary/10 text-primary font-semibold"
-                                : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
-                            )}
-                          >
-                            <span className="flex h-4 w-4 shrink-0 items-center justify-center">
-                              <Circle
-                                className="h-2.5 w-2.5"
-                                fill={isPending ? "transparent" : isError ? "var(--destructive)" : mb.color}
-                                stroke={isPending ? mb.color : isError ? "var(--destructive)" : mb.color}
-                                strokeWidth={isPending ? 2 : 1.5}
-                              />
-                            </span>
-                            <span className="flex-1 text-left truncate">{mb.name}</span>
-                          </button>
-                        )
-                      })}
-                    </div>
-                    {mailboxes.length === 0 && (
-                      <p className="text-[10px] text-muted-foreground/80 px-2 mt-1 leading-snug">
-                        Connect a mailbox to filter meetings by account.
-                      </p>
-                    )}
                   </div>
                   <div>
                     <p className="text-[10px] font-semibold uppercase tracking-widest text-muted-foreground/80 px-2 mb-1.5">
@@ -817,119 +891,85 @@ export function AppSidebar({
 
               <ScrollArea className="flex-1">
                 <div className="px-2 py-1">
-                  {/* Dashboard */}
-                  {(() => {
-                    const isActive = activeView === "dashboard"
+                  {[{ id: "all", name: "All mailboxes", color: "" }, ...mailboxes].map((scope) => {
+                    const isExpanded = expandedMailboxSection === scope.id
+                    const isSelectedScope = activeMailboxFilter === scope.id
                     return (
-                      <button
-                        type="button"
-                        onClick={() => onViewChange("dashboard")}
-                        className={`group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-all duration-150 ${
-                          isActive
-                            ? "bg-primary/10 text-primary font-semibold"
-                            : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                        }`}
-                      >
-                        <LayoutDashboard className="h-4 w-4 shrink-0" strokeWidth={isActive ? 2.25 : 1.75} />
-                        <span className="flex-1 text-left truncate">Daily Briefing</span>
-                      </button>
-                    )
-                  })()}
-
-                  {/* Inbox with expandable folder sub-items */}
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (activeView !== "inbox") {
-                        onFolderChange?.("inbox")
-                        onViewChange("inbox")
-                      }
-                      setInboxExpanded((v) => !v)
-                    }}
-                    className={`group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-all duration-150 ${
-                      activeView === "inbox"
-                        ? "bg-primary/10 text-primary font-semibold"
-                        : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                    }`}
-                  >
-                    <Inbox className="h-4 w-4 shrink-0" strokeWidth={activeView === "inbox" ? 2.25 : 1.75} />
-                    <span className="flex-1 text-left truncate">Inbox</span>
-                    {badges.unread > 0 && (
-                      <span className={`text-[11px] font-semibold tabular-nums ${activeView === "inbox" ? "text-primary" : "text-muted-foreground"}`}>
-                        {badges.unread}
-                      </span>
-                    )}
-                    <ChevronDown
-                      className={cn(
-                        "h-3.5 w-3.5 shrink-0 transition-transform duration-200",
-                        !inboxExpanded && "-rotate-90",
-                      )}
-                      strokeWidth={1.75}
-                    />
-                  </button>
-
-                  {inboxExpanded && (
-                    <div className="ml-3 border-l border-border/60 pl-1 flex flex-col gap-0.5 py-0.5">
-                      {FOLDER_ITEMS.map(({ id: folderId, label: folderLabel, icon: FolderIcon }) => {
-                        const isActive = activeView === "inbox" && activeFolder === folderId
-                        const count = folderCounts?.[folderId] ?? 0
-                        return (
-                          <button
-                            key={folderId}
-                            type="button"
-                            onClick={() => {
-                              onFolderChange?.(folderId)
-                              onViewChange("inbox")
-                            }}
-                            className={`group flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12.5px] transition-all duration-150 ${
-                              isActive
-                                ? "bg-primary/10 text-primary font-semibold"
-                                : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                            }`}
-                          >
-                            <FolderIcon className="h-3.5 w-3.5 shrink-0" strokeWidth={isActive ? 2.25 : 1.75} />
-                            <span className="flex-1 text-left truncate">{folderLabel}</span>
-                            {count > 0 && (
-                              <span className={`text-[10.5px] font-semibold tabular-nums ${isActive ? "text-primary" : "text-muted-foreground/70"}`}>
-                                {count}
-                              </span>
+                      <div key={scope.id} className="mb-1.5">
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onMailboxScopeChange?.(scope.id)
+                            setExpandedMailboxSection((prev) => (prev === scope.id ? "" : scope.id))
+                            onViewChange("dashboard")
+                          }}
+                          className={cn(
+                            "group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-all duration-150",
+                            isSelectedScope
+                              ? "bg-primary/10 text-primary font-semibold"
+                              : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                          )}
+                        >
+                          {scope.id === "all" ? (
+                            <span className="flex h-4 w-4 shrink-0 items-center justify-center rounded border border-dashed border-border/80 text-[9px] font-medium text-muted-foreground">
+                              All
+                            </span>
+                          ) : (
+                            <span
+                              className="h-2.5 w-2.5 shrink-0 rounded-full"
+                              style={{ backgroundColor: scope.color || "#64748b" }}
+                            />
+                          )}
+                          <span className="flex-1 text-left truncate">{scope.name}</span>
+                          <ChevronDown
+                            className={cn(
+                              "h-3.5 w-3.5 shrink-0 transition-transform duration-200",
+                              !isExpanded && "-rotate-90",
                             )}
-                          </button>
-                        )
-                      })}
-                    </div>
-                  )}
+                            strokeWidth={1.75}
+                          />
+                        </button>
 
-                  {/* Other nav items */}
-                  {[
-                    { id: "contacts", label: "Contacts", icon: Users, badge: null, iconClassName: "h-4 w-4" },
-                    { id: "assistant", label: "Smart Mail Assistant", icon: AssistantLogoIcon, badge: null, iconClassName: "h-4 w-4" },
-                    // { id: "agent", label: "Voice Agent", icon: Mic, badge: null, iconClassName: "h-4 w-4" },
-                    ...(mailboxes.length > 0 ? [{ id: "followups" as const, label: "Follow-ups", icon: Clock, badge: badges.followUps || null }] : []),
-                    { id: "analytics", label: "Analytics", icon: BarChart3, badge: null, iconClassName: "h-4 w-4" },
-                  ].map(({ id, label, icon: Icon, badge, iconClassName }) => {
-                    const isActive = activeView === id
-                    return (
-                      <button
-                        key={id}
-                        type="button"
-                        onClick={() => onViewChange(id)}
-                        className={`group flex w-full items-center gap-2.5 rounded-lg px-3 py-2 text-[13px] transition-all duration-150 ${
-                          isActive
-                            ? "bg-primary/10 text-primary font-semibold"
-                            : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-                        }`}
-                      >
-                        <Icon className={`${iconClassName ?? "h-4 w-4"} shrink-0`} strokeWidth={isActive ? 2.25 : 1.75} />
-                        <span className="flex-1 text-left truncate">{label}</span>
-                        {badge != null && badge > 0 && (
-                          <span className={`text-[11px] font-semibold tabular-nums ${isActive ? "text-primary" : "text-muted-foreground"}`}>
-                            {badge}
-                          </span>
+                        {isExpanded && (
+                          <div className="ml-3 border-l border-border/60 pl-1 flex flex-col gap-0.5 py-0.5">
+                            {FOLDER_ITEMS.map(({ id: folderId, label: folderLabel, icon: FolderIcon }) => {
+                              const isActive =
+                                activeView === "inbox" &&
+                                activeFolder === folderId &&
+                                activeMailboxFilter === scope.id
+                              const count = folderCountsByScope[scope.id]?.[folderId] ?? 0
+                              return (
+                                <button
+                                  key={`${scope.id}-${folderId}`}
+                                  type="button"
+                                  onClick={() => {
+                                    onMailboxScopeChange?.(scope.id)
+                                    onFolderChange?.(folderId)
+                                    onViewChange("inbox")
+                                  }}
+                                  className={cn(
+                                    "group flex w-full items-center gap-2.5 rounded-lg px-3 py-1.5 text-[12.5px] transition-all duration-150",
+                                    isActive
+                                      ? "bg-primary/10 text-primary font-semibold"
+                                      : "text-muted-foreground hover:text-foreground hover:bg-muted/50",
+                                  )}
+                                >
+                                  <FolderIcon className="h-3.5 w-3.5 shrink-0" strokeWidth={isActive ? 2.25 : 1.75} />
+                                  <span className="flex-1 text-left truncate">{folderLabel}</span>
+                                  {count > 0 && (
+                                    <span className={`text-[10.5px] font-semibold tabular-nums ${isActive ? "text-primary" : "text-muted-foreground/70"}`}>
+                                      {count}
+                                    </span>
+                                  )}
+                                </button>
+                              )
+                            })}
+                          </div>
                         )}
-                      </button>
+                      </div>
                     )
                   })}
+
                 </div>
 
                 <div className="mt-1 px-3 pt-2">

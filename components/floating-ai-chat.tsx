@@ -358,7 +358,7 @@ interface FloatingAiChatProps {
 }
 
 /** Views where the floating launcher is hidden (same list as previous `hideOnViews`). */
-const FLOATING_CHAT_HIDDEN_ON_VIEWS = new Set(["assistant", "agent", "inbox", "calendar"])
+const FLOATING_CHAT_HIDDEN_ON_VIEWS = new Set(["assistant", "agent"])
 
 export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAiChatProps) {
   const { user } = useAuth()
@@ -369,15 +369,33 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
   const [mailboxList, setMailboxList] = useState<MailboxApi[]>([])
   const [executingId, setExecutingId] = useState<string | null>(null)
   const [unreadCount, setUnreadCount] = useState(0)
+  /** Email detail “AI Chat” strip from the right */
+  const [isInboxAiPanelOpen, setIsInboxAiPanelOpen] = useState(false)
+  /** Inbox list Smart Mail Filter dock (same width as layout shift) */
+  const [isInboxAiFilterOpen, setIsInboxAiFilterOpen] = useState(false)
   const scrollRef = useRef<HTMLDivElement>(null)
   const scrollBottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
+  const mailboxListFetchDoneRef = useRef(false)
   const refreshMailboxList = useCallback(() => {
-    mailboxesApi.list().then(setMailboxList).catch(() => {})
+    mailboxesApi
+      .list()
+      .then((list) => {
+        setMailboxList(list)
+        mailboxListFetchDoneRef.current = true
+      })
+      .catch(() => {
+        mailboxListFetchDoneRef.current = true
+      })
   }, [])
 
   const shouldHide = Boolean(activeView && FLOATING_CHAT_HIDDEN_ON_VIEWS.has(activeView))
+  /** Align with inbox dock `min(92vw,400px)` + page padding so FAB clears the panel */
+  const floatingRightClass =
+    activeView === "inbox" && (isInboxAiPanelOpen || isInboxAiFilterOpen)
+      ? "right-[calc(1rem+min(92vw,400px))] sm:right-[calc(1.5rem+400px)]"
+      : "right-4 sm:right-6"
   const shouldHideRef = useRef(shouldHide)
   const isOpenRef = useRef(isOpen)
   shouldHideRef.current = shouldHide
@@ -398,7 +416,39 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
   }, [refreshMailboxList])
 
   useEffect(() => {
+    const onInboxAiPanelToggled = (e: Event) => {
+      const open = Boolean((e as CustomEvent<{ open?: boolean }>).detail?.open)
+      setIsInboxAiPanelOpen(open)
+    }
+    window.addEventListener("inbox:aiChatPanelToggled", onInboxAiPanelToggled as EventListener)
+    return () => {
+      window.removeEventListener("inbox:aiChatPanelToggled", onInboxAiPanelToggled as EventListener)
+    }
+  }, [])
+
+  useEffect(() => {
+    const onInboxAiFilter = (e: Event) => {
+      const open = Boolean((e as CustomEvent<{ open?: boolean }>).detail?.open)
+      setIsInboxAiFilterOpen(open)
+    }
+    window.addEventListener("inbox:aiFilterSidebar", onInboxAiFilter as EventListener)
+    return () => window.removeEventListener("inbox:aiFilterSidebar", onInboxAiFilter as EventListener)
+  }, [])
+
+  useEffect(() => {
+    if (activeView !== "inbox") {
+      setIsInboxAiPanelOpen(false)
+      setIsInboxAiFilterOpen(false)
+    }
+  }, [activeView])
+
+  useEffect(() => {
     if (selectedMailbox === "all") return
+    if (!mailboxListFetchDoneRef.current) return
+    if (mailboxList.length === 0) {
+      setSelectedMailbox("all")
+      return
+    }
     if (!mailboxList.some((m) => m.id === selectedMailbox)) {
       setSelectedMailbox("all")
     }
@@ -595,7 +645,8 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
         className={cn(
           "fixed z-[99] flex flex-col bg-background/95 backdrop-blur-xl border border-border/60 shadow-2xl shadow-black/10",
           "transition-all duration-300 ease-out",
-          "bottom-4 right-4 sm:bottom-6 sm:right-6",
+          "bottom-4 sm:bottom-6",
+          floatingRightClass,
           "w-[calc(100vw-2rem)] sm:w-[420px]",
           "h-[min(600px,calc(100vh-8rem))]",
           "rounded-2xl overflow-hidden",
@@ -819,7 +870,8 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
         onClick={() => setIsOpen((prev) => !prev)}
         className={cn(
           "fixed z-[100] group",
-          "bottom-4 right-4 sm:bottom-6 sm:right-6",
+          "bottom-4 sm:bottom-6",
+          floatingRightClass,
           "transition-all duration-300 ease-out",
           isOpen && "opacity-0 scale-0 pointer-events-none"
         )}

@@ -43,6 +43,7 @@ import {
   MailOpen,
   MailCheck,
   MailX,
+  AlertTriangle,
   FileText,
   Download,
   Mail,
@@ -97,11 +98,15 @@ import { mapEmailListApi, mapEmailDetailApi, mapMailboxApi } from "@/lib/mappers
 import type { Email, EmailCategory, Mailbox } from "@/lib/mock-data"
 import { format } from "date-fns"
 import type { InboxFilter } from "@/components/daily-briefing"
+import { InboxAiFilterSidebar, type InboxAiFilterApplied } from "@/components/inbox-ai-filter-sidebar"
 import { ConnectMailboxCta } from "@/components/connect-mailbox-cta"
-import { sanitizeEmailHtml } from "@/lib/sanitize-html"
+import { sanitizeEmailHtml, htmlHasSubstantiveText } from "@/lib/sanitize-html"
 import { LABELS_UPDATED_EVENT, type LabelsUpdatedDetail } from "@/lib/labels-events"
 import smartMailLogo from "@/logo/Smart Mail Logo.png"
 import smartMailLogoWhite from "@/logo/Smart Mail Logo White.png"
+
+/** sessionStorage list snapshot so slow networks see the last inbox page immediately (stale-while-revalidate). */
+const INBOX_LIST_CACHE_TTL_MS = 10 * 60 * 1000
 
 function EmailListSkeleton() {
   return (
@@ -1158,11 +1163,11 @@ function EmailAiChat({ emailId, attachments, onClose }: { emailId: string; attac
       {/* Header */}
       <div className="px-4 py-3 border-b border-border bg-primary/[0.03]">
         <div className="flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10">
-            <Image src={smartMailLogo} alt="AI Chat" className="h-4 w-4 object-contain" />
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 ring-1 ring-primary/15">
+            <Image src={smartMailLogo} alt="" className="h-7 w-7 object-contain" />
           </div>
           <div className="flex-1">
-            <span className="text-sm font-semibold text-foreground">AI Chat</span>
+            <span className="text-sm font-semibold text-foreground">Smart Mail Chat</span>
             <p className="text-[10px] text-muted-foreground leading-tight">Ask anything about this email</p>
           </div>
           <button onClick={onClose} className="h-6 w-6 flex items-center justify-center rounded-md text-muted-foreground hover:text-foreground hover:bg-muted transition-colors">
@@ -1191,8 +1196,8 @@ function EmailAiChat({ emailId, attachments, onClose }: { emailId: string; attac
         {messages.length === 0 ? (
           <div className="px-4 py-6">
             <div className="flex flex-col items-center text-center mb-5">
-              <div className="flex h-10 w-10 items-center justify-center rounded-full bg-primary/10 mb-3">
-                <MessageCircle className="h-5 w-5 text-primary" />
+              <div className="mb-3 flex h-14 w-14 items-center justify-center rounded-2xl bg-primary/10 ring-1 ring-primary/15">
+                <Image src={smartMailLogo} alt="" className="h-10 w-10 object-contain" />
               </div>
               <p className="text-sm font-medium text-foreground">How can I help?</p>
               <p className="text-xs text-muted-foreground mt-1">Ask a question or pick a suggestion below</p>
@@ -1317,6 +1322,8 @@ type ConversationReply = {
   subject: string
   body: string
   body_html: string
+  /** IMAP preview when plain/HTML body was not stored (older syncs / HTML-only edge cases). */
+  preview?: string
 }
 
 function ConversationThread({
@@ -1337,7 +1344,18 @@ function ConversationThread({
   }
   for (let i = 0; i < (email.threadReplies ?? []).length; i++) {
     const r = email.threadReplies![i]
-    allReplies.push({ type: "received", originalIndex: i, date: r.date, from_name: r.from_name, from_email: r.from_email, to: r.to.map((t) => t.name || t.email).join(", "), subject: r.subject, body: r.body, body_html: r.body_html })
+    allReplies.push({
+      type: "received",
+      originalIndex: i,
+      date: r.date,
+      from_name: r.from_name,
+      from_email: r.from_email,
+      to: r.to.map((t) => t.name || t.email).join(", "),
+      subject: r.subject,
+      body: r.body,
+      body_html: r.body_html ?? "",
+      preview: r.preview,
+    })
   }
   allReplies.sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
 
@@ -1397,15 +1415,17 @@ function ConversationThread({
               <span className="ml-auto">{new Date(reply.date).toLocaleString()}</span>
             </div>
             <div className="px-4 py-3">
-              {reply.body_html ? (
+              {reply.body_html && htmlHasSubstantiveText(reply.body_html) ? (
                 <EmailHtmlFrame html={sanitizeEmailHtml(reply.body_html)} />
               ) : (
-                <div className="prose prose-sm prose-invert max-w-none">
-                  {reply.body.split("\n").map((line, i) => (
-                    <p key={i} className={`leading-relaxed text-sm ${line === "" ? "mt-2" : "mt-1"}`}>
-                      {line || "\u00A0"}
-                    </p>
-                  ))}
+                <div className="max-w-none text-sm text-foreground">
+                  {(reply.body?.trim() || reply.preview?.trim() || "No message body was stored for this reply.")
+                    .split("\n")
+                    .map((line, i) => (
+                      <p key={i} className={`leading-relaxed ${line === "" ? "mt-2" : "mt-1"}`}>
+                        {line || "\u00A0"}
+                      </p>
+                    ))}
                 </div>
               )}
             </div>
@@ -1519,13 +1539,36 @@ function EmailDetail({
   const [sentReply, setSentReply] = useState<string | null>(null)
   const [permanentDeleteOpen, setPermanentDeleteOpen] = useState(false)
   const detailScrollRef = useRef<HTMLDivElement>(null)
+  const moreMenuContainerRef = useRef<HTMLDivElement>(null)
   const inTrashFolder = folder === "trash" && Boolean(onPermanentDelete)
+
+  useEffect(() => {
+    if (!showMore) return
+    const onPointerDown = (e: PointerEvent) => {
+      const root = moreMenuContainerRef.current
+      if (!root || root.contains(e.target as Node)) return
+      setShowMore(false)
+    }
+    document.addEventListener("pointerdown", onPointerDown, true)
+    return () => document.removeEventListener("pointerdown", onPointerDown, true)
+  }, [showMore])
 
   useEffect(() => {
     if (initialComposeMode === "reply") {
       setComposeMode("reply")
     }
   }, [initialComposeMode])
+
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("inbox:aiChatPanelToggled", { detail: { open: showAiChat } }),
+    )
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent("inbox:aiChatPanelToggled", { detail: { open: false } }),
+      )
+    }
+  }, [showAiChat])
 
   useEffect(() => {
     if ((email.threadReplies?.length ?? 0) === 0 && (email.sentReplies?.length ?? 0) === 0) return
@@ -1726,31 +1769,7 @@ function EmailDetail({
             <TooltipContent side="bottom"><p className="text-xs">{email.starred ? "Remove star" : "Star"}</p></TooltipContent>
           </Tooltip>
 
-          <Separator orientation="vertical" className="mx-0.5 hidden h-5 sm:mx-1.5 sm:block" />
-
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button
-                variant={showAiChat ? "default" : "ghost"}
-                size="sm"
-                aria-label={showAiChat ? "Close AI Chat" : "Open AI Chat"}
-                className={`h-10 gap-1.5 rounded-lg px-3 text-xs transition-all duration-200 sm:h-8 ${showAiChat ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" : "text-muted-foreground hover:bg-primary/10 hover:text-primary"}`}
-                onClick={() => setShowAiChat(!showAiChat)}
-              >
-                <Image
-                  src={showAiChat ? smartMailLogoWhite : smartMailLogo}
-                  alt="AI Chat"
-                  className="h-4 w-4 shrink-0 object-contain"
-                />
-                <span className="hidden sm:inline">AI Chat</span>
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">{showAiChat ? "Close AI Chat panel" : "Open AI Chat (side panel)"}</p>
-            </TooltipContent>
-          </Tooltip>
-
-          <div className="relative">
+          <div ref={moreMenuContainerRef} className="relative">
             <Tooltip>
               <TooltipTrigger asChild>
                 <Button
@@ -1788,6 +1807,46 @@ function EmailDetail({
               />
             )}
           </div>
+
+          <Separator orientation="vertical" className="mx-0.5 hidden h-5 sm:mx-1.5 sm:block" />
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                type="button"
+                variant="ghost"
+                size="sm"
+                aria-label={showAiChat ? "Close Smart Mail Chat" : "Open Smart Mail Chat"}
+                className={`group relative h-10 shrink-0 gap-1.5 overflow-visible rounded-xl px-3.5 text-xs font-semibold shadow-md ring-0 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/35 active:translate-y-0 active:shadow-md active:duration-150 sm:h-8 ${
+                  showAiChat
+                    ? "bg-gradient-to-br from-primary to-primary/85 text-primary-foreground ring-1 ring-white/15 hover:from-primary hover:to-primary"
+                    : "bg-gradient-to-br from-primary/95 to-primary/80 text-primary-foreground hover:from-primary hover:to-primary/90"
+                }`}
+                onClick={() => setShowAiChat(!showAiChat)}
+              >
+                <span
+                  className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-white/0 to-white/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+                  aria-hidden
+                />
+                <Image
+                  src={smartMailLogoWhite}
+                  alt=""
+                  className="relative z-10 h-5 w-auto max-w-[44px] shrink-0 object-contain object-center transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] will-change-transform group-hover:scale-[1.06] group-hover:drop-shadow-[0_2px_10px_rgba(255,255,255,0.45)] sm:h-5 sm:max-w-[48px]"
+                />
+                <span className="relative z-10 hidden whitespace-nowrap pl-1 text-left text-[11px] font-semibold leading-tight tracking-tight text-primary-foreground sm:inline sm:pl-1.5 sm:text-xs">
+                  Smart Mail Chat
+                </span>
+                {showAiChat && (
+                  <span className="relative z-10 ml-0.5 inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-white shadow-sm" aria-hidden />
+                )}
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              <p className="text-xs">
+                {showAiChat ? "Close Smart Mail Chat panel" : "Open Smart Mail Chat (side panel)"}
+              </p>
+            </TooltipContent>
+          </Tooltip>
         </div>
       </div>
 
@@ -1829,17 +1888,14 @@ function EmailDetail({
                     )}
                   </div>
                 </div>
-                <div className="flex items-center gap-2.5 shrink-0 ml-4">
-                  <button onClick={handleToggleStar} className="hover:scale-110 transition-all duration-200">
-                    <Star className={`h-5 w-5 transition-all duration-200 ${email.starred ? "text-amber-400 fill-amber-400 drop-shadow-[0_0_4px_rgba(251,191,36,0.5)]" : "text-muted-foreground/40 hover:text-amber-400/60"}`} />
-                  </button>
-                  {email.hasAttachment && (
+                {email.hasAttachment && (
+                  <div className="flex items-center gap-2.5 shrink-0 ml-4">
                     <Badge variant="outline" className="text-[11px] border-border/60 text-muted-foreground/70 gap-1">
                       <Paperclip className="h-3 w-3" />
                       Attachment
                     </Badge>
-                  )}
-                </div>
+                  </div>
+                )}
               </div>
 
               {/* AI Overview */}
@@ -2033,7 +2089,7 @@ function EmailDetail({
           )}
         </div>
 
-        {/* AI Chat Panel - side panel, opens when user clicks "AI Chat"; click again to close */}
+        {/* Smart Mail Chat panel — opens from toolbar; click again to close */}
         {showAiChat && (
           <div className="w-[380px] min-w-[380px] border-l border-border/60 flex-shrink-0 bg-background animate-in slide-in-from-right-5 duration-200">
             <EmailAiChat emailId={email.id} attachments={email.attachments} onClose={() => setShowAiChat(false)} />
@@ -2072,12 +2128,20 @@ const filterPresetConfig: Record<InboxFilter, { label: string; icon: React.Eleme
   today_unread: { label: "Unread", icon: MailOpen, activeColor: "bg-amber-500 text-white" },
   today_replied: { label: "Replied", icon: Reply, activeColor: "bg-emerald-500 text-white" },
   today_unreplied: { label: "Unreplied", icon: MailX, activeColor: "bg-red-500 text-white" },
+  today_high_priority: { label: "High Priority", icon: AlertTriangle, activeColor: "bg-red-500 text-white" },
+  high_priority: { label: "High Priority", icon: AlertTriangle, activeColor: "bg-red-500 text-white" },
   total_unread: { label: "Unread", icon: MailOpen, activeColor: "bg-amber-500 text-white" },
   total_replied: { label: "Replied", icon: Reply, activeColor: "bg-emerald-500 text-white" },
   total_unreplied: { label: "Unreplied", icon: MailX, activeColor: "bg-red-500 text-white" },
 }
-const todayPresetKeys: InboxFilter[] = ["today", "today_unread", "today_replied", "today_unreplied"]
-const totalPresetKeys: InboxFilter[] = ["total_unread", "total_replied", "total_unreplied"]
+const todayPresetKeys: InboxFilter[] = [
+  "today",
+  "today_unread",
+  "today_replied",
+  "today_unreplied",
+  "today_high_priority",
+]
+const totalPresetKeys: InboxFilter[] = ["high_priority", "total_unread", "total_replied", "total_unreplied"]
 
 function receivedDateForFilter(email: Email): string {
   return email.originalDate ?? email.date ?? ""
@@ -2107,8 +2171,12 @@ function emailMatchesInboxPreset(email: Email, preset: InboxFilter): boolean {
       return isReceivedUtcToday(recv) && !!email.repliedAt
     case "today_unreplied":
       return isReceivedUtcToday(recv) && !email.repliedAt
+    case "today_high_priority":
+      return isReceivedUtcToday(recv) && email.priority === "high"
     case "total_unread":
       return !email.read
+    case "high_priority":
+      return email.priority === "high"
     case "total_replied":
       return !!email.repliedAt
     case "total_unreplied":
@@ -2197,6 +2265,8 @@ export function InboxView({
   onInitialLabelConsumed,
   onConnectMailbox,
   folder = "inbox",
+  /** When the app keeps Inbox mounted but hidden (e.g. user on Dashboard), pause timers and avoid duplicate polling. */
+  visible = true,
 }: {
   /** When navigating from Mailboxes, inbox mounts with this mailbox pre-selected (custom events do not run if Inbox was unmounted). */
   initialMailboxFilter?: string | null
@@ -2213,6 +2283,7 @@ export function InboxView({
   onInitialLabelConsumed?: () => void
   onConnectMailbox?: () => void
   folder?: string
+  visible?: boolean
 } = {}) {
   const [mailboxesList, setMailboxesList] = useState<Mailbox[]>([])
   const [emailsList, setEmailsList] = useState<Email[]>([])
@@ -2222,6 +2293,8 @@ export function InboxView({
   const [folderCounts, setFolderCounts] = useState<FolderCountsApi | null>(null)
   /** Total count for current filtered view from backend (sender/label/search). */
   const [filteredTotal, setFilteredTotal] = useState<number>(0)
+  /** Count for the active AI filter — null while loading, number when ready. */
+  const [aiFilterCount, setAiFilterCount] = useState<number | null>(null)
   const [loading, setLoading] = useState(true)
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null)
   const [searchQuery, setSearchQuery] = useState("")
@@ -2258,6 +2331,31 @@ export function InboxView({
   const [filterLabel, setFilterLabel] = useState<string | null>(() => initialLabel?.trim() || null)
   const [userLabels, setUserLabels] = useState<string[]>([])
   const [userSettings, setUserSettings] = useState<SettingsApi | null>(null)
+  /** Natural-language filter from the Smart Mail Filter sidebar. Lives next to the
+   * other server-scoped filters so list refetches pick it up automatically. */
+  const [aiFilter, setAiFilter] = useState<InboxAiFilterApplied | null>(null)
+  const [aiSidebarOpen, setAiSidebarOpen] = useState(false)
+  const toggleAiSidebar = useCallback(() => {
+    setAiSidebarOpen((open) => !open)
+  }, [])
+
+  /** Collapse app chrome (desktop sidebar / mobile drawer) while AI filter drawer is open. */
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("inbox:aiFilterSidebar", { detail: { open: aiSidebarOpen } }),
+    )
+    return () => {
+      window.dispatchEvent(
+        new CustomEvent("inbox:aiFilterSidebar", { detail: { open: false } }),
+      )
+    }
+  }, [aiSidebarOpen])
+
+  useEffect(() => {
+    const onCloseAiFilterSidebar = () => setAiSidebarOpen(false)
+    window.addEventListener("inbox:closeAiFilterSidebar", onCloseAiFilterSidebar)
+    return () => window.removeEventListener("inbox:closeAiFilterSidebar", onCloseAiFilterSidebar)
+  }, [])
 
   const PAGE_SIZE = 50
   /**
@@ -2377,7 +2475,7 @@ export function InboxView({
                   ? (folderCounts?.snoozed ?? 0)
                   : 0
   const loadedCount = emailsList.filter((e) => !snoozedEmails.has(e.id)).length
-  const hasServerScopedFilters = Boolean(senderFilter?.from_email || filterLabel)
+  const hasServerScopedFilters = Boolean(senderFilter?.from_email || filterLabel || aiFilter)
   const allCount = hasServerScopedFilters ? filteredTotal : folderCountFromApi > 0 ? folderCountFromApi : loadedCount
   // displayedCount reflects the actual visible emails after mailbox/search/filter
   const displayedCount = (() => {
@@ -2397,12 +2495,71 @@ export function InboxView({
       label?: string
       folder?: string
       inbox_preset?: string
+      participants?: string[]
+      participants_match?: "any" | "all"
+      has_attachment?: boolean
+      attachment_filename?: string
+      starred_only?: boolean
+      read_only?: boolean
+      subject?: string
+      keywords?: string
+      keywords_any?: string[]
+      date_from?: string
+      date_to?: string
+      unread_only?: boolean
     } = { limit: PAGE_SIZE, offset: Math.max(0, (page - 1) * PAGE_SIZE) }
     if (mbFilter !== "all") listParams.mailbox_id = mbFilter
     if (senderFilter?.from_email) listParams.from_email = senderFilter.from_email
     if (filterLabel) listParams.label = filterLabel
     if (folder && folder !== "inbox") listParams.folder = folder
     if ((!folder || folder === "inbox") && filterPreset) listParams.inbox_preset = filterPreset
+    if (aiFilter) {
+      const f = aiFilter.filters
+      if (f.participants?.length) {
+        listParams.participants = f.participants
+        listParams.participants_match = f.participants_match || "all"
+      }
+      if (f.from_email && !listParams.from_email) listParams.from_email = f.from_email
+      if (f.subject) listParams.subject = f.subject
+      if (f.keywords) listParams.keywords = f.keywords
+      if (f.keywords_any?.length) listParams.keywords_any = f.keywords_any
+      if (f.label && !listParams.label) listParams.label = f.label
+      if (f.date_from) listParams.date_from = f.date_from
+      if (f.date_to) listParams.date_to = f.date_to
+      if (f.unread_only) listParams.unread_only = true
+      if (f.read_only) listParams.read_only = true
+      if (f.starred_only) listParams.starred_only = true
+      if (f.has_attachment != null) listParams.has_attachment = f.has_attachment
+      if (f.attachment_filename) listParams.attachment_filename = f.attachment_filename
+    }
+
+    const listCacheKey = `smartmail:inbox:v1:${JSON.stringify(listParams)}`
+    try {
+      const raw = typeof window !== "undefined" ? sessionStorage.getItem(listCacheKey) : null
+      if (raw) {
+        const parsed = JSON.parse(raw) as {
+          ts: number
+          emails: Email[]
+          total: number
+          hasMore?: boolean
+        }
+        if (
+          typeof parsed.ts === "number" &&
+          Date.now() - parsed.ts < INBOX_LIST_CACHE_TTL_MS &&
+          Array.isArray(parsed.emails)
+        ) {
+          setEmailsList(parsed.emails)
+          setFilteredTotal(typeof parsed.total === "number" ? parsed.total : parsed.emails.length)
+          setHasMoreFromApi(parsed.hasMore ?? parsed.emails.length >= PAGE_SIZE)
+          if (aiFilter) {
+            setAiFilterCount(typeof parsed.total === "number" ? parsed.total : parsed.emails.length)
+          }
+          setLoading(false)
+        }
+      }
+    } catch {
+      // ignore corrupt cache
+    }
 
     const statParams = mbFilter !== "all" ? { mailbox_id: mbFilter } : undefined
     const statsPromise =
@@ -2419,22 +2576,43 @@ export function InboxView({
       emailsApi
         .list(listParams)
         .then((res) => {
-          setEmailsList(res.emails.map(mapEmailListApi))
+          const mapped = res.emails.map(mapEmailListApi)
+          setEmailsList(mapped)
           setFilteredTotal(res.total)
           setHasMoreFromApi(res.emails.length >= PAGE_SIZE)
+          if (aiFilter) {
+            setAiFilterCount(res.total)
+          }
+          try {
+            if (typeof window !== "undefined") {
+              sessionStorage.setItem(
+                listCacheKey,
+                JSON.stringify({
+                  ts: Date.now(),
+                  emails: mapped,
+                  total: res.total,
+                  hasMore: res.emails.length >= PAGE_SIZE,
+                }),
+              )
+            }
+          } catch {
+            // quota / private mode
+          }
         })
         .catch(() => {}),
       statsPromise,
       folderCountsPromise,
     ])
-  }, [filterMailbox, senderFilter?.from_email, filterLabel, folder, filterPreset, currentPage])
+  }, [filterMailbox, senderFilter?.from_email, filterLabel, folder, filterPreset, currentPage, aiFilter])
 
   // Whenever any server-side filter changes, jump back to page 1 so the
   // next fetch starts from offset 0 (Gmail-style behavior).
   useEffect(() => {
     setCurrentPage(1)
+    // Reset AI filter count so the sidebar shows nothing until the fetch completes.
+    setAiFilterCount(null)
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [filterMailbox, senderFilter?.from_email, filterLabel, folder, filterPreset])
+  }, [filterMailbox, senderFilter?.from_email, filterLabel, folder, filterPreset, aiFilter])
 
   useEffect(() => {
     const isMailboxSwitch = initialLoadDoneRef.current
@@ -2455,6 +2633,16 @@ export function InboxView({
       initialLoadDoneRef.current = true
     })
   }, [fetchMailboxesAndEmails])
+
+  const prevInboxVisibleRef = useRef(false)
+  useEffect(() => {
+    const becameVisible = visible && !prevInboxVisibleRef.current
+    prevInboxVisibleRef.current = visible
+    if (!becameVisible || !initialLoadDoneRef.current) return
+    if (emailsList.length > 0) {
+      fetchMailboxesAndEmails().catch(() => {})
+    }
+  }, [visible, emailsList.length, fetchMailboxesAndEmails])
 
   const handleRefresh = useCallback(() => {
     if (refreshing) return
@@ -2549,11 +2737,12 @@ export function InboxView({
     return () => window.removeEventListener("email:action-executed", onActionExecuted)
   }, [])
 
-  // Auto-refresh every 5 minutes so new emails from Gmail etc. show up
+  // Periodic sync when Inbox is the active view (avoid work while user is on another screen).
   useEffect(() => {
+    if (!visible) return
     const interval = setInterval(handleRefresh, 1 * 60 * 1000)
     return () => clearInterval(interval)
-  }, [handleRefresh])
+  }, [handleRefresh, visible])
 
   useEffect(() => {
     const onMailboxUpdated = () => {
@@ -2736,6 +2925,9 @@ export function InboxView({
     })
     if (removingFromStarred) {
       setSelectedEmail((cur) => (cur && cur.id === emailId ? null : cur))
+    } else {
+      // Keep open email detail in sync immediately (star/read/labels) while API runs
+      setSelectedEmail((cur) => (cur && cur.id === emailId ? { ...cur, ...data } : cur))
     }
     window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
     emailsApi.update(emailId, data).then((updated) => {
@@ -2753,6 +2945,9 @@ export function InboxView({
         setEmailsList((prev) =>
           prev.map((e) => e.id === emailId ? { ...e, ...original } : e)
         )
+        setSelectedEmail((cur) =>
+          cur && cur.id === emailId ? ({ ...cur, ...original } as Email) : cur
+        )
       }
       toast.error(err?.message ?? "Update failed")
     })
@@ -2760,12 +2955,15 @@ export function InboxView({
 
   const activeEmails = emailsList.filter((e) => !snoozedEmails.has(e.id))
   const todayAll = activeEmails.filter((e) => isReceivedUtcToday(receivedDateForFilter(e)))
+  const todayHighPriorityCount = todayAll.filter((e) => e.priority === "high").length
   const presetCounts: Record<InboxFilter, number> = inboxStats
     ? {
         today: inboxStats.today_total,
         today_unread: inboxStats.today_unread,
         today_replied: inboxStats.today_replied,
         today_unreplied: inboxStats.today_unreplied,
+        today_high_priority: todayHighPriorityCount,
+        high_priority: activeEmails.filter((e) => e.priority === "high").length,
         total_unread: inboxStats.total_unread,
         total_replied: inboxStats.total_replied,
         total_unreplied: inboxStats.total_unreplied,
@@ -2775,6 +2973,8 @@ export function InboxView({
         today_unread: todayAll.filter((e) => !e.read).length,
         today_replied: todayAll.filter((e) => !!e.repliedAt).length,
         today_unreplied: todayAll.filter((e) => !e.repliedAt).length,
+        today_high_priority: todayHighPriorityCount,
+        high_priority: activeEmails.filter((e) => e.priority === "high").length,
         total_unread: activeEmails.filter((e) => !e.read).length,
         total_replied: activeEmails.filter((e) => !!e.repliedAt).length,
         total_unreplied: activeEmails.filter((e) => !e.repliedAt).length,
@@ -3033,47 +3233,112 @@ export function InboxView({
     ? unreadCountFromApi
     : unreadCountFromList
 
-  const syncMailboxControl = refreshing ? (
-    <Button
-      variant="outline"
-      size="sm"
-      onClick={handleStopSync}
-      className="h-9 shrink-0 gap-1.5 rounded-xl border-red-400/30 text-xs text-red-400 shadow-sm hover:bg-red-400/10 hover:text-red-400"
-    >
-      <Square className="h-3 w-3 fill-current" />
-      <span className="md:hidden">Stop</span>
-      <span className="hidden md:inline">Stop Sync</span>
-    </Button>
-  ) : (
+  const aiFilterHeaderButton = (
     <Tooltip>
       <TooltipTrigger asChild>
         <Button
-          variant="outline"
+          type="button"
           size="sm"
-          onClick={handleRefresh}
-          className="h-9 shrink-0 gap-1.5 rounded-xl border-border/60 bg-card/70 text-xs text-foreground/80 shadow-sm transition-all duration-200 hover:border-primary/30 hover:bg-primary/10 hover:text-primary"
+          onClick={toggleAiSidebar}
+          aria-label={aiSidebarOpen ? "Close Smart Mail Filter" : "Open Smart Mail Filter"}
+          aria-pressed={aiSidebarOpen}
+          className={`group relative h-10 shrink-0 gap-1 overflow-visible rounded-xl px-3.5 sm:px-4 text-xs font-semibold shadow-md ring-0 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-xl hover:shadow-primary/35 active:translate-y-0 active:shadow-md active:duration-150 ${
+            aiFilter
+              ? "bg-gradient-to-br from-primary to-primary/85 text-primary-foreground ring-1 ring-white/15 hover:from-primary hover:to-primary"
+              : "bg-gradient-to-br from-primary/95 to-primary/80 text-primary-foreground hover:from-primary hover:to-primary/90"
+          }`}
         >
-          <RefreshCw className="h-3.5 w-3.5 shrink-0" />
-          <span className="hidden min-[380px]:inline">Sync</span>
+          <span
+            className="pointer-events-none absolute inset-0 rounded-xl bg-gradient-to-t from-white/0 to-white/10 opacity-0 transition-opacity duration-300 group-hover:opacity-100"
+            aria-hidden
+          />
+          <Image
+            src={smartMailLogoWhite}
+            alt=""
+            className="relative z-10 h-6 w-auto max-w-[72px] shrink-0 object-contain object-center transition-transform duration-300 ease-[cubic-bezier(0.34,1.56,0.64,1)] will-change-transform group-hover:scale-[1.12] group-hover:drop-shadow-[0_2px_14px_rgba(255,255,255,0.5)] sm:h-7 sm:max-w-[88px]"
+          />
+          <span className="relative z-10 whitespace-nowrap pl-1 text-left text-[11px] font-semibold leading-tight tracking-tight text-primary-foreground sm:pl-1.5 sm:text-xs">
+            Smart Mail Filter
+          </span>
+          {aiFilter && (
+            <span className="relative z-10 ml-0.5 inline-flex h-1.5 w-1.5 shrink-0 rounded-full bg-white shadow-sm" aria-hidden />
+          )}
         </Button>
       </TooltipTrigger>
       <TooltipContent side="bottom" className="max-w-[260px]">
         <p className="text-xs">
-          Sync scans your full inbox on the server and merges new mail plus read/star (and similar) changes from
-          Gmail or other apps.
+          {aiSidebarOpen
+            ? "Click again to close the AI filter panel"
+            : "Ask Smart Mail Filter to narrow your inbox in plain words"}
         </p>
       </TooltipContent>
     </Tooltip>
   )
 
+  const syncHeaderButton = refreshing ? (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      onClick={handleStopSync}
+      className="h-10 shrink-0 gap-1 rounded-xl border-red-400/40 px-3 text-xs text-red-500 shadow-sm hover:bg-red-500/10 hover:text-red-600"
+    >
+      <Square className="h-3 w-3 fill-current" />
+      <span className="hidden min-[360px]:inline">Stop</span>
+    </Button>
+  ) : (
+    <Tooltip>
+      <TooltipTrigger asChild>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          onClick={handleRefresh}
+          disabled={mailboxesList.length === 0}
+          className="h-10 shrink-0 gap-1.5 rounded-xl border-border/60 bg-card/70 px-3 text-xs text-foreground/80 shadow-sm transition-all duration-200 hover:border-primary/30 hover:bg-primary/10 hover:text-primary disabled:opacity-50"
+        >
+          <RefreshCw className="h-3.5 w-3.5 shrink-0" />
+          <span className="hidden min-[380px]:inline">Refresh</span>
+        </Button>
+      </TooltipTrigger>
+      <TooltipContent side="bottom" className="max-w-[260px]">
+        <p className="text-xs">
+          Sync mailboxes: full inbox scan — new mail plus read/star changes from Gmail or other clients.
+        </p>
+      </TooltipContent>
+    </Tooltip>
+  )
+
+  const aiFilterDock = (
+    <div
+      className={`flex shrink-0 flex-col overflow-hidden self-stretch border-border/60 bg-background transition-[width] duration-300 ease-[cubic-bezier(0.32,0.72,0,1)] will-change-[width] ${
+        aiSidebarOpen ? "w-[min(92vw,400px)] border-l shadow-[4px_0_24px_-8px_rgba(0,0,0,0.12)]" : "w-0 border-l-0 shadow-none"
+      }`}
+    >
+      <div
+        className={`flex h-full min-h-0 w-[min(92vw,400px)] max-w-[400px] shrink-0 flex-col ${!aiSidebarOpen ? "pointer-events-none" : ""}`}
+      >
+        <InboxAiFilterSidebar
+          isOpen={aiSidebarOpen}
+          onClose={() => setAiSidebarOpen(false)}
+          activeQuery={aiFilter?.query ?? null}
+          resultCount={aiFilter ? aiFilterCount : null}
+          inboxMatchesLoading={Boolean(aiFilter && loading)}
+          onApply={(applied) => setAiFilter(applied)}
+          onClear={() => setAiFilter(null)}
+        />
+      </div>
+    </div>
+  )
+
   return (
     <TooltipProvider delayDuration={300}>
       <div className="flex h-full flex-col bg-gradient-to-b from-background to-muted/[0.12]">
-        {/* Header */}
+        {/* List chrome: folder, search, Smart Mail Filter */}
         <div className="border-b border-border/60 bg-gradient-to-r from-background via-background to-primary/[0.03] backdrop-blur-sm">
           <div className="px-4 py-3 sm:px-6 sm:py-4 md:py-4.5">
-            <div className="flex flex-col gap-3 md:flex-row md:items-center md:gap-4">
-              <div className="flex min-w-0 items-start justify-between gap-3 md:contents">
+            <div className="flex w-full flex-col gap-3 md:flex-row md:items-center md:gap-4">
+              <div className="flex min-w-0 w-full items-start justify-between gap-3 md:contents">
                 <div className="flex min-w-0 items-center gap-3 md:shrink-0">
                   <div className="relative flex h-10 w-10 shrink-0 items-center justify-center rounded-2xl bg-gradient-to-br from-primary/20 to-primary/5 shadow-md shadow-primary/10 ring-1 ring-primary/10 sm:h-11 sm:w-11">
                     {(() => {
@@ -3119,100 +3384,70 @@ export function InboxView({
                     )}
                   </div>
                 </div>
-                <div className="shrink-0 md:hidden">{syncMailboxControl}</div>
+                <div className="flex shrink-0 items-center justify-end md:hidden">{aiFilterHeaderButton}</div>
               </div>
 
-              <div className="relative min-w-0 flex-1 md:max-w-lg">
-                <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
-                <Input
-                  placeholder="Search mail…"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  className="h-10 w-full rounded-xl border border-border/60 bg-card/75 pl-10 pr-9 text-sm text-foreground shadow-sm transition-all duration-200 placeholder:text-muted-foreground/50 hover:border-border focus-visible:border-primary/30 focus-visible:ring-2 focus-visible:ring-primary/20"
-                />
-                {searchQuery && (
-                  <button
-                    type="button"
-                    onClick={() => setSearchQuery("")}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground"
-                  >
-                    <X className="h-3.5 w-3.5" />
-                  </button>
-                )}
+              <div className="flex min-w-0 flex-1 items-center gap-2 md:max-w-xl">
+                <div className="relative min-w-0 flex-1">
+                  <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground/50" />
+                  <Input
+                    placeholder="Search mail…"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    className="h-10 w-full rounded-xl border border-border/60 bg-card/75 pl-10 pr-9 text-sm text-foreground shadow-sm transition-all duration-200 placeholder:text-muted-foreground/50 hover:border-border focus-visible:border-primary/30 focus-visible:ring-2 focus-visible:ring-primary/20"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery("")}
+                      className="absolute right-3 top-1/2 -translate-y-1/2 rounded-md p-0.5 text-muted-foreground/50 transition-colors hover:bg-muted hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+                {syncHeaderButton}
               </div>
 
-              <div className="hidden shrink-0 md:flex md:items-center">{syncMailboxControl}</div>
+              <div className="hidden shrink-0 md:ml-auto md:flex md:items-center">{aiFilterHeaderButton}</div>
             </div>
           </div>
         </div>
 
         {selectedEmail ? (
-          <div className="flex-1 overflow-hidden">
-            <EmailDetail
-              email={selectedEmail}
-              mailboxes={mailboxesList}
-              initialComposeMode={initialComposeMode === "reply" ? "reply" : null}
-              userLabels={userLabels}
-              onBack={() => setSelectedEmail(null)}
-              onSnooze={handleSnooze}
-              onArchive={handleArchive}
-              onTrash={handleTrash}
-              onSpam={handleSpam}
-              onUpdate={handleUpdate}
-              onEmailRefreshed={(updated) => setSelectedEmail(updated)}
-              onMoveToInbox={folder === "trash" || folder === "archive" || folder === "spam" || folder === "snoozed" ? handleMoveToInbox : undefined}
-              folder={folder}
-              onPermanentDelete={folder === "trash" ? handleDeletePermanent : undefined}
-            />
+          <div className="flex min-h-0 flex-1 flex-row overflow-hidden">
+            <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
+              <EmailDetail
+                email={selectedEmail}
+                mailboxes={mailboxesList}
+                initialComposeMode={initialComposeMode === "reply" ? "reply" : null}
+                userLabels={userLabels}
+                onBack={() => setSelectedEmail(null)}
+                onSnooze={handleSnooze}
+                onArchive={handleArchive}
+                onTrash={handleTrash}
+                onSpam={handleSpam}
+                onUpdate={handleUpdate}
+                onEmailRefreshed={(updated) => setSelectedEmail(updated)}
+                onMoveToInbox={folder === "trash" || folder === "archive" || folder === "spam" || folder === "snoozed" ? handleMoveToInbox : undefined}
+                folder={folder}
+                onPermanentDelete={folder === "trash" ? handleDeletePermanent : undefined}
+              />
+            </div>
+            {aiFilterDock}
           </div>
         ) : !loading && mailboxesList.length === 0 ? (
-          <ScrollArea className="flex-1">
-            <div className="mx-auto max-w-2xl p-6">
-              <ConnectMailboxCta onConnect={onConnectMailbox} variant="hero" />
-            </div>
-          </ScrollArea>
+          <div className="flex min-h-0 flex-1 flex-row overflow-hidden">
+            <ScrollArea className="min-h-0 min-w-0 flex-1">
+              <div className="mx-auto max-w-2xl p-6">
+                <ConnectMailboxCta onConnect={onConnectMailbox} variant="hero" />
+              </div>
+            </ScrollArea>
+            {aiFilterDock}
+          </div>
         ) : (
-          <>
-            {/* Mailbox Tabs */}
-            <div className="flex items-center gap-1.5 overflow-x-auto border-b border-border/60 bg-card/40 px-4 py-2.5 sm:px-6 sm:py-3">
-              <Button
-                variant={filterMailbox === "all" ? "default" : "ghost"}
-                size="sm"
-                className={`text-xs h-8 rounded-xl gap-1.5 transition-all duration-200 ${filterMailbox === "all" ? "bg-primary text-primary-foreground shadow-sm shadow-primary/20" : "text-muted-foreground hover:text-foreground hover:bg-muted/70"}`}
-                onClick={() => setFilterMailbox("all")}
-              >
-                <Mail className="h-3.5 w-3.5" />
-                All
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${filterMailbox === "all" ? "bg-primary-foreground/20" : "bg-muted text-muted-foreground"}`}>
-                  {mailboxesList.reduce((s, m) => s + (m.totalEmails ?? 0), 0) || emailsList.length}
-                </span>
-              </Button>
-              {mailboxesList.map((mb) => {
-                const isActive = filterMailbox === mb.id
-                return (
-                  <Button
-                    key={mb.id}
-                    variant={isActive ? "default" : "ghost"}
-                    size="sm"
-                    className={`text-xs h-8 gap-1.5 rounded-xl transition-all duration-200 ${isActive ? "text-white shadow-sm" : "text-muted-foreground hover:text-foreground hover:bg-muted/70"}`}
-                    style={isActive ? { backgroundColor: mb.color, boxShadow: `0 2px 8px ${mb.color}30` } : undefined}
-                    onClick={() => setFilterMailbox(mb.id)}
-                  >
-                    <div
-                      className="h-2.5 w-2.5 rounded-full shrink-0 ring-1 ring-white/20"
-                      style={{ backgroundColor: mb.color }}
-                    />
-                    {mb.name}
-                    {mb.totalEmails != null && (
-                      <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${isActive ? "bg-white/20" : "bg-muted text-muted-foreground"}`}>
-                        {mb.totalEmails}
-                      </span>
-                    )}
-                  </Button>
-                )
-              })}
-            </div>
-
+          <div className="flex min-h-0 flex-1 flex-row overflow-hidden">
+            <div className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden">
             {/* Label Filter Tabs — AI labels only apply to the Inbox folder,
                 so hide this header row on Sent/Trash/Archive/Star/Spam/Snoozed. */}
             {userLabels.length > 0 && (!folder || folder === "inbox") && (
@@ -3283,39 +3518,6 @@ export function InboxView({
                     />
                   </DropdownMenuContent>
                 </DropdownMenu>
-                {refreshing ? (
-                  <Button
-                    type="button"
-                    variant="outline"
-                    size="sm"
-                    onClick={handleStopSync}
-                    className="h-8 shrink-0 gap-1 rounded-xl border-red-400/40 text-xs text-red-500 shadow-sm hover:bg-red-500/10 hover:text-red-600"
-                  >
-                    <Square className="h-3 w-3 fill-current" />
-                    <span className="hidden min-[360px]:inline">Stop</span>
-                  </Button>
-                ) : (
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="sm"
-                        onClick={handleRefresh}
-                        disabled={mailboxesList.length === 0}
-                        className="h-8 shrink-0 gap-1.5 rounded-xl border-border/60 bg-card/70 text-xs text-foreground/80 shadow-sm transition-all duration-200 hover:border-primary/30 hover:bg-primary/10 hover:text-primary disabled:opacity-50"
-                      >
-                        <RefreshCw className="h-3.5 w-3.5 shrink-0" />
-                        <span className="hidden min-[380px]:inline">Refresh</span>
-                      </Button>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom" className="max-w-[260px]">
-                      <p className="text-xs">
-                        Sync mailboxes: full inbox scan — new mail plus read/star changes from Gmail or other clients.
-                      </p>
-                    </TooltipContent>
-                  </Tooltip>
-                )}
                 {filterPreset && (
                   <Button
                     variant="ghost"
@@ -3341,6 +3543,44 @@ export function InboxView({
                       <X className="h-3 w-3" />
                     </Button>
                   </div>
+                )}
+                {aiFilter && (
+                  <button
+                    type="button"
+                    onClick={toggleAiSidebar}
+                    className="group flex items-center gap-2 rounded-xl border border-primary/30 bg-gradient-to-r from-primary/10 to-primary/5 px-3 py-2 text-left transition hover:border-primary/50 hover:from-primary/15"
+                    title="Edit AI filter"
+                  >
+                    <Image
+                      src={smartMailLogo}
+                      alt=""
+                      width={20}
+                      height={20}
+                      className="h-4 w-4 shrink-0 object-contain sm:h-5 sm:w-5"
+                    />
+                    <span className="max-w-[min(260px,55vw)] truncate text-[13px] font-medium leading-snug text-primary sm:max-w-[280px]">
+                      {aiFilter.summary || aiFilter.query}
+                    </span>
+                    <span
+                      role="button"
+                      tabIndex={0}
+                      aria-label="Clear AI filter"
+                      onClick={(e) => {
+                        e.stopPropagation()
+                        setAiFilter(null)
+                      }}
+                      onKeyDown={(e) => {
+                        if (e.key === "Enter" || e.key === " ") {
+                          e.preventDefault()
+                          e.stopPropagation()
+                          setAiFilter(null)
+                        }
+                      }}
+                      className="flex h-6 w-6 items-center justify-center rounded-md text-muted-foreground hover:bg-primary/10 hover:text-foreground"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </span>
+                  </button>
                 )}
               </div>
 
@@ -3614,31 +3854,33 @@ export function InboxView({
                         </div>
                       </div>
                       <h3 className="text-base font-semibold text-foreground mb-1.5">
-                        {searchQuery ? "No matching emails" : filterPreset ? "No emails match this filter" : senderFilter ? "No emails from this sender" : folder !== "inbox" ? `No emails in ${INBOX_FOLDER_TITLE[folder] ?? folder}` : "All caught up!"}
+                        {searchQuery ? "No matching emails" : aiFilter ? "No emails match this AI filter" : filterPreset ? "No emails match this filter" : senderFilter ? "No emails from this sender" : folder !== "inbox" ? `No emails in ${INBOX_FOLDER_TITLE[folder] ?? folder}` : "All caught up!"}
                       </h3>
                       <p className="text-sm text-muted-foreground/70 text-center max-w-[280px] leading-relaxed">
                         {searchQuery
                           ? `No emails found for "${searchQuery}". Try a different search term.`
-                          : filterPreset
-                            ? "Try adjusting your filter or clearing it to see all emails."
-                            : senderFilter
-                              ? `No emails from ${senderFilter.from_name || senderFilter.from_email} in inbox.`
-                              : folder !== "inbox"
-                                ? folder === "star"
-                                  ? "Star an email to see it here."
-                                  : folder === "archive"
-                                    ? "Archived messages appear here."
-                                    : folder === "sent"
-                                      ? "Sent messages will show here when synced as sent mail."
-                                      : `Your ${folder} folder is empty.`
-                                : "Your inbox is empty. New emails will appear here."}
+                          : aiFilter
+                            ? `Nothing matched "${aiFilter.summary || aiFilter.query}". Try rephrasing or clear the AI filter.`
+                            : filterPreset
+                              ? "Try adjusting your filter or clearing it to see all emails."
+                              : senderFilter
+                                ? `No emails from ${senderFilter.from_name || senderFilter.from_email} in inbox.`
+                                : folder !== "inbox"
+                                  ? folder === "star"
+                                    ? "Star an email to see it here."
+                                    : folder === "archive"
+                                      ? "Archived messages appear here."
+                                      : folder === "sent"
+                                        ? "Sent messages will show here when synced as sent mail."
+                                        : `Your ${folder} folder is empty.`
+                                  : "Your inbox is empty. New emails will appear here."}
                       </p>
-                      {(searchQuery || filterPreset || senderFilter) && (
+                      {(searchQuery || filterPreset || senderFilter || aiFilter) && (
                         <Button
                           variant="outline"
                           size="sm"
                           className="mt-4 gap-1.5 text-xs rounded-xl"
-                          onClick={() => { setSearchQuery(""); clearFilterPreset(); clearSenderFilter(); }}
+                          onClick={() => { setSearchQuery(""); clearFilterPreset(); clearSenderFilter(); setAiFilter(null); }}
                         >
                           <X className="h-3 w-3" />
                           Clear all filters
@@ -3684,7 +3926,9 @@ export function InboxView({
                 </>
               )}
             </ScrollArea>
-          </>
+            </div>
+            {aiFilterDock}
+          </div>
         )}
       </div>
 

@@ -71,7 +71,15 @@ export default function AppDashboard() {
   const [initialLabelFilter, setInitialLabelFilter] = useState<string | null>(null)
   /** When opening Inbox from Mailboxes "Open inbox", scope to this mailbox id (InboxView is not mounted there, so window events are missed). */
   const [pendingInboxMailbox, setPendingInboxMailbox] = useState<string | null>(null)
+  const [selectedMailboxScope, setSelectedMailboxScope] = useState<string>("all")
   const [activeFolder, setActiveFolder] = useState<EmailFolder>("inbox")
+  const handleMailboxScopeChange = useCallback((mailboxId: string) => {
+    const next = mailboxId && mailboxId.length > 0 ? mailboxId : "all"
+    setSelectedMailboxScope(next)
+    setPendingInboxMailbox(next === "all" ? null : next)
+    window.dispatchEvent(new CustomEvent("inbox:setMailboxFilter", { detail: { mailboxId: next } }))
+  }, [])
+
   const syncingRef = useRef(false)
 
   // Sync on mount + every 1 minute
@@ -216,9 +224,21 @@ export default function AppDashboard() {
   }, [activeView])
 
   const [mobileOpen, setMobileOpen] = useState(false)
+  /** Inbox AI filter drawer open: hide sidebar detail column only; icon rail stays visible. */
+  const [collapseNavDetailForAi, setCollapseNavDetailForAi] = useState(false)
   const viewShellRef = useRef<HTMLDivElement>(null)
   const desktopSidebarRef = useRef<HTMLElement>(null)
   const mobileDrawerRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    const onAiFilterSidebar = (e: Event) => {
+      const open = Boolean((e as CustomEvent<{ open?: boolean }>).detail?.open)
+      setCollapseNavDetailForAi(open)
+      if (open) setMobileOpen(false)
+    }
+    window.addEventListener("inbox:aiFilterSidebar", onAiFilterSidebar as EventListener)
+    return () => window.removeEventListener("inbox:aiFilterSidebar", onAiFilterSidebar as EventListener)
+  }, [])
 
   useGSAP(
     () => {
@@ -288,7 +308,7 @@ export default function AppDashboard() {
   return (
     <AiChatProvider>
       <div className="flex h-svh w-full overflow-hidden bg-background">
-        {/* ── Desktop sidebar ── */}
+        {/* ── Desktop sidebar (icon rail stays when Inbox AI filter drawer opens) ── */}
         <aside ref={desktopSidebarRef} className="hidden md:flex h-full min-h-0 shrink-0 will-change-transform">
           <AppSidebar
             activeView={activeView}
@@ -298,6 +318,9 @@ export default function AppDashboard() {
             onSelectLabel={handleSelectLabelForInbox}
             activeFolder={activeFolder}
             onFolderChange={setActiveFolder}
+            selectedMailboxScope={selectedMailboxScope}
+            onMailboxScopeChange={handleMailboxScopeChange}
+            collapseDetailForAi={collapseNavDetailForAi}
           />
         </aside>
 
@@ -321,6 +344,8 @@ export default function AppDashboard() {
                 onSelectLabel={(l) => { handleSelectLabelForInbox(l); setMobileOpen(false) }}
                 activeFolder={activeFolder}
                 onFolderChange={setActiveFolder}
+                selectedMailboxScope={selectedMailboxScope}
+                onMailboxScopeChange={(id) => { handleMailboxScopeChange(id); setMobileOpen(false) }}
               />
               <button
                 onClick={() => setMobileOpen(false)}
@@ -357,22 +382,39 @@ export default function AppDashboard() {
 
           {/* Views */}
           <div ref={viewShellRef} className="min-h-0 min-w-0 flex-1 overflow-hidden">
-            {activeView === "dashboard" && (
+            {/* Dashboard stays mounted (hidden on other views) for instant return + session cache on slow networks. */}
+            <div
+              className={
+                activeView === "dashboard"
+                  ? "flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+                  : "hidden"
+              }
+              aria-hidden={activeView !== "dashboard"}
+            >
               <DailyBriefing
+                visible={activeView === "dashboard"}
                 onViewChange={handleViewChange}
                 onNavigateInbox={handleNavigateInbox}
                 onNavigateToEmail={handleNavigateToEmail}
                 onConnectMailbox={() => setShowAddMailbox(true)}
-                onOpenInboxWithMailbox={(id) => {
-                  setInboxFilter(null)
+                onOpenInboxWithMailbox={(id, filter) => {
+                  setInboxFilter(filter ?? null)
                   setInitialLabelFilter(null)
                   setInitialSenderEmail(null)
                   setInitialSenderName(null)
                   setPendingInboxMailbox(id)
                   setActiveView("inbox")
                 }}
+                onOpenCalendarWithMailbox={(id) => {
+                  setSelectedMailboxScope(id)
+                  setActiveView("calendar")
+                  window.dispatchEvent(
+                    new CustomEvent("calendar:setMailboxFilter", { detail: { mailboxId: id } }),
+                  )
+                }}
+                mailboxScope={selectedMailboxScope}
               />
-            )}
+            </div>
             {activeView === "calendar" && <CalendarView />}
             {activeView === "meeting-requests" && (
               <MeetingRequestsView onOpenEmail={handleNavigateToEmail} />
@@ -388,9 +430,18 @@ export default function AppDashboard() {
                 }}
               />
             )}
-            {activeView === "inbox" && (
+            {/* Inbox stays mounted (hidden on other views) so mail sync can refresh the list app-wide; opening Inbox stays instant. */}
+            <div
+              className={
+                activeView === "inbox"
+                  ? "flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+                  : "hidden"
+              }
+              aria-hidden={activeView !== "inbox"}
+            >
               <InboxView
-                initialMailboxFilter={pendingInboxMailbox}
+                visible={activeView === "inbox"}
+                initialMailboxFilter={pendingInboxMailbox ?? (selectedMailboxScope !== "all" ? selectedMailboxScope : null)}
                 initialFilter={inboxFilter}
                 onInitialFilterConsumed={handleFilterConsumed}
                 initialEmailId={initialEmailId}
@@ -404,17 +455,34 @@ export default function AppDashboard() {
                 onConnectMailbox={() => setShowAddMailbox(true)}
                 folder={activeFolder}
               />
-            )}
+            </div>
             {activeView === "labels" && (
               <LabelsView
                 onSelectLabel={handleSelectLabelForInbox}
                 onOpenSettings={() => setActiveView("settings")}
               />
             )}
-            {activeView === "followups" && <FollowupTracker />}
-            {activeView === "contacts" && (
-              <ContactsView onAddMailboxClick={() => setShowAddMailbox(true)} />
+            {activeView === "followups" && (
+              <FollowupTracker
+                mailboxScope={selectedMailboxScope}
+                onMailboxScopeChange={handleMailboxScopeChange}
+              />
             )}
+            {/* Contacts stays mounted while hidden — instant return + session cache on slow loads. */}
+            <div
+              className={
+                activeView === "contacts"
+                  ? "flex h-full min-h-0 min-w-0 flex-1 flex-col overflow-hidden"
+                  : "hidden"
+              }
+              aria-hidden={activeView !== "contacts"}
+            >
+              <ContactsView
+                visible={activeView === "contacts"}
+                onAddMailboxClick={() => setShowAddMailbox(true)}
+                mailboxScope={selectedMailboxScope}
+              />
+            </div>
             {activeView === "agent" && <AiAgent />}
             {/* Keep Assistant mounted so in-flight AI replies / confirmed actions finish after navigation */}
             <div
@@ -425,7 +493,11 @@ export default function AppDashboard() {
               }
               aria-hidden={activeView !== "assistant"}
             >
-              <AiAssistant panelVisible={activeView === "assistant"} />
+              <AiAssistant
+                panelVisible={activeView === "assistant"}
+                mailboxScope={selectedMailboxScope}
+                onMailboxScopeChange={handleMailboxScopeChange}
+              />
             </div>
             {activeView === "compose" && (
               <ComposeView
@@ -445,6 +517,7 @@ export default function AppDashboard() {
                   setPendingInboxMailbox(id)
                   setActiveView("inbox")
                 }}
+                mailboxScope={selectedMailboxScope}
               />
             )}
             {activeView === "feedback" && <FeedbackView />}

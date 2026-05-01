@@ -22,3 +22,16 @@ export function sanitizeEmailHtml(html: string): string {
   });
   return div.innerHTML;
 }
+
+/** True if HTML will show meaningful text after sanitization (not empty wrappers / images-only). */
+export function htmlHasSubstantiveText(html: string): boolean {
+  if (!html?.trim()) return false;
+  const safe = sanitizeEmailHtml(html);
+  const text = safe
+    .replace(/<style\b[^<]*(?:(?!<\/style>)<[^<]*)*<\/style>/gi, "")
+    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
+    .replace(/<[^>]+>/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text.length > 0;
+}

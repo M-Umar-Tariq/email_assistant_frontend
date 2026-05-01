@@ -54,11 +54,20 @@ export function notifySessionExpired(): void {
   window.dispatchEvent(new CustomEvent("auth:session-expired"));
 }
 
+type RequestOptions = {
+  skipAuth?: boolean;
+  _retried?: boolean;
+  /** Abort an in-flight call (e.g. user sent a new message). */
+  signal?: AbortSignal;
+  /** Max wait before aborting. Omit for no client-side timeout (browser default). */
+  timeoutMs?: number;
+};
+
 async function request<T>(
   method: string,
   path: string,
   body?: unknown,
-  options?: { skipAuth?: boolean; _retried?: boolean }
+  options?: RequestOptions
 ): Promise<T> {
   const url = path.startsWith("http") ? path : `${API_BASE}${path.startsWith("/") ? path : `/${path}`}`;
   const headers: Record<string, string> = {
@@ -69,12 +78,35 @@ async function request<T>(
     if (token) headers["Authorization"] = `Bearer ${token}`;
   }
 
-  const res = await fetch(url, {
-    method,
-    headers,
-    body: body !== undefined ? JSON.stringify(body) : undefined,
-    credentials: "include",
-  });
+  const outerSignal = options?.signal;
+  const timeoutMs = options?.timeoutMs;
+  const combined = new AbortController();
+  const tid =
+    typeof timeoutMs === "number" && timeoutMs > 0
+      ? setTimeout(() => combined.abort(), timeoutMs)
+      : undefined;
+  if (outerSignal) {
+    if (outerSignal.aborted) combined.abort();
+    else outerSignal.addEventListener("abort", () => combined.abort(), { once: true });
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(url, {
+      method,
+      headers,
+      body: body !== undefined ? JSON.stringify(body) : undefined,
+      credentials: "include",
+      signal: combined.signal,
+    });
+  } catch (e) {
+    if (e instanceof Error && e.name === "AbortError") {
+      throw new Error(outerSignal?.aborted ? "Request cancelled" : "Request timed out — check your connection");
+    }
+    throw e;
+  } finally {
+    if (tid !== undefined) clearTimeout(tid);
+  }
 
   if (res.status === 204) return undefined as T;
   const data = await res.json().catch(() => ({}));
@@ -200,6 +232,7 @@ export type MailboxApi = {
 
 export const mailboxes = {
   list: () => request<MailboxApi[]>("GET", "/mailboxes/"),
+  googleStart: () => request<{ auth_url: string }>("GET", "/mailboxes/google/start/"),
   create: (data: {
     name: string;
     email: string;
@@ -360,6 +393,17 @@ export const emails = {
     limit?: number;
     offset?: number;
     inbox_preset?: string;
+    participants?: string[];
+    participants_match?: "any" | "all";
+    has_attachment?: boolean;
+    attachment_filename?: string;
+    starred_only?: boolean;
+    read_only?: boolean;
+    subject?: string;
+    keywords?: string;
+    keywords_any?: string[];
+    date_from?: string;
+    date_to?: string;
   }) => {
     const sp = new URLSearchParams();
     if (params?.mailbox_id) sp.set("mailbox_id", params.mailbox_id);
@@ -371,6 +415,21 @@ export const emails = {
     if (params?.inbox_preset) sp.set("inbox_preset", params.inbox_preset);
     if (params?.limit != null) sp.set("limit", String(params.limit));
     if (params?.offset != null) sp.set("offset", String(params.offset));
+    if (params?.participants && params.participants.length > 0) {
+      sp.set("participants", params.participants.join(","));
+      sp.set("participants_match", params.participants_match || "all");
+    }
+    if (params?.has_attachment != null) sp.set("has_attachment", params.has_attachment ? "true" : "false");
+    if (params?.attachment_filename) sp.set("attachment_filename", params.attachment_filename);
+    if (params?.starred_only) sp.set("starred_only", "true");
+    if (params?.read_only) sp.set("read_only", "true");
+    if (params?.subject) sp.set("subject", params.subject);
+    if (params?.keywords) sp.set("keywords", params.keywords);
+    if (params?.keywords_any && params.keywords_any.length > 0) {
+      sp.set("keywords_any", params.keywords_any.join("|"));
+    }
+    if (params?.date_from) sp.set("date_from", params.date_from);
+    if (params?.date_to) sp.set("date_to", params.date_to);
     const q = sp.toString();
     return request<{ emails: EmailListApi[]; total: number }>("GET", `/emails/${q ? `?${q}` : ""}`);
   },
@@ -496,8 +555,13 @@ export type FollowUpApi = {
 };
 
 export const followUps = {
-  list: (status?: string) =>
-    request<FollowUpApi[]>("GET", status ? `/follow-ups/?status=${status}` : "/follow-ups/"),
+  list: (params?: { status?: string; mailbox_id?: string }) => {
+    const sp = new URLSearchParams();
+    if (params?.status) sp.set("status", params.status);
+    if (params?.mailbox_id && params.mailbox_id !== "all") sp.set("mailbox_id", params.mailbox_id);
+    const qs = sp.toString();
+    return request<FollowUpApi[]>("GET", `/follow-ups/${qs ? `?${qs}` : ""}`);
+  },
   create: (data: { email_id: string; due_date: string }) =>
     request<FollowUpApi>("POST", "/follow-ups/", data),
   update: (id: string, data: { status?: string; due_date?: string }) =>
@@ -561,8 +625,18 @@ export type MailboxSnapshotItem = {
 };
 
 export const briefing = {
-  get: () => request<BriefingApi>("GET", "/briefing/"),
-  ai: () => request<{ briefing: MailboxSnapshotItem[] }>("GET", "/briefing/ai/"),
+  get: (params?: { mailbox_id?: string }) => {
+    const sp = new URLSearchParams();
+    if (params?.mailbox_id && params.mailbox_id !== "all") sp.set("mailbox_id", params.mailbox_id);
+    const qs = sp.toString();
+    return request<BriefingApi>("GET", `/briefing/${qs ? `?${qs}` : ""}`);
+  },
+  ai: (params?: { mailbox_id?: string }) => {
+    const sp = new URLSearchParams();
+    if (params?.mailbox_id && params.mailbox_id !== "all") sp.set("mailbox_id", params.mailbox_id);
+    const qs = sp.toString();
+    return request<{ briefing: MailboxSnapshotItem[] }>("GET", `/briefing/ai/${qs ? `?${qs}` : ""}`);
+  },
 };
 
 // ── Calendar / meetings ─────────────────────────────────────────────────────
@@ -633,31 +707,82 @@ export const feedback = {
 // ── Analytics ───────────────────────────────────────────────────────────────
 
 export const analytics = {
-  overview: (days?: number) =>
+  overview: (days?: number, mailboxId?: string) =>
     request<{ total_received: number; received_change: string; period_days: number }>(
       "GET",
-      days != null ? `/analytics/overview/?days=${days}` : "/analytics/overview/"
+      (() => {
+        const sp = new URLSearchParams();
+        if (days != null) sp.set("days", String(days));
+        if (mailboxId && mailboxId !== "all") sp.set("mailbox_id", mailboxId);
+        const qs = sp.toString();
+        return `/analytics/overview/${qs ? `?${qs}` : ""}`;
+      })()
     ),
-  volume: (days?: number) =>
+  volume: (days?: number, mailboxId?: string) =>
     request<{ date: string; received: number }[]>(
       "GET",
-      days != null ? `/analytics/volume/?days=${days}` : "/analytics/volume/"
+      (() => {
+        const sp = new URLSearchParams();
+        if (days != null) sp.set("days", String(days));
+        if (mailboxId && mailboxId !== "all") sp.set("mailbox_id", mailboxId);
+        const qs = sp.toString();
+        return `/analytics/volume/${qs ? `?${qs}` : ""}`;
+      })()
     ),
-  topSenders: (limit?: number) =>
-    request<{ email: string; name: string; count: number }[]>("GET", limit ? `/analytics/top-senders/?limit=${limit}` : "/analytics/top-senders/"),
-  categories: (days?: number) =>
+  topSenders: (limit?: number, mailboxId?: string) =>
+    request<{ email: string; name: string; count: number }[]>(
+      "GET",
+      (() => {
+        const sp = new URLSearchParams();
+        if (limit != null) sp.set("limit", String(limit));
+        if (mailboxId && mailboxId !== "all") sp.set("mailbox_id", mailboxId);
+        const qs = sp.toString();
+        return `/analytics/top-senders/${qs ? `?${qs}` : ""}`;
+      })()
+    ),
+  categories: (days?: number, mailboxId?: string) =>
     request<{ name: string; value: number }[]>(
       "GET",
-      days != null ? `/analytics/categories/?days=${days}` : "/analytics/categories/"
+      (() => {
+        const sp = new URLSearchParams();
+        if (days != null) sp.set("days", String(days));
+        if (mailboxId && mailboxId !== "all") sp.set("mailbox_id", mailboxId);
+        const qs = sp.toString();
+        return `/analytics/categories/${qs ? `?${qs}` : ""}`;
+      })()
     ),
-  metrics: () =>
+  metrics: (mailboxId?: string) =>
     request<{
       total_emails: number; unread: number; active_contacts: number;
       total_emails_change: string; unread_change: string; active_contacts_change: string;
-    }>("GET", "/analytics/metrics/"),
+    }>("GET", `/analytics/metrics/${mailboxId && mailboxId !== "all" ? `?mailbox_id=${encodeURIComponent(mailboxId)}` : ""}`),
 };
 
 // ── AI ─────────────────────────────────────────────────────────────────────
+
+export type InboxAiFilters = {
+  participants?: string[];
+  participants_match?: "any" | "all";
+  from_email?: string;
+  subject?: string;
+  keywords?: string;
+  keywords_any?: string[];
+  label?: string;
+  date_from?: string;
+  date_to?: string;
+  unread_only?: boolean;
+  read_only?: boolean;
+  starred_only?: boolean;
+  has_attachment?: boolean;
+  attachment_filename?: string;
+};
+
+export type InboxFilterApiResponse = {
+  summary: string;
+  /** Conversational 1-2 sentence reply from the AI to show in the chat. */
+  response?: string;
+  filters: InboxAiFilters;
+};
 
 export const ai = {
   ask: (
@@ -682,6 +807,16 @@ export const ai = {
   suggestedQuestions: () => request<string[]>("GET", "/ai/suggested-questions/"),
   instantReplies: (emailId: string) =>
     request<{ id: string; label: string; tone: string; text: string }[]>("GET", `/ai/instant-replies/${emailId}/`),
+  inboxFilter: (query: string, opts?: { signal?: AbortSignal }) =>
+    request<InboxFilterApiResponse>(
+      "POST",
+      "/ai/inbox-filter/",
+      {
+        query,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone,
+      },
+      { signal: opts?.signal, timeoutMs: 180_000 },
+    ),
 };
 
 // ── Compose ────────────────────────────────────────────────────────────────
@@ -797,8 +932,15 @@ export const agent = {
       history,
       mailbox_id: mailboxId === "all" ? undefined : mailboxId,
     }),
-  profile: () => request<AgentProfile>("GET", "/agent/profile/"),
-  buildProfile: () => request<AgentProfile>("POST", "/agent/profile/build/"),
+  profile: (mailboxId?: string) => {
+    const qs =
+      mailboxId && mailboxId !== "all" ? `?mailbox_id=${encodeURIComponent(mailboxId)}` : "";
+    return request<AgentProfile>("GET", `/agent/profile/${qs}`);
+  },
+  buildProfile: (mailboxId?: string) =>
+    request<AgentProfile>("POST", "/agent/profile/build/", {
+      mailbox_id: mailboxId && mailboxId !== "all" ? mailboxId : undefined,
+    }),
   execute: (actionData: AgentActionApi) =>
     request<AgentActionApi>("POST", "/agent/execute/", actionData),
   reject: (actionId: string) =>

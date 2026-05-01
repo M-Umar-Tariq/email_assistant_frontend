@@ -16,8 +16,8 @@ import {
   X,
 } from "lucide-react"
 import { toast } from "sonner"
-import { emails as emailsApi, type EmailListApi } from "@/lib/api"
-import { mapEmailListApi } from "@/lib/mappers"
+import { emails as emailsApi, mailboxes as mailboxesApi, type EmailListApi } from "@/lib/api"
+import { mapEmailListApi, mapMailboxApi } from "@/lib/mappers"
 import type { Email } from "@/lib/mock-data"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -79,6 +79,25 @@ export function MeetingRequestsView({
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
   const [busyEmailId, setBusyEmailId] = useState<string | null>(null)
+  const [mailboxNames, setMailboxNames] = useState<Record<string, string>>({})
+  const [mailboxColors, setMailboxColors] = useState<Record<string, string>>({})
+
+  const loadMailboxes = useCallback(async () => {
+    try {
+      const list = await mailboxesApi.list()
+      const mapped = list.map(mapMailboxApi)
+      const names: Record<string, string> = {}
+      const colors: Record<string, string> = {}
+      for (const mb of mapped) {
+        names[mb.id] = mb.name
+        colors[mb.id] = mb.color || "#64748b"
+      }
+      setMailboxNames(names)
+      setMailboxColors(colors)
+    } catch {
+      /* ignore */
+    }
+  }, [])
 
   const load = useCallback(async () => {
     setLoading(true)
@@ -105,6 +124,13 @@ export function MeetingRequestsView({
   useEffect(() => {
     load()
   }, [load])
+
+  useEffect(() => {
+    loadMailboxes()
+    const onMailboxUpdated = () => loadMailboxes()
+    window.addEventListener("mailbox:updated", onMailboxUpdated)
+    return () => window.removeEventListener("mailbox:updated", onMailboxUpdated)
+  }, [loadMailboxes])
 
   useEffect(() => {
     const refresh = () => load()
@@ -278,6 +304,8 @@ export function MeetingRequestsView({
                 <MeetingRequestCard
                   key={email.id}
                   email={email}
+                  mailboxName={mailboxNames[email.mailbox] || email.mailbox}
+                  mailboxColor={mailboxColors[email.mailbox] || "#64748b"}
                   busy={busyEmailId === email.id}
                   onOpen={() => onOpenEmail(email.id)}
                   onAdd={() => handleAdd(email)}
@@ -322,12 +350,16 @@ function StatCard({
 
 function MeetingRequestCard({
   email,
+  mailboxName,
+  mailboxColor,
   busy,
   onOpen,
   onAdd,
   onDismiss,
 }: {
   email: Email
+  mailboxName: string
+  mailboxColor: string
   busy: boolean
   onOpen: () => void
   onAdd: () => void
@@ -375,6 +407,10 @@ function MeetingRequestCard({
                 pending
               </Badge>
             )}
+          </div>
+          <div className="mt-1 flex items-center gap-1.5 text-[11px] text-muted-foreground">
+            <span className="h-2 w-2 shrink-0 rounded-full" style={{ backgroundColor: mailboxColor }} />
+            <span className="truncate">{mailboxName}</span>
           </div>
           <p className="mt-0.5 truncate text-sm text-foreground/90">{email.subject || "(no subject)"}</p>
           {email.preview && (

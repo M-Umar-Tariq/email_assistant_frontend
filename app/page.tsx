@@ -783,8 +783,8 @@ function Footer() {
           </span>
         </div>
         <div data-gsap="footer" className="flex flex-wrap items-center justify-center gap-6">
-          <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Privacy</a>
-          <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Terms</a>
+          <Link href="/privacy" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Privacy</Link>
+          <Link href="/terms" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Terms</Link>
           <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Support</a>
           <a href="#" className="text-xs text-muted-foreground hover:text-foreground transition-colors">Contact</a>
         </div>

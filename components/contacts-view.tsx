@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
+import { useState, useEffect, useCallback, useMemo, useRef } from "react"
 import {
   Users,
   Mail,
@@ -201,6 +201,8 @@ function ContactRow({
 }
 
 const CONTACTS_PAGE_SIZE = 50
+const CONTACTS_CACHE_KEY = "smartmail:contacts:v1"
+const CONTACTS_CACHE_TTL_MS = 10 * 60 * 1000
 
 function MailboxSection({
   sectionKey,
@@ -315,7 +317,16 @@ function MailboxSection({
   )
 }
 
-export function ContactsView({ onAddMailboxClick }: { onAddMailboxClick?: () => void } = {}) {
+export function ContactsView({
+  onAddMailboxClick,
+  mailboxScope = "all",
+  visible = true,
+}: {
+  onAddMailboxClick?: () => void
+  mailboxScope?: string
+  /** When Contacts is mounted but hidden, skip full-screen spinner on background refreshes. */
+  visible?: boolean
+} = {}) {
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([])
   const [allSenders, setAllSenders] = useState<UniqueSendersApi | null>(null)
   const [byMailbox, setByMailbox] = useState<MailboxSenders[]>([])
@@ -324,9 +335,40 @@ export function ContactsView({ onAddMailboxClick }: { onAddMailboxClick?: () => 
   const [activeTab, setActiveTab] = useState<string>("all")
   const [selectedEmails, setSelectedEmails] = useState<Set<string>>(new Set())
   const [sectionVisibleCount, setSectionVisibleCount] = useState<Record<string, number>>({})
+  const hasLoadedOnceRef = useRef(false)
+  const prevContactsVisibleRef = useRef(false)
 
-  const fetchData = useCallback(async () => {
-    setLoading(true)
+  const fetchData = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent === true
+    let cacheHydrated = false
+    if (!silent && typeof window !== "undefined") {
+      try {
+        const raw = sessionStorage.getItem(CONTACTS_CACHE_KEY)
+        if (raw) {
+          const parsed = JSON.parse(raw) as {
+            ts: number
+            mailboxes?: Mailbox[]
+            allSenders?: UniqueSendersApi | null
+            byMailbox?: MailboxSenders[]
+          }
+          if (
+            typeof parsed.ts === "number" &&
+            Date.now() - parsed.ts < CONTACTS_CACHE_TTL_MS
+          ) {
+            if (Array.isArray(parsed.mailboxes)) setMailboxes(parsed.mailboxes)
+            if (parsed.allSenders !== undefined) setAllSenders(parsed.allSenders)
+            if (Array.isArray(parsed.byMailbox)) setByMailbox(parsed.byMailbox)
+            setLoading(false)
+            cacheHydrated = true
+          }
+        }
+      } catch {
+        // ignore corrupt cache
+      }
+    }
+    if (!silent && !cacheHydrated) {
+      setLoading(true)
+    }
     try {
       const [mbList, allData] = await Promise.all([
         mailboxesApi.list().then((list) => list.map(mapMailboxApi)),
@@ -348,17 +390,59 @@ export function ContactsView({ onAddMailboxClick }: { onAddMailboxClick?: () => 
         })
       )
       setByMailbox(perMailbox)
+      try {
+        if (typeof window !== "undefined") {
+          sessionStorage.setItem(
+            CONTACTS_CACHE_KEY,
+            JSON.stringify({
+              ts: Date.now(),
+              mailboxes: mbList,
+              allSenders: allData,
+              byMailbox: perMailbox,
+            }),
+          )
+        }
+      } catch {
+        // quota / private mode
+      }
     } catch {
-      setAllSenders(null)
-      setByMailbox([])
+      if (!silent) {
+        setAllSenders(null)
+        setByMailbox([])
+      }
     } finally {
       setLoading(false)
+      hasLoadedOnceRef.current = true
     }
   }, [])
+
+  const fetchDataRef = useRef(fetchData)
+  fetchDataRef.current = fetchData
 
   useEffect(() => {
     fetchData()
   }, [fetchData])
+
+  useEffect(() => {
+    const becameVisible = visible && !prevContactsVisibleRef.current
+    prevContactsVisibleRef.current = visible
+    if (!becameVisible || !hasLoadedOnceRef.current) return
+    fetchData({ silent: true })
+  }, [visible, fetchData])
+
+  useEffect(() => {
+    const onMailbox = () => fetchDataRef.current({ silent: true })
+    window.addEventListener("mailbox:updated", onMailbox)
+    window.addEventListener("mailbox:sync-complete", onMailbox)
+    return () => {
+      window.removeEventListener("mailbox:updated", onMailbox)
+      window.removeEventListener("mailbox:sync-complete", onMailbox)
+    }
+  }, [])
+
+  useEffect(() => {
+    setActiveTab(mailboxScope && mailboxScope.length > 0 ? mailboxScope : "all")
+  }, [mailboxScope])
 
   const handleToggleSelect = useCallback((sender: UniqueSenderApi, checked: boolean) => {
     const key = sender.from_email.toLowerCase()

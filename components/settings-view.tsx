@@ -144,6 +144,7 @@ export function SettingsView({
   const [profileLoading, setProfileLoading] = useState(false)
   const [profileBuilding, setProfileBuilding] = useState(false)
   const [syncingIds, setSyncingIds] = useState<Set<string>>(new Set())
+  const [deletingMailboxIds, setDeletingMailboxIds] = useState<Set<string>>(new Set())
   const { theme, setTheme } = useTheme()
 
   const [userSettings, setUserSettings] = useState<SettingsApi | null>(null)
@@ -372,6 +373,30 @@ export function SettingsView({
       .finally(() => {
         toast.dismiss(loadingToastId)
         setSyncingIds((prev) => {
+          const next = new Set(prev)
+          next.delete(mb.id)
+          return next
+        })
+      })
+  }
+
+  const handleDeleteMailbox = (mb: Mailbox) => {
+    if (deletingMailboxIds.has(mb.id) || syncingIds.has(mb.id)) return
+    const ok = window.confirm(`Remove mailbox "${mb.name}"? This will disconnect it from Smart Mail AI.`)
+    if (!ok) return
+    setDeletingMailboxIds((prev) => new Set(prev).add(mb.id))
+    mailboxesApi
+      .delete(mb.id)
+      .then(() => {
+        setMailboxes((prev) => prev.filter((m) => m.id !== mb.id))
+        window.dispatchEvent(new CustomEvent("mailbox:updated"))
+        toast.success(`Mailbox "${mb.name}" removed`)
+      })
+      .catch((err: Error) => {
+        toast.error(err?.message ?? "Failed to remove mailbox")
+      })
+      .finally(() => {
+        setDeletingMailboxIds((prev) => {
           const next = new Set(prev)
           next.delete(mb.id)
           return next
@@ -618,8 +643,14 @@ export function SettingsView({
 
                             <Tooltip>
                               <TooltipTrigger asChild>
-                                <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors">
-                                  <Trash2 className="h-4 w-4" />
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-8 w-8 text-muted-foreground hover:text-red-500 hover:bg-red-500/10 transition-colors"
+                                  disabled={isSyncing || deletingMailboxIds.has(mb.id)}
+                                  onClick={() => handleDeleteMailbox(mb)}
+                                >
+                                  <Trash2 className={`h-4 w-4 ${deletingMailboxIds.has(mb.id) ? "animate-pulse" : ""}`} />
                                 </Button>
                               </TooltipTrigger>
                               <TooltipContent side="bottom"><p>Remove mailbox</p></TooltipContent>

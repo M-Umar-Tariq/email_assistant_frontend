@@ -398,9 +398,15 @@ const CAPABILITIES = [
 type AiAssistantProps = {
   /** When false, the panel is off-screen but the component stays mounted so async work can finish. */
   panelVisible?: boolean
+  mailboxScope?: string
+  onMailboxScopeChange?: (mailboxId: string) => void
 }
 
-export function AiAssistant({ panelVisible = true }: AiAssistantProps) {
+export function AiAssistant({
+  panelVisible = true,
+  mailboxScope = "all",
+  onMailboxScopeChange,
+}: AiAssistantProps) {
   const { user } = useAuth()
   const { messages, setMessages, selectedMailbox, setSelectedMailbox, isQueryLoading, setIsQueryLoading } =
     useAiChat()
@@ -412,12 +418,23 @@ export function AiAssistant({ panelVisible = true }: AiAssistantProps) {
   const scrollBottomRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
   const initialDataLoadedRef = useRef(false)
+  /** True after at least one mailboxes list fetch settles (avoids fighting FloatingAiChat over shared context while list is still []). */
+  const mailboxListFetchDoneRef = useRef(false)
   const refreshMailboxList = useCallback(() => {
     mailboxesApi
       .list()
-      .then((list) => setMailboxList(list))
-      .catch(() => {})
+      .then((list) => {
+        setMailboxList(list)
+        mailboxListFetchDoneRef.current = true
+      })
+      .catch(() => {
+        mailboxListFetchDoneRef.current = true
+      })
   }, [])
+
+  useEffect(() => {
+    refreshMailboxList()
+  }, [refreshMailboxList])
 
   useEffect(() => {
     if (!panelVisible || initialDataLoadedRef.current) return
@@ -427,8 +444,7 @@ export function AiAssistant({ panelVisible = true }: AiAssistantProps) {
         setSuggestedQuestions((list.length ? list : FALLBACK_SUGGESTIONS).slice(0, 4))
       )
       .catch(() => {})
-    refreshMailboxList()
-  }, [panelVisible, refreshMailboxList])
+  }, [panelVisible])
 
   useEffect(() => {
     const onMailboxChange = () => refreshMailboxList()
@@ -442,10 +458,31 @@ export function AiAssistant({ panelVisible = true }: AiAssistantProps) {
 
   useEffect(() => {
     if (selectedMailbox === "all") return
+    if (!mailboxListFetchDoneRef.current) return
+    if (mailboxList.length === 0) {
+      setSelectedMailbox("all")
+      return
+    }
     if (!mailboxList.some((m) => m.id === selectedMailbox)) {
       setSelectedMailbox("all")
     }
   }, [mailboxList, selectedMailbox, setSelectedMailbox])
+
+  useEffect(() => {
+    const next = mailboxScope && mailboxScope.length > 0 ? mailboxScope : "all"
+    if (next === selectedMailbox) return
+    if (next === "all") {
+      setSelectedMailbox("all")
+      return
+    }
+    if (!mailboxListFetchDoneRef.current) return
+    if (mailboxList.length === 0) {
+      setSelectedMailbox("all")
+      return
+    }
+    if (!mailboxList.some((m) => m.id === next)) return
+    setSelectedMailbox(next)
+  }, [mailboxScope, selectedMailbox, setSelectedMailbox, mailboxList])
 
   const firstName = user?.name?.split(" ")[0] ?? "there"
   const hasConversation = messages.length > 0
@@ -692,7 +729,10 @@ export function AiAssistant({ panelVisible = true }: AiAssistantProps) {
                   sideOffset={6}
                 >
                   <DropdownMenuItem
-                    onClick={() => setSelectedMailbox("all")}
+                    onClick={() => {
+                      setSelectedMailbox("all")
+                      onMailboxScopeChange?.("all")
+                    }}
                     className={cn(
                       "flex cursor-pointer flex-col items-stretch gap-0.5 px-3.5 py-2.5",
                       selectedMailbox === "all" && "bg-primary/10 text-primary font-medium"
@@ -709,7 +749,10 @@ export function AiAssistant({ panelVisible = true }: AiAssistantProps) {
                   {mailboxList.map((mb) => (
                     <DropdownMenuItem
                       key={mb.id}
-                      onClick={() => setSelectedMailbox(mb.id)}
+                      onClick={() => {
+                        setSelectedMailbox(mb.id)
+                        onMailboxScopeChange?.(mb.id)
+                      }}
                       className={cn(
                         "flex items-center gap-2.5 px-3.5 py-2.5 cursor-pointer",
                         selectedMailbox === mb.id && "bg-primary/10 text-primary font-medium"

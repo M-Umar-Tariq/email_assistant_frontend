@@ -188,10 +188,12 @@ function RankIndicator({ rank }: { rank: number }) {
 export function AnalyticsView({
   onConnectMailbox,
   onOpenInboxWithMailbox,
+  mailboxScope = "all",
 }: {
   onConnectMailbox?: () => void
   /** Open unified inbox scoped to this connected account (same as Mailboxes → Open inbox). */
   onOpenInboxWithMailbox?: (mailboxId: string) => void
+  mailboxScope?: string
 } = {}) {
   const [overview, setOverview] = useState<{
     total_received: number
@@ -215,11 +217,11 @@ export function AnalyticsView({
   useEffect(() => {
     const days = 7
     Promise.all([
-      analytics.overview(days),
-      analytics.volume(days),
-      analytics.topSenders(5),
-      analytics.categories(days),
-      analytics.metrics(),
+      analytics.overview(days, mailboxScope),
+      analytics.volume(days, mailboxScope),
+      analytics.topSenders(5, mailboxScope),
+      analytics.categories(days, mailboxScope),
+      analytics.metrics(mailboxScope),
       mailboxesApi.list(),
     ])
       .then(([ov, vol, senders, cats, mets, mbs]) => {
@@ -239,7 +241,7 @@ export function AnalyticsView({
       })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }, [mailboxScope])
 
   useEffect(() => {
     const onMailboxUpdated = () => {
@@ -292,7 +294,7 @@ export function AnalyticsView({
               <div>
                 <h1 className="text-xl font-bold text-foreground tracking-tight">Analytics</h1>
                 <p className="text-sm text-muted-foreground mt-0.5">
-                  Email intelligence across all mailboxes
+                  {mailboxScope === "all" ? "Email intelligence across all mailboxes" : "Email intelligence for selected mailbox"}
                 </p>
               </div>
             </div>

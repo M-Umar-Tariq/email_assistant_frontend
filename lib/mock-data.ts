@@ -29,7 +29,16 @@ export type Email = {
   /** Present when email is loaded with full detail (e.g. mapEmailDetailApi). */
   sentReplies?: { date: string; from_email: string; to: string[]; subject: string; body: string }[]
   /** Present when email is loaded with full detail (e.g. mapEmailDetailApi). */
-  threadReplies?: { date: string; from_name: string; from_email: string; to: { name: string; email: string }[]; subject: string; body: string; body_html: string }[]
+  threadReplies?: {
+    date: string
+    from_name: string
+    from_email: string
+    to: { name: string; email: string }[]
+    subject: string
+    body: string
+    body_html: string
+    preview?: string
+  }[]
 }
 
 export type EmailCategory = "important" | "updates" | "promotions" | "social" | "newsletters" | "finance"

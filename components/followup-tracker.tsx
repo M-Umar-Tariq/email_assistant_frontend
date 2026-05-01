@@ -14,6 +14,8 @@ import {
   Timer,
   ListChecks,
   ChevronRight,
+  ChevronDown,
+  Inbox,
   Sparkles,
 } from "lucide-react"
 import { Card, CardContent } from "@/components/ui/card"
@@ -24,14 +26,23 @@ import { Avatar, AvatarFallback } from "@/components/ui/avatar"
 import { Input } from "@/components/ui/input"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu"
 import { followUps } from "@/lib/api"
 import { mapFollowUpApi, type FollowUpItem } from "@/lib/mappers"
 import { emails as emailsApi } from "@/lib/api"
+import { mailboxes as mailboxesApi } from "@/lib/api"
+import { mapMailboxApi } from "@/lib/mappers"
+import type { Mailbox } from "@/lib/mock-data"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 
 const CACHE_TTL_MS = 60_000
-let FOLLOWUPS_CACHE: { items: FollowUpItem[]; timestamp: number } | null = null
+let FOLLOWUPS_CACHE: Record<string, { items: FollowUpItem[]; timestamp: number }> = {}
 
 function getInitials(name: string) {
   return name
@@ -168,9 +179,16 @@ function StatRing({
   )
 }
 
-export function FollowupTracker() {
+export function FollowupTracker({
+  mailboxScope = "all",
+  onMailboxScopeChange,
+}: {
+  mailboxScope?: string
+  onMailboxScopeChange?: (mailboxId: string) => void
+} = {}) {
   const [filter, setFilter] = useState<FilterStatus>("all")
   const [items, setItems] = useState<FollowUpItem[]>([])
+  const [mailboxes, setMailboxes] = useState<Mailbox[]>([])
   const [loading, setLoading] = useState(true)
   const [replyOpen, setReplyOpen] = useState(false)
   const [replyItem, setReplyItem] = useState<FollowUpItem | null>(null)
@@ -184,7 +202,17 @@ export function FollowupTracker() {
   const [snoozeLoading, setSnoozeLoading] = useState(false)
 
   useEffect(() => {
-    const cached = FOLLOWUPS_CACHE
+    mailboxesApi.list().then((list) => setMailboxes(list.map(mapMailboxApi))).catch(() => {})
+    const onMailboxUpdated = () => {
+      mailboxesApi.list().then((list) => setMailboxes(list.map(mapMailboxApi))).catch(() => {})
+    }
+    window.addEventListener("mailbox:updated", onMailboxUpdated)
+    return () => window.removeEventListener("mailbox:updated", onMailboxUpdated)
+  }, [])
+
+  useEffect(() => {
+    const cacheKey = mailboxScope || "all"
+    const cached = FOLLOWUPS_CACHE[cacheKey]
     const now = Date.now()
     if (cached && now - cached.timestamp < CACHE_TTL_MS) {
       setItems(cached.items)
@@ -194,11 +222,11 @@ export function FollowupTracker() {
 
     // Show existing follow-ups immediately, then auto-detect new ones in background
     followUps
-      .list()
+      .list({ mailbox_id: mailboxScope !== "all" ? mailboxScope : undefined })
       .then((list) => {
         const mapped = list.map(mapFollowUpApi)
         setItems(mapped)
-        FOLLOWUPS_CACHE = { items: mapped, timestamp: Date.now() }
+        FOLLOWUPS_CACHE[cacheKey] = { items: mapped, timestamp: Date.now() }
       })
       .catch(() => {})
       .finally(() => setLoading(false))
@@ -206,18 +234,18 @@ export function FollowupTracker() {
     // Run AI auto-detection in background; refresh list when done
     followUps
       .autoToday()
-      .then(() => followUps.list())
+      .then(() => followUps.list({ mailbox_id: mailboxScope !== "all" ? mailboxScope : undefined }))
       .then((list) => {
         const mapped = list.map(mapFollowUpApi)
         setItems(mapped)
-        FOLLOWUPS_CACHE = { items: mapped, timestamp: Date.now() }
+        FOLLOWUPS_CACHE[cacheKey] = { items: mapped, timestamp: Date.now() }
       })
       .catch(() => {})
-  }, [])
+  }, [mailboxScope])
 
   useEffect(() => {
     const onMailboxUpdated = () => {
-      FOLLOWUPS_CACHE = null
+      FOLLOWUPS_CACHE = {}
     }
     window.addEventListener("mailbox:updated", onMailboxUpdated)
     return () => window.removeEventListener("mailbox:updated", onMailboxUpdated)
@@ -268,7 +296,12 @@ export function FollowupTracker() {
               : i
           )
         )
-        FOLLOWUPS_CACHE = { items: FOLLOWUPS_CACHE?.items ? prevMerge(FOLLOWUPS_CACHE.items, item.id, isCompleted ? "pending" : "completed") : [], timestamp: Date.now() }
+        const cacheKey = mailboxScope || "all"
+        const existing = FOLLOWUPS_CACHE[cacheKey]?.items ?? []
+        FOLLOWUPS_CACHE[cacheKey] = {
+          items: existing.length ? prevMerge(existing, item.id, isCompleted ? "pending" : "completed") : [],
+          timestamp: Date.now(),
+        }
       })
       .catch(() => {})
   }
@@ -370,6 +403,52 @@ export function FollowupTracker() {
                 </div>
               </div>
               <div className="flex items-center gap-2.5">
+                {mailboxes.length > 0 && (
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <button
+                        type="button"
+                        className="flex max-w-full min-w-0 items-center gap-1.5 rounded-xl border border-border/60 bg-card/70 px-2.5 py-1.5 text-xs text-muted-foreground outline-none transition-all duration-200 hover:border-primary/30 hover:bg-primary/5 hover:text-foreground"
+                      >
+                        <Inbox className="h-3.5 w-3.5 shrink-0" />
+                        <span className="min-w-0 truncate text-left font-medium text-foreground">
+                          {mailboxScope === "all"
+                            ? `All mailboxes (${mailboxes.length})`
+                            : mailboxes.find((m) => m.id === mailboxScope)?.name ?? "Mailbox"}
+                        </span>
+                        <ChevronDown className="h-3 w-3 shrink-0 opacity-70" />
+                      </button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="min-w-[220px] rounded-xl py-1.5" sideOffset={6}>
+                      <DropdownMenuItem
+                        onClick={() => onMailboxScopeChange?.("all")}
+                        className={cn(
+                          "flex cursor-pointer items-center gap-2.5 px-3.5 py-2.5",
+                          mailboxScope === "all" && "bg-primary/10 text-primary font-medium",
+                        )}
+                      >
+                        <Inbox className="h-3.5 w-3.5 shrink-0" />
+                        <span className="font-medium">All mailboxes</span>
+                      </DropdownMenuItem>
+                      {mailboxes.map((mb) => (
+                        <DropdownMenuItem
+                          key={mb.id}
+                          onClick={() => onMailboxScopeChange?.(mb.id)}
+                          className={cn(
+                            "flex items-center gap-2.5 px-3.5 py-2.5 cursor-pointer",
+                            mailboxScope === mb.id && "bg-primary/10 text-primary font-medium",
+                          )}
+                        >
+                          <span
+                            className="h-2.5 w-2.5 rounded-full shrink-0"
+                            style={{ backgroundColor: mb.color || "#64748b" }}
+                          />
+                          <span className="truncate font-medium flex-1">{mb.name}</span>
+                        </DropdownMenuItem>
+                      ))}
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                )}
                 {overdueCount > 0 && (
                   <Badge
                     variant="outline"

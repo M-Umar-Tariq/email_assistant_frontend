@@ -1,6 +1,6 @@
 "use client"
 
-import { useCallback, useEffect, useMemo, useState } from "react"
+import { useCallback, useEffect, useMemo, useRef, useState } from "react"
 import Image from "next/image"
 import {
   AlertTriangle,
@@ -63,12 +63,16 @@ import smartMailLogo from "@/logo/Smart Mail Logo.png"
 import smartMailLogoWhite from "@/logo/Smart Mail Logo White.png"
 
 const BRIEFING_MEETINGS_REFRESH_MS = 20_000
+const DASHBOARD_CACHE_TTL_MS = 10 * 60 * 1000
+const AI_SNAPSHOT_CACHE_TTL_MS = 30 * 60 * 1000
 
 export type InboxFilter =
   | "today"
   | "today_unread"
   | "today_replied"
   | "today_unreplied"
+  | "today_high_priority"
+  | "high_priority"
   | "total_unread"
   | "total_replied"
   | "total_unreplied"
@@ -280,21 +284,59 @@ function renderSummaryLines(summary: string | string[]) {
 
 function AiSummaryBanner({
   onOpenMailboxByEmail,
+  mailboxScope = "all",
 }: {
   /** Open inbox scoped to the mailbox whose account email matches (from AI snapshot). */
   onOpenMailboxByEmail?: (mailboxEmail: string) => void
+  mailboxScope?: string
 } = {}) {
   const [snapshots, setSnapshots] = useState<MailboxSnapshot[] | null>(null)
   const [loading, setLoading] = useState(false)
+
+  useEffect(() => {
+    const cacheKey = `smartmail:ai-snapshot:v1:${mailboxScope}`
+    try {
+      const raw = typeof window !== "undefined" ? sessionStorage.getItem(cacheKey) : null
+      if (raw) {
+        const parsed = JSON.parse(raw) as { ts: number; briefing?: MailboxSnapshot[] }
+        if (
+          typeof parsed.ts === "number" &&
+          Date.now() - parsed.ts < AI_SNAPSHOT_CACHE_TTL_MS &&
+          Array.isArray(parsed.briefing)
+        ) {
+          setSnapshots(parsed.briefing)
+          setLoading(false)
+          return
+        }
+      }
+    } catch {
+      // ignore
+    }
+    setSnapshots(null)
+    setLoading(false)
+  }, [mailboxScope])
+
   const fetchSummary = useCallback(() => {
     setLoading(true)
     setSnapshots(null)
     briefingApi
-      .ai()
-      .then((res) => setSnapshots(res.briefing))
+      .ai({ mailbox_id: mailboxScope !== "all" ? mailboxScope : undefined })
+      .then((res) => {
+        setSnapshots(res.briefing)
+        try {
+          if (typeof window !== "undefined") {
+            sessionStorage.setItem(
+              `smartmail:ai-snapshot:v1:${mailboxScope}`,
+              JSON.stringify({ ts: Date.now(), briefing: res.briefing }),
+            )
+          }
+        } catch {
+          // quota / private mode
+        }
+      })
       .catch(() => setSnapshots(null))
       .finally(() => setLoading(false))
-  }, [])
+  }, [mailboxScope])
 
   if (!snapshots && !loading) {
     return (
@@ -406,12 +448,12 @@ function AiSummaryBanner({
 
 /* ─── Email Trends Chart (7 days) ───────────────────────────────────── */
 
-function EmailTrendsChart({ refreshKey }: { refreshKey: number }) {
+function EmailTrendsChart({ refreshKey, mailboxScope }: { refreshKey: number; mailboxScope: string }) {
   const [volumeData, setVolumeData] = useState<{ date: string; received: number }[]>([])
 
   useEffect(() => {
-    analyticsApi.volume(7).then(setVolumeData).catch(() => {})
-  }, [refreshKey])
+    analyticsApi.volume(7, mailboxScope).then(setVolumeData).catch(() => {})
+  }, [refreshKey, mailboxScope])
 
   const maxVal = Math.max(...volumeData.map((d) => d.received), 1)
   const totalEmails = volumeData.reduce((a, d) => a + d.received, 0)
@@ -491,7 +533,7 @@ const senderColors = [
   "from-rose-500 to-pink-600",
 ]
 
-function TopSenders({ refreshKey }: { refreshKey: number }) {
+function TopSenders({ refreshKey, mailboxScope }: { refreshKey: number; mailboxScope: string }) {
   const openSenderInbox = (s: { email: string; name: string }) => {
     window.dispatchEvent(
       new CustomEvent("contacts:showEmailsFrom", {
@@ -502,8 +544,8 @@ function TopSenders({ refreshKey }: { refreshKey: number }) {
   const [senders, setSenders] = useState<{ email: string; name: string; count: number }[]>([])
 
   useEffect(() => {
-    analyticsApi.topSenders(5).then(setSenders).catch(() => {})
-  }, [refreshKey])
+    analyticsApi.topSenders(5, mailboxScope).then(setSenders).catch(() => {})
+  }, [refreshKey, mailboxScope])
 
   if (senders.length === 0) return null
 
@@ -912,36 +954,76 @@ function GroupedBriefingItems({
 
 /* ─── AI Personality Profile Widget ──────────────────────────────────── */
 
-function AiProfileWidget() {
+function AiProfileWidget({ mailboxScope = "all" }: { mailboxScope?: string }) {
   const [profile, setProfile] = useState<AgentProfile | null>(null)
   const [loading, setLoading] = useState(true)
   const [building, setBuilding] = useState(false)
   const [expanded, setExpanded] = useState(false)
+  const profileCacheRef = useRef<Record<string, AgentProfile>>({})
+  const scopeKey = mailboxScope || "all"
 
-  const loadProfile = useCallback(() => {
+  const loadProfile = (force = false) => {
+    const cached = profileCacheRef.current[scopeKey]
+    if (!force && cached) {
+      setProfile((prev) => (prev === cached ? prev : cached))
+      setLoading(false)
+      return Promise.resolve(cached)
+    }
     setLoading(true)
-    agentApi
-      .profile()
-      .then(setProfile)
+    return agentApi
+      .profile(mailboxScope)
+      .then((p) => {
+        setProfile(p)
+        profileCacheRef.current[scopeKey] = p
+        return p
+      })
       .catch(() => {})
       .finally(() => setLoading(false))
-  }, [])
+  }
 
   useEffect(() => {
-    loadProfile()
-  }, [loadProfile])
+    setExpanded(false)
+    const cached = profileCacheRef.current[scopeKey]
+    if (cached) {
+      setProfile((prev) => (prev === cached ? prev : cached))
+      setLoading(false)
+      return
+    }
+    setProfile((prev) => (prev === null ? prev : null))
+    setLoading(true)
+    let cancelled = false
+    agentApi
+      .profile(mailboxScope)
+      .then((p) => {
+        if (cancelled) return
+        profileCacheRef.current[scopeKey] = p
+        setProfile(p)
+      })
+      .catch(() => {})
+      .finally(() => {
+        if (!cancelled) setLoading(false)
+      })
+    return () => {
+      cancelled = true
+    }
+  }, [scopeKey])
 
   const rebuildProfile = useCallback(() => {
     setBuilding(true)
+    setLoading(true)
     agentApi
-      .buildProfile()
+      .buildProfile(mailboxScope)
       .then((p) => {
         setProfile(p)
+        profileCacheRef.current[scopeKey] = p
         setExpanded(true)
       })
       .catch(() => {})
-      .finally(() => setBuilding(false))
-  }, [])
+      .finally(() => {
+        setBuilding(false)
+        setLoading(false)
+      })
+  }, [mailboxScope, scopeKey])
 
   if (!profile && !loading) {
     return (
@@ -964,7 +1046,7 @@ function AiProfileWidget() {
           <Button
             size="sm"
             className="w-full gap-2 bg-gradient-to-r from-purple-600 to-purple-700 hover:from-purple-500 hover:to-purple-600 text-white rounded-xl shadow-lg shadow-purple-500/25 hover:shadow-xl hover:shadow-purple-500/30 transition-all duration-300 hover:-translate-y-0.5 active:translate-y-0"
-            onClick={loadProfile}
+            onClick={() => loadProfile(true)}
           >
             <Brain className="h-3.5 w-3.5" />
             Load Profile
@@ -1184,6 +1266,10 @@ export function DailyBriefing({
   onNavigateToEmail,
   onConnectMailbox,
   onOpenInboxWithMailbox,
+  onOpenCalendarWithMailbox,
+  mailboxScope = "all",
+  /** When the dashboard is kept mounted but hidden, pause polling timers (sync events still refresh data). */
+  visible = true,
 }: {
   onViewChange: (view: string) => void
   onNavigateInbox?: (filter: InboxFilter) => void
@@ -1191,9 +1277,14 @@ export function DailyBriefing({
   /** Opens add-mailbox dialog when user has no accounts */
   onConnectMailbox?: () => void
   /** Open unified inbox filtered to one connected account (dashboard widgets). */
-  onOpenInboxWithMailbox?: (mailboxId: string) => void
+  onOpenInboxWithMailbox?: (mailboxId: string, filter?: InboxFilter) => void
+  /** Open calendar filtered to one mailbox (per-mailbox schedule cards). */
+  onOpenCalendarWithMailbox?: (mailboxId: string) => void
+  mailboxScope?: string
+  visible?: boolean
 }) {
   const { user } = useAuth()
+  const requestSeqRef = useRef(0)
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([])
   const [briefingItems, setBriefingItems] = useState<BriefingItem[]>([])
   const [stats, setStats] = useState({ unreadTotal: 0, highPriority: 0 })
@@ -1203,6 +1294,21 @@ export function DailyBriefing({
     totalRepliesSent: 0, todayRepliesSent: 0,
   })
   const [allEmails, setAllEmails] = useState<Email[]>([])
+  const [mailboxStats, setMailboxStats] = useState<Record<string, {
+    todayTotal: number
+    grandTotal: number
+    todayUnread: number
+    totalUnread: number
+    todayReplied: number
+    totalReplied: number
+    todayUnreplied: number
+    totalUnreplied: number
+  }>>({})
+  const [mailboxMeetingStats, setMailboxMeetingStats] = useState<Record<string, {
+    count: number
+    conflicts: number
+    next: BriefingApi["stats"]["next_meeting"]
+  }>>({})
   const [loading, setLoading] = useState(true)
   const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
   const [widgetRefreshKey, setWidgetRefreshKey] = useState(0)
@@ -1212,11 +1318,19 @@ export function DailyBriefing({
     next: BriefingApi["stats"]["next_meeting"]
   }>({ count: 0, conflicts: 0, next: null })
 
+  const hasLoadedOnceRef = useRef(false)
+  const prevDashboardVisibleRef = useRef(false)
+  const isFirstMailboxScopeMountRef = useRef(true)
+  const [scopeSwitchBusy, setScopeSwitchBusy] = useState(false)
+
   /** Lightweight: briefing payload only (today's schedule, list items, stats). */
   const refreshBriefingFromApi = useCallback(() => {
+    const seq = ++requestSeqRef.current
+    const scopeAtRequest = mailboxScope
     briefingApi
-      .get()
+      .get({ mailbox_id: mailboxScope !== "all" ? mailboxScope : undefined })
       .then((data) => {
+        if (seq !== requestSeqRef.current || scopeAtRequest !== mailboxScope) return
         setBriefingItems(data.items.map(mapBriefingItem))
         setStats({
           unreadTotal: data.stats.unread_total,
@@ -1229,12 +1343,82 @@ export function DailyBriefing({
         })
       })
       .catch(() => {})
-  }, [])
+  }, [mailboxScope])
 
   const refreshDashboard = useCallback(() => {
+    const seq = ++requestSeqRef.current
+    const scopeAtRequest = mailboxScope
+    const dashboardCacheKey = `smartmail:dashboard:v1:${mailboxScope}`
+
+    try {
+      const raw = typeof window !== "undefined" ? sessionStorage.getItem(dashboardCacheKey) : null
+      if (raw) {
+        const parsed = JSON.parse(raw) as {
+          ts: number
+          mailboxes?: Mailbox[]
+          briefingItems?: BriefingItem[]
+          stats?: { unreadTotal: number; highPriority: number }
+          emailStats?: {
+            grandTotal: number
+            totalUnread: number
+            totalReplied: number
+            totalUnreplied: number
+            todayTotal: number
+            todayUnread: number
+            todayReplied: number
+            todayUnreplied: number
+            totalRepliesSent: number
+            todayRepliesSent: number
+          }
+          allEmails?: Email[]
+          meetingsToday?: {
+            count: number
+            conflicts: number
+            next: BriefingApi["stats"]["next_meeting"]
+          }
+          mailboxStats?: Record<string, {
+            todayTotal: number
+            grandTotal: number
+            todayUnread: number
+            totalUnread: number
+            todayReplied: number
+            totalReplied: number
+            todayUnreplied: number
+            totalUnreplied: number
+          }>
+          mailboxMeetingStats?: Record<string, {
+            count: number
+            conflicts: number
+            next: BriefingApi["stats"]["next_meeting"]
+          }>
+        }
+        if (
+          typeof parsed.ts === "number" &&
+          Date.now() - parsed.ts < DASHBOARD_CACHE_TTL_MS
+        ) {
+          if (Array.isArray(parsed.mailboxes)) setMailboxes(parsed.mailboxes)
+          if (Array.isArray(parsed.briefingItems)) setBriefingItems(parsed.briefingItems)
+          if (parsed.stats) setStats(parsed.stats)
+          if (parsed.emailStats) setEmailStats(parsed.emailStats)
+          if (Array.isArray(parsed.allEmails)) setAllEmails(parsed.allEmails)
+          if (parsed.meetingsToday) setMeetingsToday(parsed.meetingsToday)
+          if (parsed.mailboxStats && typeof parsed.mailboxStats === "object") {
+            setMailboxStats(parsed.mailboxStats)
+          }
+          if (parsed.mailboxMeetingStats && typeof parsed.mailboxMeetingStats === "object") {
+            setMailboxMeetingStats(parsed.mailboxMeetingStats)
+          }
+          setLoading(false)
+          setWidgetRefreshKey((k) => k + 1)
+        }
+      }
+    } catch {
+      // ignore corrupt cache
+    }
+
     Promise.all([
     briefingApi
-      .get()
+        .get({ mailbox_id: mailboxScope !== "all" ? mailboxScope : undefined })
       .then((data) => {
           setBriefingItems(data.items.map(mapBriefingItem))
           setStats({
@@ -1269,39 +1453,205 @@ export function DailyBriefing({
         })
         .catch(() => null),
       emailsApi
-        .stats()
-        .then((s) => setEmailStats({
-          grandTotal: s.grand_total,
-          totalUnread: s.total_unread,
-          totalReplied: s.total_replied,
-          totalUnreplied: s.total_unreplied,
-          todayTotal: s.today_total,
-          todayUnread: s.today_unread,
-          todayReplied: s.today_replied,
-          todayUnreplied: s.today_unreplied,
-          totalRepliesSent: s.total_replies_sent ?? 0,
-          todayRepliesSent: s.today_replies_sent ?? 0,
-        }))
-        .catch(() => {}),
+        .stats(mailboxScope !== "all" ? { mailbox_id: mailboxScope } : undefined)
+        .then((s) => {
+          setEmailStats({
+            grandTotal: s.grand_total,
+            totalUnread: s.total_unread,
+            totalReplied: s.total_replied,
+            totalUnreplied: s.total_unreplied,
+            todayTotal: s.today_total,
+            todayUnread: s.today_unread,
+            todayReplied: s.today_replied,
+            todayUnreplied: s.today_unreplied,
+            totalRepliesSent: s.total_replies_sent ?? 0,
+            todayRepliesSent: s.today_replies_sent ?? 0,
+          })
+          return s
+        })
+        .catch(() => null),
       emailsApi
-        .list({ limit: 50 })
-        .then((list) => setAllEmails(list.map(mapEmailListApi)))
-        .catch(() => {}),
+        .list({ limit: 50, ...(mailboxScope !== "all" ? { mailbox_id: mailboxScope } : {}) })
+        .then((res) => {
+          const mapped = (res.emails ?? []).map(mapEmailListApi)
+          setAllEmails(mapped)
+          return res
+        })
+        .catch(() => null),
     ])
-      .then(([briefingData, mbList]) => {
+      .then(([briefingData, mbList, statsData, listRes]) => {
+        if (seq !== requestSeqRef.current || scopeAtRequest !== mailboxScope) return
         if (briefingData && mbList) {
           const unreadMap = new Map(
             briefingData.mailboxes.map((m: { id: string; unread: number }) => [m.id, m.unread ?? 0])
           )
           setMailboxes((prev) => prev.map((mb) => ({ ...mb, unread: unreadMap.get(mb.id) ?? mb.unread })))
         }
+
+        // Unblock the main dashboard as soon as core payloads are ready.
+        // Per-mailbox widget details can hydrate in the background.
+        setLoading(false)
+        setWidgetRefreshKey((k) => k + 1)
+        hasLoadedOnceRef.current = true
+
+        try {
+          if (
+            typeof window !== "undefined" &&
+            briefingData &&
+            mbList &&
+            statsData &&
+            listRes
+          ) {
+            const unreadMap = new Map(
+              briefingData.mailboxes.map((m: { id: string; unread: number }) => [m.id, m.unread ?? 0])
+            )
+            const mailboxesForCache = mbList.map((m) => ({
+              id: m.id,
+              name: m.name,
+              email: m.email,
+              provider: "imap" as const,
+              color: m.color || "#0ea5e9",
+              unread: unreadMap.get(m.id) ?? 0,
+              synced: m.sync_status === "synced",
+              syncStatus: m.sync_status,
+              lastSync: m.last_sync_at ? new Date(m.last_sync_at).toLocaleString() : "Never",
+            }))
+            sessionStorage.setItem(
+              dashboardCacheKey,
+              JSON.stringify({
+                ts: Date.now(),
+                mailboxes: mailboxesForCache,
+                briefingItems: briefingData.items.map(mapBriefingItem),
+                stats: {
+                  unreadTotal: briefingData.stats.unread_total,
+                  highPriority: briefingData.stats.high_priority,
+                },
+                meetingsToday: {
+                  count: briefingData.stats.meetings_today_count ?? 0,
+                  conflicts: briefingData.stats.meetings_today_conflicts ?? 0,
+                  next: briefingData.stats.next_meeting ?? null,
+                },
+                emailStats: {
+                  grandTotal: statsData.grand_total,
+                  totalUnread: statsData.total_unread,
+                  totalReplied: statsData.total_replied,
+                  totalUnreplied: statsData.total_unreplied,
+                  todayTotal: statsData.today_total,
+                  todayUnread: statsData.today_unread,
+                  todayReplied: statsData.today_replied,
+                  todayUnreplied: statsData.today_unreplied,
+                  totalRepliesSent: statsData.total_replies_sent ?? 0,
+                  todayRepliesSent: statsData.today_replies_sent ?? 0,
+                },
+                allEmails: (listRes.emails ?? []).map(mapEmailListApi),
+              }),
+            )
+          }
+        } catch {
+          // quota / private mode
+        }
+
+        if (mbList) {
+          const targets = mailboxScope === "all" ? mbList : mbList.filter((mb) => mb.id === mailboxScope)
+          Promise.all(
+            targets.map(async (mb) => {
+              try {
+                const s = await emailsApi.stats({ mailbox_id: mb.id })
+                return [mb.id, {
+                  todayTotal: s.today_total,
+                  grandTotal: s.grand_total,
+                  todayUnread: s.today_unread,
+                  totalUnread: s.total_unread,
+                  todayReplied: s.today_replies_sent ?? 0,
+                  totalReplied: s.total_replies_sent ?? 0,
+                  todayUnreplied: s.today_unreplied,
+                  totalUnreplied: s.total_unreplied,
+                }] as const
+              } catch {
+                return [mb.id, {
+                  todayTotal: 0,
+                  grandTotal: 0,
+                  todayUnread: 0,
+                  totalUnread: 0,
+                  todayReplied: 0,
+                  totalReplied: 0,
+                  todayUnreplied: 0,
+                  totalUnreplied: 0,
+                }] as const
+              }
+            })
+          ).then((entries) => {
+            if (seq !== requestSeqRef.current || scopeAtRequest !== mailboxScope) return
+            const nextStats = Object.fromEntries(entries)
+            setMailboxStats(nextStats)
+            try {
+              const raw = typeof window !== "undefined" ? sessionStorage.getItem(dashboardCacheKey) : null
+              if (!raw) return
+              const o = JSON.parse(raw) as Record<string, unknown>
+              o.mailboxStats = nextStats
+              o.ts = Date.now()
+              sessionStorage.setItem(dashboardCacheKey, JSON.stringify(o))
+            } catch {
+              // ignore
+            }
+          })
+
+          Promise.all(
+            targets.map(async (mb) => {
+              try {
+                const b = await briefingApi.get({ mailbox_id: mb.id })
+                return [mb.id, {
+                  count: b.stats.meetings_today_count ?? 0,
+                  conflicts: b.stats.meetings_today_conflicts ?? 0,
+                  next: b.stats.next_meeting ?? null,
+                }] as const
+              } catch {
+                return [mb.id, { count: 0, conflicts: 0, next: null }] as const
+              }
+            })
+          ).then((meetingEntries) => {
+            if (seq !== requestSeqRef.current || scopeAtRequest !== mailboxScope) return
+            const nextMeetings = Object.fromEntries(meetingEntries)
+            setMailboxMeetingStats(nextMeetings)
+            try {
+              const raw = typeof window !== "undefined" ? sessionStorage.getItem(dashboardCacheKey) : null
+              if (!raw) return
+              const o = JSON.parse(raw) as Record<string, unknown>
+              o.mailboxMeetingStats = nextMeetings
+              o.ts = Date.now()
+              sessionStorage.setItem(dashboardCacheKey, JSON.stringify(o))
+            } catch {
+              // ignore
+            }
+          })
+        }
       })
-      .finally(() => { setLoading(false); setWidgetRefreshKey((k) => k + 1) })
-  }, [])
+      .finally(() => {
+        // Only the latest request may clear loading / scope banner (avoids stuck UI if scope changes mid-flight).
+        if (seq !== requestSeqRef.current) return
+        setLoading(false)
+        setScopeSwitchBusy(false)
+      })
+  }, [mailboxScope])
+
+  useEffect(() => {
+    if (isFirstMailboxScopeMountRef.current) {
+      isFirstMailboxScopeMountRef.current = false
+      return
+    }
+    setScopeSwitchBusy(true)
+  }, [mailboxScope])
 
   useEffect(() => {
     refreshDashboard()
   }, [refreshDashboard])
+
+  useEffect(() => {
+    const becameVisible = visible && !prevDashboardVisibleRef.current
+    prevDashboardVisibleRef.current = visible
+    if (!becameVisible || !hasLoadedOnceRef.current) return
+    refreshDashboard()
+  }, [visible, refreshDashboard])
 
   useEffect(() => {
     const onRefresh = () => refreshDashboard()
@@ -1318,11 +1668,11 @@ export function DailyBriefing({
       window.removeEventListener("folder-counts:refresh", onRefresh)
       window.removeEventListener("calendar:updated", onCalendar)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [refreshDashboard, refreshBriefingFromApi])
 
   /** Poll briefing so Today's schedule updates when meetings end (backend filters by current time). */
   useEffect(() => {
+    if (!visible) return
     const tick = () => refreshBriefingFromApi()
     const id = window.setInterval(tick, BRIEFING_MEETINGS_REFRESH_MS)
     const onVis = () => {
@@ -1333,16 +1683,15 @@ export function DailyBriefing({
       window.clearInterval(id)
       document.removeEventListener("visibilitychange", onVis)
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [refreshBriefingFromApi, visible])
 
   useEffect(() => {
+    if (!visible) return
     const hasSyncing = mailboxes.some((mb) => mb.syncStatus === "syncing" || mb.syncStatus === "pending")
     if (!hasSyncing) return
     const interval = setInterval(() => refreshDashboard(), 5000)
     return () => clearInterval(interval)
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mailboxes])
+  }, [mailboxes, refreshDashboard, visible])
 
   const todayTotal = emailStats.todayTotal
   const todayUnread = emailStats.todayUnread
@@ -1403,6 +1752,9 @@ export function DailyBriefing({
   })
 
   const noMailboxConnected = !loading && mailboxes.length === 0
+  const scopedMailboxes = mailboxScope === "all"
+    ? mailboxes
+    : mailboxes.filter((mb) => mb.id === mailboxScope)
 
   if (loading) {
     return (
@@ -1423,6 +1775,16 @@ export function DailyBriefing({
 
   return (
     <div className="flex h-full flex-col">
+      {scopeSwitchBusy && (
+        <div
+          className="flex shrink-0 items-center gap-2 border-b border-border/40 bg-muted/40 px-4 py-2 text-xs font-medium text-muted-foreground"
+          role="status"
+          aria-live="polite"
+        >
+          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-primary" />
+          Updating briefing for this mailbox…
+        </div>
+      )}
       {/* Hero Header */}
       <header className="relative overflow-hidden border-b border-border/40">
         <div className="absolute inset-0 bg-gradient-to-br from-primary/[0.05] via-primary/[0.02] to-transparent" />
@@ -1465,8 +1827,8 @@ export function DailyBriefing({
                   {stats.highPriority > 0 && (
                     <button
                       type="button"
-                      aria-label="Open inbox filtered to today unreplied"
-                      onClick={() => handleCardClick("today_unreplied")}
+                      aria-label="Open inbox filtered to today's high priority emails"
+                      onClick={() => handleCardClick("today_high_priority")}
                       className={cn(
                         badgeVariants({ variant: "outline" }),
                         "gap-1.5 rounded-full border-red-400/25 bg-red-400/5 px-3 py-1.5 text-xs font-semibold text-red-600 shadow-sm shadow-red-400/10 transition-colors hover:bg-red-400/10 dark:text-red-400",
@@ -1505,58 +1867,9 @@ export function DailyBriefing({
           </div>
         ) : (
         <div className="space-y-5 p-4 pb-24 sm:space-y-6 sm:p-6 sm:pb-20 md:pb-8">
-          {/* Row 1: Stats */}
-          <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3 briefing-stagger">
-            <StatCard
-              label="Emails"
-              value={todayTotal}
-              totalValue={grandTotal}
-              icon={Inbox}
-              gradientFrom="from-blue-500"
-              gradientTo="to-blue-600"
-              onClick={() => handleCardClick("today")}
-            />
-            <StatCard
-              label="Unread"
-              value={todayUnread}
-              totalValue={totalUnread}
-              icon={MailOpen}
-              gradientFrom="from-amber-500"
-              gradientTo="to-orange-500"
-              onClick={() => handleCardClick("today_unread")}
-            />
-            <StatCard
-              label="Replied"
-              value={todayRepliesSent}
-              totalValue={totalRepliesSent}
-              icon={Reply}
-              gradientFrom="from-emerald-500"
-              gradientTo="to-teal-600"
-              onClick={() => handleCardClick("today_replied")}
-            />
-            <StatCard
-              label="Unreplied"
-              value={todayUnreplied}
-              totalValue={totalUnreplied}
-              icon={MailX}
-              gradientFrom="from-rose-500"
-              gradientTo="to-red-600"
-              onClick={() => handleCardClick("today_unreplied")}
-            />
-          </div>
-
-          {/* Row 2: Today's meetings */}
-          <div className="animate-entrance" style={{ animationDelay: "0.08s" }}>
-            <TodaysMeetingsCard
-              count={meetingsToday.count}
-              conflicts={meetingsToday.conflicts}
-              next={meetingsToday.next}
-              onOpenCalendar={() => onViewChange("calendar")}
-            />
-          </div>
-
-          {/* Row 3: AI Snapshot */}
+          {/* Row 1: AI Snapshot */}
           <AiSummaryBanner
+            mailboxScope={mailboxScope}
             onOpenMailboxByEmail={
               onOpenInboxWithMailbox
                 ? (email) => {
@@ -1569,12 +1882,209 @@ export function DailyBriefing({
             }
           />
 
-          {/* Row 3: Analytics strip — 3 equal cards */}
-          <div className="grid grid-cols-1 gap-4 md:grid-cols-3 briefing-stagger">
-            <EmailTrendsChart refreshKey={widgetRefreshKey} />
-            <TopSenders refreshKey={widgetRefreshKey} />
-            <MailboxStatus mailboxes={mailboxes} onOpenInboxWithMailbox={onOpenInboxWithMailbox} />
-          </div>
+          {/* Row 1: Stats in one box */}
+          <Card className="glass-card border-border/40 glow-ring overflow-hidden">
+            <CardHeader className="pb-2 pt-4">
+              <div className="flex items-center justify-between gap-2">
+                <CardTitle className="text-sm font-bold text-foreground">Stats</CardTitle>
+                {mailboxScope === "all" && (
+                  <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary">
+                    All Emails (All Mailboxes)
+                  </span>
+                )}
+              </div>
+            </CardHeader>
+            <CardContent className="space-y-4 pb-4">
+              <div className="rounded-xl border border-border/40 bg-card/40 p-3">
+                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-primary">
+                  All Mailboxes Stats
+                </p>
+                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3 briefing-stagger">
+                  <StatCard
+                    label="Emails"
+                    value={todayTotal}
+                    totalValue={grandTotal}
+                    icon={Inbox}
+                    gradientFrom="from-blue-500"
+                    gradientTo="to-blue-600"
+                    onClick={() => handleCardClick("today")}
+                  />
+                  <StatCard
+                    label="Unread"
+                    value={todayUnread}
+                    totalValue={totalUnread}
+                    icon={MailOpen}
+                    gradientFrom="from-amber-500"
+                    gradientTo="to-orange-500"
+                    onClick={() => handleCardClick("today_unread")}
+                  />
+                  <StatCard
+                    label="Replied"
+                    value={todayRepliesSent}
+                    totalValue={totalRepliesSent}
+                    icon={Reply}
+                    gradientFrom="from-emerald-500"
+                    gradientTo="to-teal-600"
+                    onClick={() => handleCardClick("today_replied")}
+                  />
+                  <StatCard
+                    label="Unreplied"
+                    value={todayUnreplied}
+                    totalValue={totalUnreplied}
+                    icon={MailX}
+                    gradientFrom="from-rose-500"
+                    gradientTo="to-red-600"
+                    onClick={() => handleCardClick("today_unreplied")}
+                  />
+                </div>
+              </div>
+
+              {mailboxScope === "all" && mailboxes.length > 0 && (
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+                  {mailboxes.map((mb) => {
+                    const s = mailboxStats[mb.id] || {
+                      todayTotal: 0,
+                      grandTotal: 0,
+                      todayUnread: 0,
+                      totalUnread: 0,
+                      todayReplied: 0,
+                      totalReplied: 0,
+                      todayUnreplied: 0,
+                      totalUnreplied: 0,
+                    }
+                    return (
+                      <div
+                        key={mb.id}
+                        className="group/stat relative overflow-hidden rounded-xl border border-border/40 bg-card/60 p-4 transition-all duration-300 hover:border-border/70 hover:shadow-md"
+                      >
+                        <div
+                          className="absolute -top-8 -right-8 h-20 w-20 rounded-full opacity-[0.08] blur-2xl"
+                          style={{ backgroundColor: mb.color || "#64748b" }}
+                        />
+                        <div className="relative">
+                          <div className="mb-3 flex items-center gap-2">
+                            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: mb.color || "#64748b" }} />
+                            <p className="text-sm font-semibold text-foreground">{mb.name}</p>
+                          </div>
+                          <div className="grid grid-cols-2 gap-2.5">
+                            <StatCard
+                              label="Emails"
+                              value={s.todayTotal}
+                              totalValue={s.grandTotal}
+                              icon={Inbox}
+                              gradientFrom="from-blue-500"
+                              gradientTo="to-blue-600"
+                              onClick={() => onOpenInboxWithMailbox?.(mb.id, "today")}
+                            />
+                            <StatCard
+                              label="Unread"
+                              value={s.todayUnread}
+                              totalValue={s.totalUnread}
+                              icon={MailOpen}
+                              gradientFrom="from-amber-500"
+                              gradientTo="to-orange-500"
+                              onClick={() => onOpenInboxWithMailbox?.(mb.id, "today_unread")}
+                            />
+                            <StatCard
+                              label="Replied"
+                              value={s.todayReplied}
+                              totalValue={s.totalReplied}
+                              icon={Reply}
+                              gradientFrom="from-emerald-500"
+                              gradientTo="to-teal-600"
+                              onClick={() => onOpenInboxWithMailbox?.(mb.id, "today_replied")}
+                            />
+                            <StatCard
+                              label="Unreplied"
+                              value={s.todayUnreplied}
+                              totalValue={s.totalUnreplied}
+                              icon={MailX}
+                              gradientFrom="from-rose-500"
+                              gradientTo="to-red-600"
+                              onClick={() => onOpenInboxWithMailbox?.(mb.id, "today_unreplied")}
+                            />
+                          </div>
+                        </div>
+                      </div>
+                    )
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Row 2: Meetings in one box */}
+          <Card className="glass-card border-border/40 glow-ring overflow-hidden animate-entrance" style={{ animationDelay: "0.08s" }}>
+            <CardHeader className="pb-2 pt-4">
+              <CardTitle className="text-sm font-bold text-foreground">Meetings</CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4 pb-4">
+              <TodaysMeetingsCard
+                count={meetingsToday.count}
+                conflicts={meetingsToday.conflicts}
+                next={meetingsToday.next}
+                onOpenCalendar={() => onViewChange("calendar")}
+              />
+              {mailboxScope === "all" && mailboxes.length > 0 && (
+                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                  {mailboxes.map((mb) => {
+                    const m = mailboxMeetingStats[mb.id] || { count: 0, conflicts: 0, next: null }
+                    return (
+                      <Card
+                        key={mb.id}
+                        role="button"
+                        tabIndex={0}
+                        onClick={() => onOpenCalendarWithMailbox?.(mb.id)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter" || e.key === " ") {
+                            e.preventDefault()
+                            onOpenCalendarWithMailbox?.(mb.id)
+                          }
+                        }}
+                        className={cn(
+                          "group/meet relative overflow-hidden border border-border/50",
+                          "bg-gradient-to-b from-card via-card to-violet-500/[0.03]",
+                          "shadow-sm shadow-black/5 dark:shadow-black/20",
+                          "transition-all duration-300",
+                          "cursor-pointer hover:border-violet-500/25 hover:shadow-md hover:shadow-violet-500/10",
+                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+                        )}
+                      >
+                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-violet-500 via-purple-500 to-fuchsia-600 opacity-90" />
+                        <CardContent className="p-4 pl-3.5">
+                          <div className="mb-2 flex items-center gap-2">
+                            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: mb.color || "#64748b" }} />
+                            <p className="text-sm font-semibold text-foreground">{mb.name}</p>
+                          </div>
+                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
+                            <span>Meetings: <span className="font-semibold text-foreground">{m.count}</span></span>
+                            <span>Conflicts: <span className="font-semibold text-foreground">{m.conflicts}</span></span>
+                          </div>
+                          <p className="mt-2 text-[11px] text-muted-foreground">
+                            {m.next ? `Next: ${m.next.title}` : "No meetings left today"}
+                          </p>
+                        </CardContent>
+                      </Card>
+                    )
+                  })}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+
+          {/* Row 3: All Analytics in one box */}
+          <Card className="glass-card border-border/40 glow-ring overflow-hidden">
+            <CardHeader className="pb-2 pt-4">
+              <CardTitle className="text-sm font-bold text-foreground">All Analytics</CardTitle>
+            </CardHeader>
+            <CardContent className="pb-4">
+              <div className="grid grid-cols-1 gap-4 md:grid-cols-3 briefing-stagger">
+                <EmailTrendsChart refreshKey={widgetRefreshKey} mailboxScope={mailboxScope} />
+                <TopSenders refreshKey={widgetRefreshKey} mailboxScope={mailboxScope} />
+                <MailboxStatus mailboxes={scopedMailboxes} onOpenInboxWithMailbox={onOpenInboxWithMailbox} />
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Row 4: Briefing items + sidebar widgets */}
           <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
@@ -1600,7 +2110,7 @@ export function DailyBriefing({
             </div>
 
             <div className="lg:col-span-4 flex flex-col gap-5 briefing-stagger">
-              <AiProfileWidget />
+              <AiProfileWidget mailboxScope={mailboxScope} />
               <RecentActivityFeed emails={allEmails} />
             </div>
           </div>
