@@ -1,4 +1,4 @@
-export type Email = {
+﻿export type Email = {
   id: string
   from: { name: string; email: string; avatar?: string }
   to: { name: string; email: string }[]
@@ -7,7 +7,7 @@ export type Email = {
   body: string
   bodyIsHtml?: boolean
   date: string
-  /** First received time (UTC) when thread activity bumps `date` — matches API `original_date`. */
+  /** First received time (UTC) when thread activity bumps `date` â€” matches API `original_date`. */
   originalDate?: string | null
   read: boolean
   starred: boolean
@@ -18,11 +18,9 @@ export type Email = {
   priority: "high" | "medium" | "low"
   threadId: string
   threadCount?: number
-  category?: EmailCategory
   aiSummary?: string
   instantReplies?: InstantReply[]
   snoozedUntil?: string | null
-  followUp?: FollowUp | null
   schedulingInfo?: SchedulingInfo | null
   sentimentScore?: number // -1 to 1
   repliedAt?: string | null
@@ -41,22 +39,11 @@ export type Email = {
   }[]
 }
 
-export type EmailCategory = "important" | "updates" | "promotions" | "social" | "newsletters" | "finance"
-
 export type InstantReply = {
   id: string
   label: string
   tone: "positive" | "neutral" | "negative" | "question"
   text: string
-}
-
-export type FollowUp = {
-  id: string
-  dueDate: string
-  status: "pending" | "overdue" | "completed" | "snoozed"
-  autoReminderSent: boolean
-  suggestedAction: string
-  daysWaiting: number
 }
 
 export type SchedulingInfo = {
@@ -70,7 +57,7 @@ export type SchedulingInfo = {
   attendees?: string[]
   location?: string
   title?: string
-  /** "pending" | "added" | "dismissed" — tracks user's decision on this detection. */
+  /** "pending" | "added" | "dismissed" â€” tracks user's decision on this detection. */
   status?: "pending" | "added" | "dismissed"
 }
 
@@ -114,17 +101,6 @@ export type Mailbox = {
   /** Live sync progress for current mailbox fetch job. */
   syncTotalFetched?: number
   syncProcessed?: number
-}
-
-export type BriefingItem = {
-  id: string
-  type: "urgent" | "followup" | "deadline" | "vip" | "risk" | "info" | "meeting"
-  title: string
-  description: string
-  emails: string[]
-  priority: "high" | "medium" | "low"
-  /** When type is meeting, backend briefing item id for calendar navigation */
-  meetingId?: string
 }
 
 export type AnalyticsData = {
@@ -193,7 +169,6 @@ export const emails: Email[] = [
     priority: "high",
     threadId: "t-1",
     threadCount: 5,
-    category: "important",
     aiSummary: "VendorX contract renewal has 2 unresolved terms: payment period (Net-60 vs Net-30) and liability cap ($500K vs $2M). Contract expires March 15. Sarah requests a call this week.",
     sentimentScore: 0.3,
     instantReplies: [
@@ -201,14 +176,6 @@ export const emails: Email[] = [
       { id: "ir-1b", label: "Need more time", tone: "neutral", text: "Hi Sarah,\n\nAppreciate the thorough review. I need to loop in our CFO on the payment terms discussion. Can we aim for early next week instead? I'll have our position finalized by then.\n\nBest,\nAlex" },
       { id: "ir-1c", label: "Counter-propose", tone: "question", text: "Hi Sarah,\n\nThanks for flagging these. What if we meet in the middle - Net-45 payment terms and a $1M liability cap? That would align with recent precedents in our industry.\n\nHappy to discuss on a call if preferred.\n\nBest,\nAlex" },
     ],
-    followUp: {
-      id: "fu-1",
-      dueDate: "2026-02-14T17:00:00Z",
-      status: "pending",
-      autoReminderSent: false,
-      suggestedAction: "Schedule negotiation call before March 15 deadline",
-      daysWaiting: 1,
-    },
     schedulingInfo: {
       detected: true,
       suggestedDate: "2026-02-19",
@@ -233,7 +200,6 @@ export const emails: Email[] = [
     priority: "high",
     threadId: "t-2",
     threadCount: 8,
-    category: "important",
     aiSummary: "Customer portal outage since 7:30 AM. 2,400 users affected, $180K revenue at risk. Needs emergency $15K AWS budget approval.",
     sentimentScore: -0.6,
     instantReplies: [
@@ -241,14 +207,6 @@ export const emails: Email[] = [
       { id: "ir-2b", label: "Need details", tone: "question", text: "David,\n\nBefore I approve, can you confirm: (1) What's the root cause? (2) Is this a permanent fix or temporary? (3) What's the ETA to full recovery?\n\nAlex" },
       { id: "ir-2c", label: "Escalate further", tone: "neutral", text: "David,\n\nApproved with conditions. Please also prepare a post-mortem and ensure we have redundancy measures in place to prevent recurrence. Loop in the CTO as well.\n\nAlex" },
     ],
-    followUp: {
-      id: "fu-2",
-      dueDate: "2026-02-13T12:00:00Z",
-      status: "overdue",
-      autoReminderSent: true,
-      suggestedAction: "Approve emergency budget - revenue at risk",
-      daysWaiting: 0,
-    },
   },
   {
     id: "e-3",
@@ -265,21 +223,12 @@ export const emails: Email[] = [
     hasAttachment: true,
     priority: "medium",
     threadId: "t-3",
-    category: "important",
     aiSummary: "Q2 co-marketing proposal from PartnerCorp: joint webinars, co-branded content, $50K ad spend (60/40 split), targeting 150K+ prospects. Deck attached.",
     sentimentScore: 0.7,
     instantReplies: [
       { id: "ir-3a", label: "Interested", tone: "positive", text: "Hi Lisa,\n\nThanks for putting this together - the proposal looks compelling, especially the projected reach. Let me review the deck this week and circle back with some thoughts. How's Tuesday or Wednesday for a call?\n\nBest,\nAlex" },
       { id: "ir-3b", label: "Decline", tone: "negative", text: "Hi Lisa,\n\nThank you for the proposal. After reviewing our Q2 commitments, I don't think we have the bandwidth for a full co-marketing initiative right now. Could we explore a smaller pilot instead?\n\nBest,\nAlex" },
     ],
-    followUp: {
-      id: "fu-3",
-      dueDate: "2026-02-17T17:00:00Z",
-      status: "pending",
-      autoReminderSent: false,
-      suggestedAction: "Review proposal deck and schedule discussion call",
-      daysWaiting: 3,
-    },
     schedulingInfo: {
       detected: true,
       suggestedDate: "2026-02-18",
@@ -303,21 +252,12 @@ export const emails: Email[] = [
     hasAttachment: true,
     priority: "high",
     threadId: "t-4",
-    category: "important",
     aiSummary: "TechStart NDA needs sign-off on 3 items: non-compete scope, IP assignment, and data handling. Deadline: EOD Friday.",
     sentimentScore: 0.1,
     instantReplies: [
       { id: "ir-4a", label: "Approve all", tone: "positive", text: "James,\n\nReviewed the marked-up document. All three items look acceptable. You have my sign-off to proceed.\n\nBest,\nAlex" },
       { id: "ir-4b", label: "Request changes", tone: "question", text: "James,\n\nI'm comfortable with items 2 and 3, but I'd like to push back on the non-compete scope. Can we propose 18 months as a compromise? Let me know if that's workable.\n\nBest,\nAlex" },
     ],
-    followUp: {
-      id: "fu-4",
-      dueDate: "2026-02-14T17:00:00Z",
-      status: "pending",
-      autoReminderSent: false,
-      suggestedAction: "Review and sign off on NDA by Friday",
-      daysWaiting: 1,
-    },
   },
   {
     id: "e-5",
@@ -334,7 +274,6 @@ export const emails: Email[] = [
     hasAttachment: true,
     priority: "low",
     threadId: "t-5",
-    category: "updates",
     aiSummary: "February newsletter draft ready for review. Covers product launch, GlobalTech success story, webinar schedule, Q1 roadmap. Feedback due Thursday.",
     sentimentScore: 0.5,
   },
@@ -353,21 +292,12 @@ export const emails: Email[] = [
     hasAttachment: false,
     priority: "high",
     threadId: "t-6",
-    category: "important",
     aiSummary: "GlobalTech committed to Enterprise plan: $240K ARR, 3-year term, 500 seats. Implementation March 1. Procurement approval needed by Friday.",
     sentimentScore: 0.9,
     instantReplies: [
       { id: "ir-6a", label: "Congratulate", tone: "positive", text: "Rachel,\n\nFantastic work! This is a huge win for the team. I'll fast-track the procurement approval today. Let's make sure the implementation team is briefed by EOW.\n\nAlex" },
       { id: "ir-6b", label: "Ask details", tone: "question", text: "Rachel,\n\nGreat news! Before I push through procurement, can you confirm: (1) Any custom SLA requirements? (2) Who's the exec sponsor on their side? (3) Is the 500-seat count firm or could it start lower?\n\nAlex" },
     ],
-    followUp: {
-      id: "fu-6",
-      dueDate: "2026-02-14T17:00:00Z",
-      status: "pending",
-      autoReminderSent: false,
-      suggestedAction: "Process procurement approval for GlobalTech deal",
-      daysWaiting: 0,
-    },
   },
   {
     id: "e-7",
@@ -384,7 +314,6 @@ export const emails: Email[] = [
     hasAttachment: false,
     priority: "low",
     threadId: "t-7",
-    category: "social",
     aiSummary: "Tom asking about Saturday hiking plan at Mt. Wilson trail. Suggested 7 AM start. Wants confirmation.",
     sentimentScore: 0.8,
     instantReplies: [
@@ -415,7 +344,6 @@ export const emails: Email[] = [
     hasAttachment: true,
     priority: "medium",
     threadId: "t-8",
-    category: "finance",
     aiSummary: "AWS February invoice: $34,521.87 (up 23% from $28,087). Top cost: EC2 at $18,240. Significant increase needs attention.",
     sentimentScore: -0.2,
   },
@@ -434,7 +362,6 @@ export const emails: Email[] = [
     hasAttachment: false,
     priority: "medium",
     threadId: "t-9",
-    category: "updates",
     aiSummary: "47 support tickets (up 12%), 3 SLA breaches. Main issue: SSO login failures (18 tickets). CSAT at 4.1/5.0.",
     sentimentScore: -0.3,
   },
@@ -453,17 +380,8 @@ export const emails: Email[] = [
     hasAttachment: false,
     priority: "medium",
     threadId: "t-10",
-    category: "updates",
     aiSummary: "Performance review reminder. Self-assessment due Feb 21, manager reviews Feb 28, calibration March 3-5.",
     sentimentScore: 0.0,
-    followUp: {
-      id: "fu-10",
-      dueDate: "2026-02-21T17:00:00Z",
-      status: "pending",
-      autoReminderSent: false,
-      suggestedAction: "Complete self-assessment in HR portal",
-      daysWaiting: 1,
-    },
   },
   {
     id: "e-11",
@@ -480,7 +398,6 @@ export const emails: Email[] = [
     hasAttachment: false,
     priority: "low",
     threadId: "t-11",
-    category: "social",
     aiSummary: "5 new LinkedIn connection requests including VPs and C-suite executives from tech companies.",
     sentimentScore: 0.4,
   },
@@ -499,7 +416,6 @@ export const emails: Email[] = [
     hasAttachment: false,
     priority: "low",
     threadId: "t-12",
-    category: "finance",
     aiSummary: "$12,400 payment received from MegaCorp Inc. Funds depositing in 2-3 business days.",
     sentimentScore: 0.8,
   },
@@ -518,7 +434,6 @@ export const emails: Email[] = [
     hasAttachment: false,
     priority: "low",
     threadId: "t-13",
-    category: "newsletters",
     aiSummary: "Product Hunt daily digest featuring 5 AI productivity tools.",
     sentimentScore: 0.3,
   },
@@ -537,7 +452,6 @@ export const emails: Email[] = [
     hasAttachment: false,
     priority: "low",
     threadId: "t-14",
-    category: "updates",
     aiSummary: "Figma design review: 3 new comments on Dashboard redesign, 2 resolved on Onboarding, 1 new Mobile version.",
     sentimentScore: 0.4,
   },
@@ -556,76 +470,8 @@ export const emails: Email[] = [
     hasAttachment: false,
     priority: "low",
     threadId: "t-15",
-    category: "promotions",
     aiSummary: "Shopify promoting new AI features: auto product descriptions, smart pricing, inventory forecasting, customer segmentation.",
     sentimentScore: 0.2,
-  },
-]
-
-export const briefingItems: BriefingItem[] = [
-  {
-    id: "b-1",
-    type: "urgent",
-    title: "Server Outage - Customer Portal",
-    description: "Portal down since 7:30 AM. 2,400 users affected, 3 enterprise P1 tickets. Engineering needs $15K emergency budget approval.",
-    emails: ["e-2"],
-    priority: "high",
-  },
-  {
-    id: "b-2",
-    type: "deadline",
-    title: "VendorX Contract Expires March 15",
-    description: "Two pricing disagreements remain: payment terms (Net-60 vs Net-30) and liability cap ($500K vs $2M). Call needed this week.",
-    emails: ["e-1"],
-    priority: "high",
-  },
-  {
-    id: "b-3",
-    type: "vip",
-    title: "GlobalTech Enterprise Deal - $240K ARR",
-    description: "Verbal commitment received. 3-year term, 500 seats. Legal drafting MSA, procurement approval needed by Friday.",
-    emails: ["e-6"],
-    priority: "high",
-  },
-  {
-    id: "b-4",
-    type: "followup",
-    title: "NDA Sign-off Required by Friday",
-    description: "TechStart acquisition NDA reviewed. 3 items need your approval: non-compete scope, IP assignment, data handling.",
-    emails: ["e-4"],
-    priority: "high",
-  },
-  {
-    id: "b-5",
-    type: "risk",
-    title: "AWS Costs Up 23% Month-over-Month",
-    description: "February invoice: $34,521 vs $28,087 last month. Main drivers: EC2 (+$4.2K) and data transfer (+$1.8K).",
-    emails: ["e-8"],
-    priority: "medium",
-  },
-  {
-    id: "b-6",
-    type: "info",
-    title: "Support SLA Breaches - 3 This Week",
-    description: "47 tickets total (up 12%). Top issue: SSO login failures (18 tickets). Engineering review flagged.",
-    emails: ["e-9"],
-    priority: "medium",
-  },
-  {
-    id: "b-7",
-    type: "followup",
-    title: "PartnerCorp Co-Marketing Proposal",
-    description: "Lisa Wong proposing Q2 joint campaign: webinars, co-branded content, $50K ad spend. Awaiting your response.",
-    emails: ["e-3"],
-    priority: "medium",
-  },
-  {
-    id: "b-8",
-    type: "deadline",
-    title: "Performance Reviews Due Feb 28",
-    description: "Self-assessments due Feb 21. Manager reviews due Feb 28. Calibration March 3-5.",
-    emails: ["e-10"],
-    priority: "low",
   },
 ]
 

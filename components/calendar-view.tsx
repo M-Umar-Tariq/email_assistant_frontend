@@ -1041,7 +1041,7 @@ export function CalendarView() {
                       className="gap-1.5 rounded-xl"
                       onClick={() => {
                         window.dispatchEvent(
-                          new CustomEvent("followups:navigate", {
+                          new CustomEvent("assistant:openEmail", {
                             detail: { emailId: selectedMeeting.email_id },
                           })
                         )

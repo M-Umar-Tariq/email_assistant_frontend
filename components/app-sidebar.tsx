@@ -11,7 +11,6 @@ import {
   Settings,
   Plus,
   Clock,
-  Mic,
   Sun,
   Moon,
   Users,
@@ -139,7 +138,7 @@ export function AppSidebar({
   const { user, logout } = useAuth()
   const { theme, setTheme } = useTheme()
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([])
-  const [badges, setBadges] = useState({ unread: 0, followUps: 0 })
+  const [badges, setBadges] = useState({ unread: 0 })
   const [labelRules, setLabelRules] = useState<AiLabelRule[]>([])
   const [panelCollapsed, setPanelCollapsed] = useState(false)
   /** Wide labels column hidden when user collapses nav or Inbox AI drawer needs rail-only layout. */
@@ -291,7 +290,6 @@ export function AppSidebar({
     }).catch(() => { })
     briefing.get().then((b) => setBadges({
       unread: b.stats.unread_total,
-      followUps: b.stats.overdue_follow_ups + b.stats.pending_follow_ups,
     })).catch(() => { })
     settingsApi.get().then((s) => {
       setLabelRules((s.ai_label_rules ?? []).filter((r) => r.name?.trim()))
@@ -361,7 +359,6 @@ export function AppSidebar({
       briefing.get().then((b) => setBadges((prev) => ({
         ...prev,
         unread: b.stats.unread_total,
-        followUps: b.stats.overdue_follow_ups + b.stats.pending_follow_ups,
       }))).catch(() => {})
     }, POLL_INTERVAL_MS)
     return () => clearInterval(interval)
@@ -468,7 +465,6 @@ export function AppSidebar({
                 ...railTop,
                 { id: "contacts", icon: Users, tip: "Contacts" },
                 { id: "assistant", icon: AssistantLogoIcon, tip: "Smart Mail Assistant" },
-                ...(mailboxes.length > 0 ? [{ id: "followups", icon: Clock, tip: "Follow-ups" }] : []),
                 { id: "analytics", icon: BarChart3, tip: "Analytics" },
               ] as const
             ).map(({ id, icon: Icon, tip }) => {
@@ -477,9 +473,7 @@ export function AppSidebar({
               const countBadge =
                 id === "calendar"
                   ? pendingMeetingRequests
-                  : id === "followups"
-                    ? (badges.followUps ?? 0)
-                    : 0
+                  : 0
               return (
                 <Tooltip key={id}>
                   <TooltipTrigger asChild>

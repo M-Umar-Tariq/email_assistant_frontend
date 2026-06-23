@@ -42,7 +42,7 @@ function relativeTime(ts: string | null | undefined): string {
 }
 
 const primaryStats: {
-  key: "users" | "mailboxes" | "emails_indexed" | "follow_ups"
+  key: "users" | "mailboxes" | "emails_indexed" | "meetings"
   label: string
   icon: LucideIcon
   color: string
@@ -50,7 +50,7 @@ const primaryStats: {
   { key: "users", label: "Users", icon: Users, color: "sky" },
   { key: "mailboxes", label: "Mailboxes", icon: Inbox, color: "violet" },
   { key: "emails_indexed", label: "Emails indexed", icon: Mail, color: "amber" },
-  { key: "follow_ups", label: "Follow-ups", icon: ListTodo, color: "emerald" },
+  { key: "meetings", label: "Meetings", icon: ListTodo, color: "emerald" },
 ]
 
 const colorMap: Record<string, { bg: string; text: string; icon: string }> = {
@@ -216,7 +216,7 @@ export default function AdminDashboardPage() {
                   </div>
                   <p className="text-[11px] font-semibold uppercase tracking-wider text-slate-500">{label}</p>
                   <p className="text-3xl font-bold tabular-nums tracking-tight text-white">
-                    {stats ? stats[key].toLocaleString() : "—"}
+                    {stats ? (stats[key] ?? 0).toLocaleString() : "—"}
                   </p>
                 </CardHeader>
               </Card>
@@ -385,7 +385,7 @@ export default function AdminDashboardPage() {
           </Card>
         )}
 
-        {/* Engagement + follow-ups + feedback */}
+        {/* Engagement + feedback */}
         {stats && (
           <div className="grid gap-6 lg:grid-cols-2">
             {stats.engagement && (
@@ -418,26 +418,10 @@ export default function AdminDashboardPage() {
 
             <Card className="admin-card rounded-xl border-0">
               <CardHeader className="pb-3">
-                <CardTitle className="text-sm font-semibold text-slate-200">Follow-ups & feedback</CardTitle>
-                <CardDescription className="text-slate-500">Status mix and submission categories</CardDescription>
+                <CardTitle className="text-sm font-semibold text-slate-200">Feedback</CardTitle>
+                <CardDescription className="text-slate-500">Submission categories</CardDescription>
               </CardHeader>
               <CardContent className="space-y-5">
-                {stats.follow_up_statuses && Object.keys(stats.follow_up_statuses).length > 0 ? (
-                  <div>
-                    <p className="mb-2 text-[10px] font-semibold uppercase tracking-wider text-slate-500">Follow-up status</p>
-                    <div className="flex flex-wrap gap-2">
-                      {Object.entries(stats.follow_up_statuses)
-                        .sort((a, b) => b[1] - a[1])
-                        .map(([st, n]) => (
-                          <Badge key={st} variant="outline" className="border-white/10 bg-white/[0.03] text-xs capitalize text-slate-300">
-                            {st}: <span className="ml-1 font-semibold tabular-nums text-white">{n}</span>
-                          </Badge>
-                        ))}
-                    </div>
-                  </div>
-                ) : (
-                  <p className="text-xs text-slate-600">No follow-up documents yet.</p>
-                )}
                 {stats.feedback_by_category &&
                   Object.values(stats.feedback_by_category).reduce((s, v) => s + v, 0) > 0 && (
                   <div>

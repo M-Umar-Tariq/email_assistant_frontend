@@ -21,7 +21,7 @@ export default function PrivacyPage() {
           <h2 className="text-xl font-semibold text-foreground">1. Information We Collect</h2>
           <p className="text-sm leading-7 text-muted-foreground">
             We collect account information (such as name and email), mailbox connection metadata, and data needed to provide
-            core features like email sync, search, summaries, compose assistance, analytics, and follow-up workflows.
+            core features like email sync, search, summaries, compose assistance, and analytics.
           </p>
         </section>
 

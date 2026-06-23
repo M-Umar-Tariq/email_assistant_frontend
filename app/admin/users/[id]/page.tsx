@@ -10,8 +10,6 @@ import {
   Eye,
   EyeOff,
   Inbox,
-  ListChecks,
-  ListTodo,
   MailOpen,
   Paperclip,
   Shield,
@@ -178,13 +176,11 @@ export default function AdminUserDetailPage() {
             {/* Email statistics */}
             <section>
               <h2 className="mb-4 text-sm font-semibold uppercase tracking-wider text-slate-500">Email statistics</h2>
-              <div className="grid gap-3 sm:grid-cols-3 lg:grid-cols-6">
+              <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
                 {[
                   { icon: MailOpen, label: "Read", value: data.email_stats.total_read, bg: "bg-sky-500/15", fg: "text-sky-400" },
                   { icon: EyeOff, label: "Unread", value: data.email_stats.total_unread, bg: "bg-amber-500/15", fg: "text-amber-400" },
                   { icon: Star, label: "Starred", value: data.email_stats.total_starred, bg: "bg-yellow-500/15", fg: "text-yellow-400" },
-                  { icon: ListTodo, label: "Open follow-ups", value: data.follow_ups_open, bg: "bg-orange-500/15", fg: "text-orange-400" },
-                  { icon: ListChecks, label: "Total follow-ups", value: data.follow_ups_total, bg: "bg-emerald-500/15", fg: "text-emerald-400" },
                   { icon: Paperclip, label: "Attachments", value: data.attachment_count, bg: "bg-slate-500/15", fg: "text-slate-400" },
                 ].map(({ icon: Icon, label, value, bg, fg }) => (
                   <Card key={label} className="admin-card admin-card-hover rounded-xl border-0">
@@ -324,7 +320,7 @@ export default function AdminUserDetailPage() {
                   <AlertTriangle className="h-4 w-4" /> Danger zone
                 </CardTitle>
                 <CardDescription className="text-slate-500">
-                  Permanently delete this user and all associated data (emails, mailboxes, follow-ups, attachments, profiles).
+                  Permanently delete this user and all associated data (emails, mailboxes, attachments, profiles).
                 </CardDescription>
               </CardHeader>
               <CardContent>

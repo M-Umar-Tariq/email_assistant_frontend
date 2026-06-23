@@ -41,7 +41,7 @@ function initials(full: string) {
 const INTRO_FEATURES = [
   "Link multiple mailboxes (IMAP and more) and see a unified daily briefing.",
   "Search and ask questions in plain English — answers come from your own email history.",
-  "Draft replies, track follow-ups, snooze, and organize with smart labels and priorities.",
+  "Draft replies, snooze, and organize with smart labels and priorities.",
   "Use the personal AI assistant and analytics to spot patterns and save time every week.",
 ]
 
@@ -379,7 +379,7 @@ export function WelcomeOnboardingDialog() {
                     </div>
                     <p className="mt-1 text-sm font-semibold">Daily briefing ready</p>
                     <p className="mt-1 text-xs leading-relaxed opacity-90">
-                      You have unread priority items and follow-ups due today — open the app for a one-tap summary.
+                      You have unread priority items due today — open the app for a one-tap summary.
                     </p>
                   </div>
                 </div>
@@ -404,7 +404,7 @@ export function WelcomeOnboardingDialog() {
                 </DialogTitle>
                 <p className="text-sm leading-relaxed text-muted-foreground">
                   You&apos;re set up. We&apos;ll use your mailboxes and preferences to power briefings, AI search, drafts,
-                  and follow-ups.
+                  and priority items.
                 </p>
                 <p className="text-sm leading-relaxed text-muted-foreground">
                   Sync may run in the background after you connect an inbox — you can keep using the app normally.

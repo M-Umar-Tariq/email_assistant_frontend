@@ -95,13 +95,17 @@ import {
   type SettingsApi,
 } from "@/lib/api"
 import { mapEmailListApi, mapEmailDetailApi, mapMailboxApi } from "@/lib/mappers"
-import type { Email, EmailCategory, Mailbox } from "@/lib/mock-data"
+import type { Email, Mailbox } from "@/lib/mock-data"
 import { format } from "date-fns"
 import type { InboxFilter } from "@/components/daily-briefing"
 import { InboxAiFilterSidebar, type InboxAiFilterApplied } from "@/components/inbox-ai-filter-sidebar"
 import { ConnectMailboxCta } from "@/components/connect-mailbox-cta"
 import { sanitizeEmailHtml, htmlHasSubstantiveText } from "@/lib/sanitize-html"
 import { LABELS_UPDATED_EVENT, type LabelsUpdatedDetail } from "@/lib/labels-events"
+import {
+  applyAgentActionToList,
+  type EmailActionExecutedDetail,
+} from "@/lib/email-action-events"
 import smartMailLogo from "@/logo/Smart Mail Logo.png"
 import smartMailLogoWhite from "@/logo/Smart Mail Logo White.png"
 
@@ -221,15 +225,6 @@ function fixMettingTypo(text: string) {
   return text.replace(/\bmetting\b/gi, (word) => (word === "Metting" ? "Meeting" : "meeting"))
 }
 
-const categoryConfig: Record<EmailCategory, { label: string; icon: React.ElementType; color: string }> = {
-  important: { label: "Important", icon: ShieldCheck, color: "text-primary" },
-  updates: { label: "Updates", icon: TrendingUp, color: "text-amber-400" },
-  promotions: { label: "Promotions", icon: Tag, color: "text-emerald-400" },
-  social: { label: "Social", icon: Users, color: "text-pink-400" },
-  newsletters: { label: "Newsletters", icon: Newspaper, color: "text-indigo-400" },
-  finance: { label: "Finance", icon: CreditCard, color: "text-orange-400" },
-}
-
 const snoozeOptions = [
   { label: "Later today", hours: 3 },
   { label: "Tomorrow morning", hours: 18 },
@@ -241,6 +236,116 @@ function SentimentDot({ score }: { score?: number }) {
   if (score === undefined) return null
   const color = score > 0.3 ? "bg-emerald-400" : score < -0.3 ? "bg-red-400" : "bg-amber-400"
   return <div className={`h-1.5 w-1.5 rounded-full ${color}`} title={`Sentiment: ${score > 0 ? "+" : ""}${score.toFixed(1)}`} />
+}
+
+/** All label types shown under the subject in email detail (and optionally in list rows). */
+function EmailLabelsRow({
+  email,
+  variant = "detail",
+}: {
+  email: Email
+  variant?: "detail" | "compact"
+}) {
+  const priority = email.priority || "medium"
+  const isSnoozed =
+    !!email.snoozedUntil && new Date(email.snoozedUntil).getTime() > Date.now()
+  const userLabels = variant === "detail" ? email.labels : email.labels.slice(0, 3)
+  const textSize = variant === "detail" ? "text-[11px]" : "text-[9px]"
+  const pad = variant === "detail" ? "px-2 py-0.5" : "px-1.5 py-0"
+
+  const priorityBadge =
+    priority === "high" ? (
+      <Badge
+        variant="outline"
+        className={`${textSize} ${pad} border-red-400/30 text-red-400 bg-red-400/5 font-semibold uppercase tracking-wide gap-1`}
+      >
+        {variant === "detail" && <ShieldAlert className="h-3 w-3" />}
+        {priority}
+      </Badge>
+    ) : priority === "low" ? (
+      <Badge
+        variant="outline"
+        className={`${textSize} ${pad} border-emerald-400/30 text-emerald-500 bg-emerald-400/5 font-semibold uppercase tracking-wide`}
+      >
+        {priority}
+      </Badge>
+    ) : (
+      <Badge
+        variant="outline"
+        className={`${textSize} ${pad} border-blue-400/30 text-blue-400 bg-blue-400/5 font-semibold uppercase tracking-wide`}
+      >
+        {priority}
+      </Badge>
+    )
+
+  return (
+    <div className={`flex flex-wrap items-center gap-1.5 ${variant === "detail" ? "mt-2.5" : ""}`}>
+      {priorityBadge}
+      {userLabels.map((label) => (
+        <Badge
+          key={label}
+          variant="secondary"
+          className={`${textSize} ${pad} bg-primary/8 text-primary border border-primary/15 font-medium`}
+        >
+          {label}
+        </Badge>
+      ))}
+      {variant === "compact" && email.labels.length > 3 && (
+        <Badge variant="secondary" className={`${textSize} ${pad} font-medium text-muted-foreground`}>
+          +{email.labels.length - 3}
+        </Badge>
+      )}
+      {email.starred && (
+        <Badge
+          variant="outline"
+          className={`${textSize} ${pad} border-amber-400/30 text-amber-400 bg-amber-400/5 gap-1`}
+        >
+          <Star className="h-3 w-3 fill-current" />
+          Starred
+        </Badge>
+      )}
+      {email.schedulingInfo?.detected && (
+        <Badge
+          variant="outline"
+          className={`${textSize} ${pad} border-indigo-400/30 text-indigo-400 bg-indigo-400/5 gap-1`}
+        >
+          <CalendarPlus className="h-3 w-3" />
+          {email.schedulingInfo.status === "added"
+            ? "Meeting added"
+            : email.schedulingInfo.status === "dismissed"
+              ? "Meeting dismissed"
+              : "Meeting"}
+        </Badge>
+      )}
+      {isSnoozed && (
+        <Badge
+          variant="outline"
+          className={`${textSize} ${pad} border-violet-400/30 text-violet-400 bg-violet-400/5 gap-1`}
+        >
+          <Clock className="h-3 w-3" />
+          Snoozed
+        </Badge>
+      )}
+      {email.hasAttachment && (
+        <Badge
+          variant="outline"
+          className={`${textSize} ${pad} border-border/60 text-muted-foreground/70 gap-1`}
+        >
+          <Paperclip className="h-3 w-3" />
+          Attachment
+        </Badge>
+      )}
+      {!email.read && (
+        <Badge
+          variant="outline"
+          className={`${textSize} ${pad} border-primary/30 text-primary bg-primary/5 gap-1`}
+        >
+          <Circle className="h-2.5 w-2.5 fill-current" />
+          Unread
+        </Badge>
+      )}
+    </div>
+  )
 }
 
 const INBOX_ROW_ACTION = "[data-inbox-row-action]"
@@ -393,11 +498,6 @@ function EmailListItem({
           ) : (
             <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-blue-400/30 text-blue-400 bg-blue-400/5 font-semibold uppercase tracking-wide">
               medium
-            </Badge>
-          )}
-          {email.followUp && email.followUp.status === "overdue" && (
-            <Badge variant="outline" className="text-[9px] px-1.5 py-0 border-orange-400/30 text-orange-400 bg-orange-400/5 font-semibold uppercase tracking-wide">
-              overdue
             </Badge>
           )}
           {email.schedulingInfo?.detected && (
@@ -1861,41 +1961,8 @@ function EmailDetail({
                   <h2 className="text-lg font-bold leading-snug tracking-tight text-foreground sm:text-xl">
                     {fixMettingTypo(email.subject)}
                   </h2>
-                  <div className="flex items-center gap-2 mt-2.5 flex-wrap">
-                    {email.category && (() => {
-                      const cat = categoryConfig[email.category]
-                      const CatIcon = cat.icon
-                      return (
-                        <Badge
-                          variant="outline"
-                          className={`text-[11px] ${cat.color} border-current/20 gap-1`}
-                        >
-                          <CatIcon className="h-3 w-3" />
-                          {cat.label}
-                        </Badge>
-                      )
-                    })()}
-                    {email.labels.map((label) => (
-                      <Badge key={label} variant="secondary" className="text-[11px] bg-secondary/80 text-secondary-foreground/80">
-                        {label}
-                      </Badge>
-                    ))}
-                    {email.priority === "high" && (
-                      <Badge variant="outline" className="text-[11px] border-red-400/30 text-red-400 bg-red-400/5 gap-1">
-                        <ShieldAlert className="h-3 w-3" />
-                        High Priority
-                      </Badge>
-                    )}
-                  </div>
+                  <EmailLabelsRow email={email} variant="detail" />
                 </div>
-                {email.hasAttachment && (
-                  <div className="flex items-center gap-2.5 shrink-0 ml-4">
-                    <Badge variant="outline" className="text-[11px] border-border/60 text-muted-foreground/70 gap-1">
-                      <Paperclip className="h-3 w-3" />
-                      Attachment
-                    </Badge>
-                  </div>
-                )}
               </div>
 
               {/* AI Overview */}
@@ -1909,17 +1976,6 @@ function EmailDetail({
                       <span className="text-sm font-semibold text-primary">AI Overview</span>
                     </div>
                     <p className="text-sm text-foreground/80 leading-relaxed">{email.aiSummary}</p>
-                    {email.followUp && (
-                      <div className="mt-3 pt-2.5 border-t border-primary/10 flex items-center gap-2 text-xs">
-                        <div className={`flex h-5 w-5 items-center justify-center rounded-full ${email.followUp.status === "overdue" ? "bg-red-400/10" : "bg-amber-400/10"}`}>
-                          <Clock className={`h-3 w-3 ${email.followUp.status === "overdue" ? "text-red-400" : "text-amber-400"}`} />
-                        </div>
-                        <span className={`font-medium ${email.followUp.status === "overdue" ? "text-red-400" : "text-amber-400"}`}>
-                          {email.followUp.status === "overdue" ? "Overdue: " : "Follow-up: "}
-                          {email.followUp.suggestedAction}
-                        </span>
-                      </div>
-                    )}
                   </CardContent>
                 </Card>
               )}
@@ -2771,10 +2827,23 @@ export function InboxView({
   }, [])
 
   useEffect(() => {
-    const onActionExecuted = () => onAutoSyncRef.current()
+    const onActionExecuted = (e: Event) => {
+      const detail = (e as CustomEvent<EmailActionExecutedDetail>).detail
+      if (detail?.type) {
+        setEmailsList((prev) =>
+          applyAgentActionToList(prev, detail, folder, filterMailbox),
+        )
+        setSelectedEmail((cur) => {
+          if (!cur) return cur
+          const [patched] = applyAgentActionToList([cur], detail, folder, filterMailbox)
+          return patched ?? null
+        })
+        window.dispatchEvent(new CustomEvent("folder-counts:refresh"))
+      }
+    }
     window.addEventListener("email:action-executed", onActionExecuted)
     return () => window.removeEventListener("email:action-executed", onActionExecuted)
-  }, [])
+  }, [folder, filterMailbox])
 
   // Periodic sync when Inbox is the active view (avoid work while user is on another screen).
   useEffect(() => {

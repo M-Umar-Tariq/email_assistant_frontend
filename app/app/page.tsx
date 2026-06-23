@@ -13,12 +13,10 @@ import { ComposeView } from "@/components/compose-view"
 import { AnalyticsView } from "@/components/analytics-view"
 import { SettingsView } from "@/components/settings-view"
 import { LabelsView } from "@/components/labels-view"
-import { FollowupTracker } from "@/components/followup-tracker"
 import { ContactsView } from "@/components/contacts-view"
 import { CalendarView } from "@/components/calendar-view"
 import { MeetingRequestsView } from "@/components/meeting-requests-view"
 import { FeedbackView } from "@/components/feedback-view"
-import { AiAgent } from "@/components/ai-agent"
 import { FloatingAiChat } from "@/components/floating-ai-chat"
 import { AddMailboxDialog } from "@/components/add-mailbox-dialog"
 import { MailboxesView } from "@/components/mailboxes-view"
@@ -177,21 +175,6 @@ export default function AppDashboard() {
   }, [])
 
   useEffect(() => {
-    const onNavigateFromFollowups = (e: Event) => {
-      const detail = (e as CustomEvent).detail || {}
-      const emailId = detail.emailId as string
-      const action = detail.action as string | undefined
-      if (emailId) {
-        setInitialEmailId(emailId)
-        setActiveView("inbox")
-        setInitialComposeMode(action === "reply" ? "reply" : null)
-      }
-    }
-    window.addEventListener("followups:navigate", onNavigateFromFollowups as EventListener)
-    return () => window.removeEventListener("followups:navigate", onNavigateFromFollowups as EventListener)
-  }, [])
-
-  useEffect(() => {
     const onAssistantOpenEmail = (e: Event) => {
       const detail = (e as CustomEvent).detail || {}
       const emailId = detail.emailId as string | undefined
@@ -209,19 +192,6 @@ export default function AppDashboard() {
     window.addEventListener("assistant:openEmail", onAssistantOpenEmail as EventListener)
     return () => window.removeEventListener("assistant:openEmail", onAssistantOpenEmail as EventListener)
   }, [])
-
-  // When all mailboxes are removed (e.g. last one deleted), leave follow-ups view
-  useEffect(() => {
-    const onMailboxUpdated = () => {
-      mailboxesApi.list().then((list) => {
-        if (list.length === 0 && activeView === "followups") {
-          setActiveView("dashboard")
-        }
-      }).catch(() => {})
-    }
-    window.addEventListener("mailbox:updated", onMailboxUpdated)
-    return () => window.removeEventListener("mailbox:updated", onMailboxUpdated)
-  }, [activeView])
 
   const [mobileOpen, setMobileOpen] = useState(false)
   /** Inbox AI filter drawer open: hide sidebar detail column only; icon rail stays visible. */
@@ -462,12 +432,6 @@ export default function AppDashboard() {
                 onOpenSettings={() => setActiveView("settings")}
               />
             )}
-            {activeView === "followups" && (
-              <FollowupTracker
-                mailboxScope={selectedMailboxScope}
-                onMailboxScopeChange={handleMailboxScopeChange}
-              />
-            )}
             {/* Contacts stays mounted while hidden — instant return + session cache on slow loads. */}
             <div
               className={
@@ -483,7 +447,6 @@ export default function AppDashboard() {
                 mailboxScope={selectedMailboxScope}
               />
             </div>
-            {activeView === "agent" && <AiAgent />}
             {/* Keep Assistant mounted so in-flight AI replies / confirmed actions finish after navigation */}
             <div
               className={

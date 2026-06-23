@@ -49,6 +49,10 @@ import {
   type MailboxApi,
   type AgentActionApi,
 } from "@/lib/api"
+import {
+  buildActionExecutedDetail,
+  dispatchEmailActionExecuted,
+} from "@/lib/email-action-events"
 import { useAuth } from "@/lib/auth-context"
 import { useAiChat } from "@/lib/ai-chat-context"
 import type { ChatMessage } from "@/lib/mock-data"
@@ -77,7 +81,6 @@ const ACTION_ICONS: Record<string, typeof Mail> = {
   mark_all_unread: Mail,
   snooze_email: Clock,
   send_whatsapp: MessageSquare,
-  set_reminder: Clock,
 }
 
 const COMPOSE_ACTIONS = new Set([
@@ -532,10 +535,12 @@ export function AiAssistant({
         }))
       )
       toast.success(`${action.label || action.type.replace(/_/g, " ")} executed!`)
-      window.dispatchEvent(new CustomEvent("email:action-executed"))
-      window.dispatchEvent(new CustomEvent("mailbox:sync-complete"))
-      window.dispatchEvent(
-        new CustomEvent("email:sync", { detail: { newCount: 0, flagsUpdated: markedCount } })
+      dispatchEmailActionExecuted(
+        buildActionExecutedDetail(scopedAction, {
+          marked: result.marked,
+          email_ids: result.email_ids,
+          scope: result.scope,
+        }),
       )
 
       if (action.type === "open_email" || action.type === "open_latest_email") {

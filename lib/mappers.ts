@@ -1,10 +1,8 @@
-import type { Email, EmailCategory, Mailbox, BriefingItem, SchedulingInfo } from "@/lib/mock-data"
+import type { Email, Mailbox, SchedulingInfo } from "@/lib/mock-data"
 import type {
   EmailListApi,
   EmailDetailApi,
   MailboxApi,
-  BriefingApi,
-  FollowUpApi,
   DetectedMeetingApi,
   MeetingDetectionStatus,
 } from "@/lib/api"
@@ -59,17 +57,6 @@ export function sanitizeEmailPreview(raw: string | null | undefined): string {
     return `${s}…`
   }
   return s
-}
-
-export type FollowUpItem = {
-  id: string
-  emailId: string
-  subject: string
-  from: { name: string; email: string }
-  dueDate: string
-  status: string
-  daysWaiting: number
-  autoReminderSent: boolean
 }
 
 export function mapMailboxApi(m: MailboxApi & { unread?: number }): Mailbox {
@@ -143,7 +130,6 @@ export function mapEmailListApi(e: EmailListApi): Email {
     attachments: e.attachments || [],
     priority: (e.priority as "high" | "medium" | "low") || "medium",
     threadId: "",
-    category: (e.category as EmailCategory) || undefined,
     aiSummary: e.ai_summary ?? undefined,
     sentimentScore: e.sentiment_score ?? undefined,
     snoozedUntil: e.snoozed_until || null,
@@ -161,30 +147,5 @@ export function mapEmailDetailApi(e: EmailDetailApi): Email {
     threadId: e.thread_id || "",
     sentReplies: e.sent_replies ?? [],
     threadReplies: e.thread_replies ?? [],
-  }
-}
-
-export function mapBriefingItem(item: BriefingApi["items"][0]): BriefingItem {
-  return {
-    id: item.id,
-    type: (item.type as BriefingItem["type"]) || "info",
-    title: item.title,
-    description: item.description,
-    emails: item.email_ids || [],
-    priority: (item.priority as "high" | "medium" | "low") || "medium",
-    meetingId: item.meeting_id,
-  }
-}
-
-export function mapFollowUpApi(f: FollowUpApi): FollowUpItem {
-  return {
-    id: f.id,
-    emailId: f.email_id,
-    subject: f.email_subject ?? "",
-    from: { name: f.from_name ?? "", email: f.from_email ?? "" },
-    dueDate: f.due_date,
-    status: f.status,
-    daysWaiting: f.days_waiting ?? 0,
-    autoReminderSent: f.auto_reminder_sent ?? false,
   }
 }

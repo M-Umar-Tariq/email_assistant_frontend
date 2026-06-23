@@ -19,7 +19,6 @@ import {
   Globe,
   Star,
   Tag,
-  Mic,
 } from "lucide-react"
 import { Button } from "@/components/ui/button"
 import { BetaLabel } from "@/components/beta-label"
@@ -64,15 +63,15 @@ const features = [
   },
   {
     icon: Tag,
-    title: "Labels, follow-ups & calendar",
+    title: "Labels & calendar",
     description:
-      "Teach the model your label rules, track follow-ups, surface contacts, and keep meetings extracted from mail on a built-in calendar view.",
+      "Teach the model your label rules, surface contacts, and keep meetings extracted from mail on a built-in calendar view.",
   },
   {
-    icon: Mic,
-    title: "Voice agent (Pro)",
+    icon: Sparkles,
+    title: "AI agent (Pro)",
     description:
-      "On the Pro plan, use the in-app voice agent for hands-free navigation and mail tasks—without living inside the keyboard.",
+      "On the Pro plan, chat with the in-app agent, approve actions, and get proactive suggestions across your mailboxes.",
   },
   {
     icon: Shield,
@@ -93,13 +92,13 @@ const steps = [
     step: "02",
     title: "Sync, label, and index",
     description:
-      "Background sync pulls new mail, applies your AI label rules, indexes text for search, and (when it makes sense) suggests meetings and follow-ups from what you receive.",
+      "Background sync pulls new mail, applies your AI label rules, indexes text for search, and (when it makes sense) suggests meetings from what you receive.",
   },
   {
     step: "03",
     title: "Work from one command center",
     description:
-      "Triage from a unified inbox; unlock deeper AI, agent automation, and analytics as you move up tiers—with voice only on Pro. Send Feedback anytime when something should work differently.",
+      "Triage from a unified inbox; unlock deeper AI, agent automation, and analytics as you move up tiers. Send Feedback anytime when something should work differently.",
   },
 ]
 
@@ -110,7 +109,7 @@ const plans = [
     mailboxLine: "Up to 3 mailboxes",
     price: "$0",
     description:
-      "A full email workspace—sync, triage, and search—plus light AI helpers. No full AI compose suite, autonomous agent, or voice.",
+      "A full email workspace—sync, triage, and search—plus light AI helpers. No full AI compose suite or autonomous agent.",
     features: [
       "Up to 3 connected mailboxes (Gmail, Outlook, or IMAP)",
       "Background sync, per-mailbox colors, unified inbox, and account settings",
@@ -128,7 +127,7 @@ const plans = [
     mailboxLine: "4–15 mailboxes",
     price: "$29",
     description:
-      "Everything in Core, scaled for more mailboxes, with the full AI layer—Q&A, briefings, and compose tools. Agent automation and voice stay on Pro.",
+      "Everything in Core, scaled for more mailboxes, with the full AI layer—Q&A, briefings, and compose tools. Agent automation stays on Pro.",
     features: [
       "4–15 connected mailboxes with the same sync and security model",
       "Everything in Core",
@@ -146,13 +145,12 @@ const plans = [
     mailboxLine: "15+ mailboxes",
     price: "$79",
     description:
-      "For agencies and high-volume teams: every Smart-tier AI capability, plus the agent, operations tooling, analytics, admin—and the only tier with voice.",
+      "For agencies and high-volume teams: every Smart-tier AI capability, plus the agent, operations tooling, analytics, and admin.",
     features: [
       "15+ connected mailboxes (agency, support, or multi-brand inboxes)",
       "Everything in Smart: full AI search, compose, and briefings",
       "AI agent: chat, suggestions, profile, and approved execution",
-      "Voice agent (speak)—hands-free navigation and mail tasks",
-      "Follow-ups, calendar, email analytics, admin dashboard, and smart relabel",
+      "Calendar, email analytics, admin dashboard, and smart relabel",
       "Encrypted credentials and OAuth where the provider supports it",
     ],
     cta: "Get started",
@@ -180,8 +178,8 @@ const testimonials = [
   {
     id: "wf-3",
     quote:
-      "On Pro, track follow-ups, calendar, and analytics; use the voice agent for hands-free work—then send feedback from inside the app.",
-    name: "Ops & voice (Pro)",
+      "On Pro, use calendar, analytics, and the AI agent—then send feedback from inside the app.",
+    name: "Ops (Pro)",
     role: "Same codebase you run locally",
     rating: 5,
   },
@@ -465,8 +463,7 @@ function FeaturesSection() {
             Built around how this app actually works
           </h2>
           <p data-gsap="feature-head" className="mx-auto mt-4 max-w-xl text-pretty text-muted-foreground">
-            Below is what the product is built for—multi-mailbox sync, tiered AI from light hints to full writing & Q&A, agent and ops on Pro, and voice only on the
-            top tier—not a slide-deck wish list.
+            Below is what the product is built for—multi-mailbox sync, tiered AI from light hints to full writing & Q&A, and agent plus ops on Pro—not a slide-deck wish list.
           </p>
         </div>
 
@@ -650,7 +647,7 @@ function PricingSection() {
           </h2>
           <p data-gsap="pricing-head" className="mx-auto mt-4 max-w-xl text-pretty text-muted-foreground">
             Each tier adds stronger AI and automation; higher tiers also raise how many mailboxes you can connect. Paid checkout is not wired yet—sign up free
-            while billing is off. Voice agent is exclusive to Pro; listed items match what this repo is built to support.
+            while billing is off. Listed items match what this repo is built to support.
           </p>
         </div>
 

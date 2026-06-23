@@ -26,8 +26,8 @@ import smartMailLogo from "@/logo/Smart Mail Logo.png"
 const VALUE_PROPS = [
   "Morning briefing plus inbox across all connected mailboxes",
   "Natural language search over every synced email",
-  "Compose, AI assistant, calendar & follow-ups in one app",
-  "Voice agent — read, reply, triage hands-free",
+  "Compose, AI assistant & calendar in one app",
+  "AI assistant — ask questions and approve actions",
 ]
 
 export default function SignupPage() {
@@ -218,7 +218,7 @@ export default function SignupPage() {
             </span>
             <span className="inline-flex items-center gap-1.5">
               <Sparkles className="h-3.5 w-3.5 text-primary" />
-              Powered by GPT & Whisper
+              Powered by GPT
             </span>
           </div>
 

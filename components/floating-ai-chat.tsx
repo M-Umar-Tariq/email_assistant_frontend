@@ -50,6 +50,10 @@ import {
   type MailboxApi,
   type AgentActionApi,
 } from "@/lib/api"
+import {
+  buildActionExecutedDetail,
+  dispatchEmailActionExecuted,
+} from "@/lib/email-action-events"
 import { useAuth } from "@/lib/auth-context"
 import { useAiChat } from "@/lib/ai-chat-context"
 import type { ChatMessage } from "@/lib/mock-data"
@@ -64,7 +68,6 @@ const ACTION_ICONS: Record<string, typeof Mail> = {
   reply_all: Reply,
   forward_email: Forward,
   send_whatsapp: MessageSquare,
-  set_reminder: Clock,
   trash_email: Trash2,
   archive_email: Archive,
   mark_read: MailOpen,
@@ -358,7 +361,7 @@ interface FloatingAiChatProps {
 }
 
 /** Views where the floating launcher is hidden (same list as previous `hideOnViews`). */
-const FLOATING_CHAT_HIDDEN_ON_VIEWS = new Set(["assistant", "agent"])
+const FLOATING_CHAT_HIDDEN_ON_VIEWS = new Set(["assistant"])
 
 export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAiChatProps) {
   const { user } = useAuth()
@@ -517,10 +520,12 @@ export function FloatingAiChat({ activeView, onNavigateToAssistant }: FloatingAi
         }))
       )
       toast.success(`${action.label || action.type.replace(/_/g, " ")} executed!`)
-      window.dispatchEvent(new CustomEvent("email:action-executed"))
-      window.dispatchEvent(new CustomEvent("mailbox:sync-complete"))
-      window.dispatchEvent(
-        new CustomEvent("email:sync", { detail: { newCount: 0, flagsUpdated: markedCount } })
+      dispatchEmailActionExecuted(
+        buildActionExecutedDetail(scopedAction, {
+          marked: result.marked,
+          email_ids: result.email_ids,
+          scope: result.scope,
+        }),
       )
 
       if (action.type === "open_email" || action.type === "open_latest_email") {

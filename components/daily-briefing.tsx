@@ -22,9 +22,6 @@ import {
   Check,
   Users,
   BarChart3,
-  Activity,
-  Eye,
-  Send,
   Loader2,
   Brain,
   RefreshCw,
@@ -55,8 +52,8 @@ import {
 } from "@/lib/api"
 import { useAuth } from "@/lib/auth-context"
 import { ConnectMailboxCta } from "@/components/connect-mailbox-cta"
-import { mapBriefingItem, mapEmailListApi } from "@/lib/mappers"
-import type { Mailbox, BriefingItem, Email } from "@/lib/mock-data"
+import { mapEmailListApi } from "@/lib/mappers"
+import type { Mailbox, Email } from "@/lib/mock-data"
 import { cn } from "@/lib/utils"
 import { format, parseISO } from "date-fns"
 import smartMailLogo from "@/logo/Smart Mail Logo.png"
@@ -76,19 +73,6 @@ export type InboxFilter =
   | "total_unread"
   | "total_replied"
   | "total_unreplied"
-
-const typeConfig: Record<
-  string,
-  { icon: React.ElementType; color: string; bg: string; accent: string; label: string; groupLabel: string; groupOrder: number }
-> = {
-  urgent: { icon: AlertTriangle, color: "text-red-400", bg: "bg-red-400/10", accent: "border-l-red-500", label: "Urgent", groupLabel: "Needs Immediate Attention", groupOrder: 0 },
-  followup: { icon: Clock, color: "text-amber-400", bg: "bg-amber-400/10", accent: "border-l-amber-500", label: "Follow-up", groupLabel: "Follow-ups Due", groupOrder: 1 },
-  meeting: { icon: CalendarDays, color: "text-violet-400", bg: "bg-violet-400/10", accent: "border-l-violet-500", label: "Meeting", groupLabel: "Today's Meetings", groupOrder: 2 },
-  deadline: { icon: Calendar, color: "text-orange-400", bg: "bg-orange-400/10", accent: "border-l-orange-500", label: "Deadline", groupLabel: "Upcoming Deadlines", groupOrder: 3 },
-  vip: { icon: Star, color: "text-primary", bg: "bg-primary/10", accent: "border-l-primary", label: "VIP", groupLabel: "VIP Messages", groupOrder: 4 },
-  risk: { icon: ShieldAlert, color: "text-red-400", bg: "bg-red-400/10", accent: "border-l-red-500", label: "Risk", groupLabel: "Potential Risks", groupOrder: 5 },
-  info: { icon: Info, color: "text-blue-400", bg: "bg-blue-400/10", accent: "border-l-blue-500", label: "Info", groupLabel: "Recent Updates", groupOrder: 6 },
-}
 
 /* ─── Helpers ───────────────────────────────────────────────────────── */
 
@@ -118,6 +102,39 @@ function normalizeMeetingTitle(title: string): string {
 
 /* ─── Sub-components ────────────────────────────────────────────────── */
 
+const STAT_METRIC_STYLES = {
+  emails: {
+    icon: Inbox,
+    gradientFrom: "from-blue-500",
+    gradientTo: "to-blue-600",
+    accent: "border-blue-500/20 bg-blue-500/[0.06] text-blue-600 dark:text-blue-400",
+    iconBg: "from-blue-500 to-blue-600",
+  },
+  unread: {
+    icon: MailOpen,
+    gradientFrom: "from-amber-500",
+    gradientTo: "to-orange-500",
+    accent: "border-amber-500/20 bg-amber-500/[0.06] text-amber-600 dark:text-amber-400",
+    iconBg: "from-amber-500 to-orange-500",
+  },
+  replied: {
+    icon: Reply,
+    gradientFrom: "from-emerald-500",
+    gradientTo: "to-teal-600",
+    accent: "border-emerald-500/20 bg-emerald-500/[0.06] text-emerald-600 dark:text-emerald-400",
+    iconBg: "from-emerald-500 to-teal-600",
+  },
+  unreplied: {
+    icon: MailX,
+    gradientFrom: "from-rose-500",
+    gradientTo: "to-red-600",
+    accent: "border-rose-500/20 bg-rose-500/[0.06] text-rose-600 dark:text-rose-400",
+    iconBg: "from-rose-500 to-red-600",
+  },
+} as const
+
+type StatMetricKey = keyof typeof STAT_METRIC_STYLES
+
 function StatCard({
   label,
   value,
@@ -135,44 +152,169 @@ function StatCard({
   gradientTo: string
   onClick?: () => void
 }) {
+  const Wrapper = onClick ? "button" : "div"
   return (
-    <Card
-      className={cn(
-        "group/stat relative overflow-hidden glass-card glow-ring transition-all duration-300",
-        onClick && "cursor-pointer glow-ring-hover hover:-translate-y-1 active:translate-y-0"
-      )}
+    <Wrapper
+      type={onClick ? "button" : undefined}
       onClick={onClick}
+      className={cn(
+        "group/stat relative w-full overflow-hidden rounded-2xl border border-border/50 bg-card/80 text-left shadow-sm transition-all duration-300",
+        onClick &&
+          "cursor-pointer hover:-translate-y-0.5 hover:border-border hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+      )}
     >
-      <div className={cn("absolute inset-0 opacity-[0.04] transition-opacity duration-300 group-hover/stat:opacity-[0.08]", `bg-gradient-to-br ${gradientFrom} ${gradientTo}`)} />
-      <div className={cn("absolute -top-10 -right-10 h-28 w-28 rounded-full opacity-[0.06] blur-2xl transition-all duration-500 group-hover/stat:opacity-[0.12] group-hover/stat:scale-110", `bg-gradient-to-br ${gradientFrom} ${gradientTo}`)} />
-      <CardContent className="relative p-4 sm:p-5">
-        <div className="mb-3 flex items-start justify-between gap-2 sm:mb-4">
-          <p className="min-w-0 text-[10px] font-semibold uppercase tracking-[0.1em] text-muted-foreground sm:text-[11px]">
-            {label}
-          </p>
+      <div className={cn("absolute inset-y-0 left-0 w-1 bg-gradient-to-b", gradientFrom, gradientTo)} />
+      <div
+        className={cn(
+          "pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-[0.07] blur-2xl transition-opacity duration-300 group-hover/stat:opacity-[0.14]",
+          `bg-gradient-to-br ${gradientFrom} ${gradientTo}`,
+        )}
+      />
+      <div className="relative flex flex-col gap-3 p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
           <div
             className={cn(
-              "flex h-9 w-9 shrink-0 items-center justify-center rounded-xl shadow-md ring-1 ring-white/10 transition-transform duration-300 group-hover/stat:scale-105 sm:h-10 sm:w-10 sm:shadow-lg dark:ring-white/5",
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl shadow-sm ring-1 ring-white/15 transition-transform duration-300 group-hover/stat:scale-105",
               `bg-gradient-to-br ${gradientFrom} ${gradientTo}`,
             )}
           >
-            <Icon className="h-4 w-4 text-white drop-shadow-sm sm:h-[18px] sm:w-[18px]" />
+            <Icon className="h-3.5 w-3.5 text-white" />
           </div>
         </div>
-        <div className="grid grid-cols-[1fr_auto] items-end gap-x-3 gap-y-1">
-          <div className="flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-0.5">
-            <span className="text-2xl font-extrabold tabular-nums tracking-tight text-foreground sm:text-3xl">{value}</span>
-            <span className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground/70">today</span>
+        <div className="flex items-end justify-between gap-3">
+          <div>
+            <p className="text-3xl font-extrabold tabular-nums leading-none tracking-tight text-foreground">{value}</p>
+            <p className="mt-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">Today</p>
           </div>
           {totalValue !== undefined && (
-            <div className="flex items-baseline justify-end gap-1.5 text-right">
-              <span className="text-base font-bold tabular-nums text-muted-foreground/80 sm:text-lg">{totalValue}</span>
-              <span className="text-[9px] font-semibold uppercase tracking-wider text-muted-foreground/60">total</span>
-            </div>
+            <>
+              <div className="mb-1 h-10 w-px shrink-0 bg-border/60" aria-hidden />
+              <div className="text-right">
+                <p className="text-xl font-bold tabular-nums leading-none text-muted-foreground">{totalValue}</p>
+                <p className="mt-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/60">Total</p>
+              </div>
+            </>
           )}
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </Wrapper>
+  )
+}
+
+function InlineStatMetric({
+  metricKey,
+  label,
+  today,
+  total,
+  onClick,
+}: {
+  metricKey: StatMetricKey
+  label: string
+  today: number
+  total: number
+  onClick?: () => void
+}) {
+  const style = STAT_METRIC_STYLES[metricKey]
+  const Icon = style.icon
+  const Wrapper = onClick ? "button" : "div"
+
+  return (
+    <Wrapper
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      className={cn(
+        "group/metric relative min-w-0 flex-1 overflow-hidden rounded-xl border p-3 text-left transition-all duration-200",
+        style.accent,
+        onClick &&
+          "cursor-pointer hover:brightness-[1.02] hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/25",
+      )}
+    >
+      <div className="mb-2 flex items-center gap-1.5">
+        <Icon className="h-3 w-3 shrink-0 opacity-80" />
+        <span className="truncate text-[10px] font-semibold uppercase tracking-wide opacity-90">{label}</span>
+      </div>
+      <div className="flex items-baseline justify-between gap-2">
+        <span className="text-xl font-extrabold tabular-nums leading-none">{today}</span>
+        <span className="text-[10px] font-medium tabular-nums opacity-70">{total} total</span>
+      </div>
+    </Wrapper>
+  )
+}
+
+function MailboxStatsPanel({
+  mailbox,
+  stats,
+  onMetricClick,
+}: {
+  mailbox: Mailbox
+  stats: {
+    todayTotal: number
+    grandTotal: number
+    todayUnread: number
+    totalUnread: number
+    todayReplied: number
+    totalReplied: number
+    todayUnreplied: number
+    totalUnreplied: number
+  }
+  onMetricClick: (filter: InboxFilter) => void
+}) {
+  const accent = mailbox.color || "#64748b"
+  const initial = (mailbox.name || mailbox.email || "?").charAt(0).toUpperCase()
+
+  return (
+    <div className="group/mailbox relative overflow-hidden rounded-2xl border border-border/50 bg-card/70 shadow-sm transition-all duration-300 hover:border-border/80 hover:shadow-md">
+      <div className="absolute left-0 top-0 bottom-0 w-1 opacity-90" style={{ backgroundColor: accent }} />
+      <div
+        className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full opacity-[0.06] blur-3xl"
+        style={{ backgroundColor: accent }}
+      />
+      <div className="relative p-4 pl-3.5 sm:p-5 sm:pl-4">
+        <div className="mb-4 flex items-center gap-3">
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white shadow-md ring-2 ring-background"
+            style={{ backgroundColor: accent }}
+          >
+            {initial}
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-foreground">{mailbox.name}</p>
+            <p className="truncate text-xs text-muted-foreground">{mailbox.email}</p>
+          </div>
+        </div>
+        <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 sm:gap-2.5">
+          <InlineStatMetric
+            metricKey="emails"
+            label="Emails"
+            today={stats.todayTotal}
+            total={stats.grandTotal}
+            onClick={() => onMetricClick("today")}
+          />
+          <InlineStatMetric
+            metricKey="unread"
+            label="Unread"
+            today={stats.todayUnread}
+            total={stats.totalUnread}
+            onClick={() => onMetricClick("today_unread")}
+          />
+          <InlineStatMetric
+            metricKey="replied"
+            label="Replied"
+            today={stats.todayReplied}
+            total={stats.totalReplied}
+            onClick={() => onMetricClick("today_replied")}
+          />
+          <InlineStatMetric
+            metricKey="unreplied"
+            label="Unreplied"
+            today={stats.todayUnreplied}
+            total={stats.totalUnreplied}
+            onClick={() => onMetricClick("today_unreplied")}
+          />
+        </div>
+      </div>
+    </div>
   )
 }
 
@@ -592,75 +734,181 @@ function TopSenders({ refreshKey, mailboxScope }: { refreshKey: number; mailboxS
   )
 }
 
-/* ─── Recent Activity Feed ───────────────────────────────────────────── */
+/* ─── Today's emails by priority ─────────────────────────────────────── */
 
-function RecentActivityFeed({ emails }: { emails: Email[] }) {
-  const activities = useMemo(() => {
-    const sorted = [...emails].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime()).slice(0, 8)
-    return sorted.map((e) => {
-      let action: string
-      let icon: React.ElementType
-      let iconBg: string
-      let iconColor: string
-      if (e.repliedAt) {
-        action = "Replied"
-        icon = Send
-        iconBg = "bg-emerald-500/10"
-        iconColor = "text-emerald-400"
-      } else if (e.read) {
-        action = "Read"
-        icon = Eye
-        iconBg = "bg-blue-500/10"
-        iconColor = "text-blue-400"
-      } else {
-        action = "Received"
-        icon = Mail
-        iconBg = "bg-primary/10"
-        iconColor = "text-primary"
-      }
-      return { id: e.id, action, subject: e.subject, from: e.from.name || e.from.email, date: e.date, icon, iconBg, iconColor }
+const PRIORITY_SECTIONS = [
+  {
+    key: "high" as const,
+    label: "High priority",
+    groupLabel: "Needs attention",
+    icon: ShieldAlert,
+    color: "text-red-400",
+    bg: "bg-red-400/10",
+    accent: "bg-red-500",
+    badge: "border-red-400/30 text-red-400 bg-red-400/5",
+  },
+  {
+    key: "medium" as const,
+    label: "Medium priority",
+    groupLabel: "Standard",
+    icon: Clock,
+    color: "text-amber-400",
+    bg: "bg-amber-400/10",
+    accent: "bg-amber-500",
+    badge: "border-amber-400/30 text-amber-400 bg-amber-400/5",
+  },
+  {
+    key: "low" as const,
+    label: "Low priority",
+    groupLabel: "Routine",
+    icon: Info,
+    color: "text-blue-400",
+    bg: "bg-blue-400/10",
+    accent: "bg-blue-500",
+    badge: "border-border/60 text-muted-foreground/70",
+  },
+]
+
+function TodayEmailsByPriority({
+  emails,
+  mailboxes,
+  onEmailClick,
+  onViewAllToday,
+}: {
+  emails: Email[]
+  mailboxes: Mailbox[]
+  onEmailClick?: (emailId: string) => void
+  onViewAllToday?: () => void
+}) {
+  const mailboxColor = useMemo(() => {
+    const map = new Map<string, string>()
+    for (const mb of mailboxes) map.set(mb.id, mb.color)
+    return map
+  }, [mailboxes])
+
+  const groups = useMemo(() => {
+    return PRIORITY_SECTIONS.map((section) => {
+      const items = emails
+        .filter((e) => (e.priority || "medium") === section.key)
+        .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+      return { ...section, items }
     })
   }, [emails])
 
-  if (activities.length === 0) return null
+  const total = emails.length
+
+  if (total === 0) {
+    return (
+      <Card className="glass-card border-border/40 glow-ring overflow-hidden">
+        <CardHeader className="pb-2 pt-4">
+          <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 shadow-sm">
+              <Mail className="h-3.5 w-3.5 text-primary" />
+            </div>
+            Today&apos;s emails
+          </CardTitle>
+        </CardHeader>
+        <CardContent className="pb-8 pt-2">
+          <div className="flex flex-col items-center justify-center py-10 text-center">
+            <CheckCircle2 className="h-9 w-9 text-emerald-400 mb-3" />
+            <p className="text-sm font-semibold text-foreground">No emails received today</p>
+            <p className="text-xs text-muted-foreground/70 mt-1 max-w-[240px]">New mail will appear here grouped by AI priority.</p>
+          </div>
+        </CardContent>
+      </Card>
+    )
+  }
 
   return (
     <Card className="glass-card border-border/40 glow-ring overflow-hidden">
       <CardHeader className="pb-2 pt-4">
-        <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2.5">
-          <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-emerald-500/10 shadow-sm">
-            <Activity className="h-3.5 w-3.5 text-emerald-400" />
+        <div className="flex items-center justify-between gap-3">
+          <CardTitle className="text-sm font-bold text-foreground flex items-center gap-2.5">
+            <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 shadow-sm">
+              <Mail className="h-3.5 w-3.5 text-primary" />
+            </div>
+            Today&apos;s emails
+          </CardTitle>
+          <div className="flex items-center gap-2">
+            <Badge variant="outline" className="text-[10px] px-2.5 py-0.5 border-border/50 text-muted-foreground/70 font-semibold rounded-full tabular-nums">
+              {total} today
+            </Badge>
+            {onViewAllToday && (
+              <Button variant="ghost" size="sm" className="h-7 text-xs text-primary gap-1" onClick={onViewAllToday}>
+                View inbox
+                <ArrowRight className="h-3 w-3" />
+              </Button>
+            )}
           </div>
-          Recent Activity
-        </CardTitle>
-      </CardHeader>
-      <CardContent className="pb-4">
-        <div className="flex flex-col">
-          {activities.map((a, i) => {
-            const Icon = a.icon
-            return (
-              <div key={a.id} className="flex items-start gap-3 py-2.5 group relative">
-                <div className="flex flex-col items-center z-10">
-                  <div className={cn("flex h-8 w-8 shrink-0 items-center justify-center rounded-xl transition-all duration-200 shadow-sm group-hover:scale-105", a.iconBg)}>
-                    <Icon className={cn("h-3.5 w-3.5", a.iconColor)} />
-                  </div>
-                </div>
-                {i < activities.length - 1 && (
-                  <div className="absolute left-[15px] top-11 w-px h-[calc(100%-24px)] bg-gradient-to-b from-border/50 to-transparent" />
-                )}
-                <div className="flex-1 min-w-0 pt-0.5">
-                  <p className="text-xs text-foreground leading-relaxed">
-                    <span className="font-bold">{a.action}</span>{" "}
-                    <span className="text-muted-foreground/80">{a.subject}</span>
-                  </p>
-                  <p className="text-[10px] text-muted-foreground/50 mt-0.5 font-semibold">
-                    {a.from} &middot; {timeAgo(a.date)}
-                  </p>
-                </div>
-              </div>
-            )
-          })}
         </div>
+      </CardHeader>
+      <CardContent className="pb-4 space-y-6">
+        {groups.map((group) => {
+          if (group.items.length === 0) return null
+          const GroupIcon = group.icon
+          return (
+            <div key={group.key}>
+              <div className="flex items-center gap-3 mb-3">
+                <div className={cn("flex h-7 w-7 items-center justify-center rounded-lg shadow-sm", group.bg)}>
+                  <GroupIcon className={cn("h-3.5 w-3.5", group.color)} />
+                </div>
+                <h3 className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground/80">
+                  {group.label}
+                </h3>
+                <div className="flex-1 briefing-section-line" />
+                <Badge variant="secondary" className="text-[10px] px-2.5 py-0.5 bg-muted/60 font-bold rounded-full tabular-nums">
+                  {group.items.length}
+                </Badge>
+              </div>
+              <div className="flex flex-col gap-2 briefing-stagger">
+                {group.items.map((email) => (
+                  <button
+                    key={email.id}
+                    type="button"
+                    onClick={() => onEmailClick?.(email.id)}
+                    className={cn(
+                      "group flex w-full text-left rounded-xl border border-border/40 bg-card/50 overflow-hidden",
+                      "transition-all duration-200 hover:border-border/70 hover:shadow-md hover:-translate-y-0.5",
+                      onEmailClick && "cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                    )}
+                  >
+                    <div className={cn("w-1 shrink-0", group.accent)} />
+                    <div className="flex-1 min-w-0 px-3.5 py-3">
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className={cn("text-sm font-semibold truncate", !email.read && "text-foreground", email.read && "text-foreground/80")}>
+                            {email.subject || "(No subject)"}
+                          </p>
+                          <p className="text-xs text-muted-foreground/80 truncate mt-0.5">
+                            {email.from.name || email.from.email}
+                          </p>
+                        </div>
+                        <div className="flex shrink-0 items-center gap-2">
+                          {mailboxes.length > 1 && email.mailbox && (
+                            <span
+                              className="h-2 w-2 rounded-full shrink-0"
+                              style={{ backgroundColor: mailboxColor.get(email.mailbox) || "#94a3b8" }}
+                              title="Mailbox"
+                            />
+                          )}
+                          {!email.read && (
+                            <span className="h-2 w-2 rounded-full bg-primary shrink-0" title="Unread" />
+                          )}
+                          <span className="text-[10px] text-muted-foreground/60 font-medium tabular-nums whitespace-nowrap">
+                            {timeAgo(email.date)}
+                          </span>
+                        </div>
+                      </div>
+                      {email.preview && (
+                        <p className="text-[11px] text-muted-foreground/70 line-clamp-1 mt-1.5">{email.preview}</p>
+                      )}
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          )
+        })}
       </CardContent>
     </Card>
   )
@@ -668,7 +916,135 @@ function RecentActivityFeed({ emails }: { emails: Email[] }) {
 
 /* ─── Today's meetings (dashboard) ───────────────────────────────────── */
 
-function TodaysMeetingsCard({
+function formatNextMeeting(next: BriefingApi["stats"]["next_meeting"]) {
+  if (!next) return { title: "", time: "" }
+  const title = normalizeMeetingTitle(next.title || "Meeting")
+  let time = ""
+  try {
+    time = format(parseISO(next.start), "p")
+  } catch {
+    time = ""
+  }
+  return { title, time }
+}
+
+function MeetingMetricCard({
+  label,
+  value,
+  sublabel,
+  icon: Icon,
+  gradientFrom,
+  gradientTo,
+  alert = false,
+  onClick,
+}: {
+  label: string
+  value: string | number
+  sublabel?: string
+  icon: React.ElementType
+  gradientFrom: string
+  gradientTo: string
+  alert?: boolean
+  onClick?: () => void
+}) {
+  const Wrapper = onClick ? "button" : "div"
+  return (
+    <Wrapper
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      className={cn(
+        "group/metric relative w-full overflow-hidden rounded-2xl border text-left shadow-sm transition-all duration-300",
+        alert
+          ? "border-destructive/25 bg-destructive/[0.04]"
+          : "border-border/50 bg-card/80",
+        onClick &&
+          "cursor-pointer hover:-translate-y-0.5 hover:border-border hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+      )}
+    >
+      <div className={cn("absolute inset-y-0 left-0 w-1 bg-gradient-to-b", gradientFrom, gradientTo)} />
+      <div
+        className={cn(
+          "pointer-events-none absolute -right-6 -top-6 h-24 w-24 rounded-full opacity-[0.07] blur-2xl transition-opacity duration-300 group-hover/metric:opacity-[0.14]",
+          `bg-gradient-to-br ${gradientFrom} ${gradientTo}`,
+        )}
+      />
+      <div className="relative flex flex-col gap-3 p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">{label}</p>
+          <div
+            className={cn(
+              "flex h-8 w-8 shrink-0 items-center justify-center rounded-xl shadow-sm ring-1 ring-white/15 transition-transform duration-300 group-hover/metric:scale-105",
+              `bg-gradient-to-br ${gradientFrom} ${gradientTo}`,
+            )}
+          >
+            <Icon className="h-3.5 w-3.5 text-white" />
+          </div>
+        </div>
+        <div>
+          <p
+            className={cn(
+              "text-3xl font-extrabold tabular-nums leading-none tracking-tight",
+              alert ? "text-destructive" : "text-foreground",
+            )}
+          >
+            {value}
+          </p>
+          {sublabel && (
+            <p className="mt-1.5 text-[10px] font-medium uppercase tracking-wider text-muted-foreground/70">{sublabel}</p>
+          )}
+        </div>
+      </div>
+    </Wrapper>
+  )
+}
+
+function NextMeetingCard({
+  next,
+  onClick,
+}: {
+  next: BriefingApi["stats"]["next_meeting"]
+  onClick?: () => void
+}) {
+  const { title, time } = formatNextMeeting(next)
+  const Wrapper = onClick ? "button" : "div"
+
+  return (
+    <Wrapper
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      className={cn(
+        "group/next relative w-full overflow-hidden rounded-2xl border border-violet-500/20 bg-violet-500/[0.04] text-left shadow-sm transition-all duration-300",
+        onClick &&
+          "cursor-pointer hover:-translate-y-0.5 hover:border-violet-500/30 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
+      )}
+    >
+      <div className="absolute inset-y-0 left-0 w-1 bg-gradient-to-b from-violet-500 via-purple-500 to-fuchsia-600" />
+      <div className="relative flex h-full flex-col gap-3 p-4 sm:p-5">
+        <div className="flex items-center justify-between gap-2">
+          <p className="text-[11px] font-semibold uppercase tracking-[0.12em] text-muted-foreground">Next up</p>
+          <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-violet-500 to-fuchsia-600 shadow-sm ring-1 ring-white/15">
+            <Clock className="h-3.5 w-3.5 text-white" />
+          </div>
+        </div>
+        {next ? (
+          <>
+            <p className="line-clamp-2 text-base font-semibold leading-snug text-foreground">{title}</p>
+            {time && (
+              <p className="text-sm font-medium text-violet-600 dark:text-violet-300">{time}</p>
+            )}
+          </>
+        ) : (
+          <div className="flex flex-1 flex-col justify-center py-1">
+            <p className="text-sm font-medium text-muted-foreground">No meetings left today</p>
+            <p className="mt-1 text-[11px] text-muted-foreground/70">Open calendar to plan ahead</p>
+          </div>
+        )}
+      </div>
+    </Wrapper>
+  )
+}
+
+function MeetingsOverview({
   count,
   conflicts,
   next,
@@ -679,275 +1055,153 @@ function TodaysMeetingsCard({
   next: BriefingApi["stats"]["next_meeting"]
   onOpenCalendar: () => void
 }) {
-  let nextTime = ""
-  let nextTitle = ""
-  if (next) {
-    nextTitle = normalizeMeetingTitle(next.title || "Meeting")
-    try {
-      nextTime = format(parseISO(next.start), "p")
-    } catch {
-      nextTime = ""
-    }
-  }
+  return (
+    <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-gradient-to-br from-muted/30 via-card/50 to-violet-500/[0.03] p-3 sm:p-4">
+      <div className="mb-3 flex items-center gap-2 px-0.5">
+        <div className="h-px flex-1 bg-gradient-to-r from-violet-500/30 via-border/50 to-transparent" />
+        <p className="shrink-0 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">Overview</p>
+        <div className="h-px flex-1 bg-gradient-to-l from-violet-500/30 via-border/50 to-transparent" />
+      </div>
+      <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-3 sm:gap-3 briefing-stagger">
+        <MeetingMetricCard
+          label="Meetings"
+          value={count}
+          sublabel="Today"
+          icon={CalendarDays}
+          gradientFrom="from-violet-500"
+          gradientTo="to-purple-600"
+          onClick={onOpenCalendar}
+        />
+        <MeetingMetricCard
+          label="Conflicts"
+          value={conflicts}
+          sublabel={conflicts > 0 ? "Needs review" : "All clear"}
+          icon={AlertTriangle}
+          gradientFrom="from-rose-500"
+          gradientTo="to-red-600"
+          alert={conflicts > 0}
+          onClick={onOpenCalendar}
+        />
+        <NextMeetingCard next={next} onClick={onOpenCalendar} />
+      </div>
+      <button
+        type="button"
+        onClick={onOpenCalendar}
+        className="mt-3 flex w-full items-center justify-center gap-2 rounded-xl border border-violet-500/15 bg-violet-500/[0.06] px-4 py-2.5 text-xs font-semibold text-violet-700 transition-colors hover:bg-violet-500/10 dark:text-violet-300"
+      >
+        Open calendar
+        <ArrowRight className="h-3.5 w-3.5" />
+      </button>
+    </div>
+  )
+}
+
+function InlineMeetingMetric({
+  label,
+  value,
+  detail,
+  variant,
+  onClick,
+}: {
+  label: string
+  value: string | number
+  detail?: string
+  variant: "violet" | "rose" | "indigo"
+  onClick?: () => void
+}) {
+  const styles = {
+    violet: "border-violet-500/20 bg-violet-500/[0.06] text-violet-600 dark:text-violet-400",
+    rose: "border-rose-500/20 bg-rose-500/[0.06] text-rose-600 dark:text-rose-400",
+    indigo: "border-indigo-500/20 bg-indigo-500/[0.06] text-indigo-600 dark:text-indigo-400",
+  }[variant]
+
+  const Wrapper = onClick ? "button" : "div"
 
   return (
-    <Card
+    <Wrapper
+      type={onClick ? "button" : undefined}
+      onClick={onClick}
+      className={cn(
+        "group/metric relative min-w-0 flex-1 overflow-hidden rounded-xl border p-3 text-left transition-all duration-200",
+        styles,
+        onClick &&
+          "cursor-pointer hover:brightness-[1.02] hover:shadow-sm focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/25",
+      )}
+    >
+      <p className="mb-2 truncate text-[10px] font-semibold uppercase tracking-wide opacity-90">{label}</p>
+      <p className="text-xl font-extrabold tabular-nums leading-none">{value}</p>
+      {detail && (
+        <p className="mt-1.5 line-clamp-1 text-[10px] font-medium opacity-75">{detail}</p>
+      )}
+    </Wrapper>
+  )
+}
+
+function MailboxMeetingsPanel({
+  mailbox,
+  stats,
+  onOpenCalendar,
+}: {
+  mailbox: Mailbox
+  stats: { count: number; conflicts: number; next: BriefingApi["stats"]["next_meeting"] }
+  onOpenCalendar: () => void
+}) {
+  const accent = mailbox.color || "#64748b"
+  const initial = (mailbox.name || mailbox.email || "?").charAt(0).toUpperCase()
+  const { title, time } = formatNextMeeting(stats.next)
+
+  return (
+    <div
       role="button"
       tabIndex={0}
+      onClick={onOpenCalendar}
       onKeyDown={(e) => {
         if (e.key === "Enter" || e.key === " ") {
           e.preventDefault()
           onOpenCalendar()
         }
       }}
-      className={cn(
-        "group/meet relative overflow-hidden cursor-pointer border border-border/50",
-        "bg-gradient-to-b from-card via-card to-violet-500/[0.03]",
-        "shadow-sm shadow-black/5 dark:shadow-black/20",
-        "transition-all duration-300",
-        "hover:border-violet-500/25 hover:shadow-md hover:shadow-violet-500/10",
-        "hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.998]",
-        "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
-      )}
-      onClick={onOpenCalendar}
+      className="group/mailbox relative cursor-pointer overflow-hidden rounded-2xl border border-border/50 bg-card/70 shadow-sm transition-all duration-300 hover:border-border/80 hover:shadow-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/30 focus-visible:ring-offset-2 focus-visible:ring-offset-background"
     >
-      {/* Accent bar */}
-      <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-violet-500 via-purple-500 to-fuchsia-600 opacity-90" />
-
-      {/* Decorative grid */}
+      <div className="absolute left-0 top-0 bottom-0 w-1 opacity-90" style={{ backgroundColor: accent }} />
       <div
-        className="pointer-events-none absolute right-0 top-0 h-32 w-40 opacity-[0.07]"
-        style={{
-          backgroundImage: `
-            linear-gradient(to right, hsl(var(--border)) 1px, transparent 1px),
-            linear-gradient(to bottom, hsl(var(--border)) 1px, transparent 1px)
-          `,
-          backgroundSize: "12px 12px",
-        }}
+        className="pointer-events-none absolute -right-10 -top-10 h-32 w-32 rounded-full opacity-[0.06] blur-3xl"
+        style={{ backgroundColor: accent }}
       />
-
-      <CardContent className="relative p-4 pl-3.5 sm:p-5 sm:pl-4">
-        <div className="flex flex-col gap-4 sm:flex-row sm:items-stretch sm:justify-between sm:gap-6">
-          {/* Left: icon + stats */}
-          <div className="flex min-w-0 gap-3 sm:gap-4">
-            <div className="relative shrink-0">
-              <div className="absolute -inset-1 rounded-2xl bg-gradient-to-br from-violet-500/20 to-fuchsia-500/10 blur-md opacity-70 transition-opacity group-hover/meet:opacity-100" />
-              <div className="relative flex h-12 w-12 items-center justify-center rounded-2xl bg-gradient-to-br from-violet-500/25 via-purple-500/15 to-fuchsia-500/10 shadow-inner ring-1 ring-white/10 sm:h-14 sm:w-14 dark:ring-white/5">
-                <CalendarDays className="h-6 w-6 text-violet-300 sm:h-7 sm:w-7" strokeWidth={1.5} />
-              </div>
-            </div>
-
-            <div className="min-w-0 flex-1 pt-0.5">
-              <div className="flex flex-wrap items-center gap-2">
-                <span className="text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
-                  Today&apos;s schedule
-                </span>
-                {count > 0 && (
-                  <span className="rounded-full bg-violet-500/15 px-2 py-0.5 text-[10px] font-semibold text-violet-600 ring-1 ring-violet-500/20 dark:text-violet-300">
-                    {count} {count === 1 ? "event" : "events"}
-                  </span>
-                )}
-              </div>
-
-              <div className="mt-2 flex flex-wrap items-baseline gap-x-2 gap-y-1">
-                <span className="text-3xl font-black tabular-nums tracking-tight text-foreground sm:text-4xl md:text-5xl">
-                  {count}
-                </span>
-                <span className="text-sm font-medium text-muted-foreground">
-                  meeting{count !== 1 ? "s" : ""} today
-                </span>
-              </div>
-
-              {conflicts > 0 && (
-                <div className="mt-3 inline-flex max-w-full items-center gap-2 rounded-lg border border-destructive/20 bg-destructive/10 px-3 py-2 text-xs font-medium text-destructive">
-                  <AlertTriangle className="h-4 w-4 shrink-0" />
-                  <span>
-                    {conflicts} time conflict{conflicts !== 1 ? "s" : ""} — review in calendar
-                  </span>
-                </div>
-              )}
-            </div>
+      <div className="relative p-4 pl-3.5 sm:p-5 sm:pl-4">
+        <div className="mb-4 flex items-center gap-3">
+          <div
+            className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl text-sm font-bold text-white shadow-md ring-2 ring-background"
+            style={{ backgroundColor: accent }}
+          >
+            {initial}
           </div>
-
-          {/* Right: next meeting or empty */}
-          <div className="flex min-w-0 flex-1 flex-col justify-center sm:max-w-[min(100%,20rem)] sm:border-l sm:border-border/40 sm:pl-6">
-            {next ? (
-              <div className="rounded-xl border border-border/60 bg-muted/40 p-3.5 backdrop-blur-sm transition-colors group-hover/meet:bg-muted/50 dark:bg-muted/25">
-                <p className="text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">
-                  Next up
-                </p>
-                <p className="mt-1 line-clamp-2 text-sm font-semibold leading-snug text-foreground">
-                  {nextTitle}
-                </p>
-                {nextTime && (
-                  <div className="mt-2 flex items-center gap-1.5 text-xs font-medium text-violet-700 dark:text-violet-300/90">
-                    <Clock className="h-3.5 w-3.5 shrink-0 opacity-80" />
-                    {nextTime}
-                  </div>
-                )}
-              </div>
-            ) : (
-              <div className="flex h-full min-h-[5.5rem] flex-col items-center justify-center rounded-xl border border-dashed border-border/60 bg-muted/20 px-4 py-5 text-center">
-                <p className="text-sm font-medium text-muted-foreground">No meetings left today</p>
-                <p className="mt-1 text-xs text-muted-foreground/70">Open calendar to plan ahead</p>
-              </div>
-            )}
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-sm font-semibold text-foreground">{mailbox.name}</p>
+            <p className="truncate text-xs text-muted-foreground">{mailbox.email}</p>
           </div>
+          <ArrowRight className="h-4 w-4 shrink-0 text-muted-foreground/50 transition-transform group-hover/mailbox:translate-x-0.5 group-hover/mailbox:text-violet-500" />
         </div>
-      </CardContent>
-    </Card>
-  )
-}
-
-/* ─── Grouped Briefing Items ─────────────────────────────────────────── */
-
-function GroupedBriefingItems({
-  items,
-  dismissedIds,
-  onDismiss,
-  onMarkDone,
-  onItemClick,
-}: {
-  items: BriefingItem[]
-  dismissedIds: Set<string>
-  onDismiss: (id: string) => void
-  onMarkDone: (id: string) => void
-  onItemClick: (item: BriefingItem) => void
-}) {
-  const visibleItems = items.filter((item) => !dismissedIds.has(item.id))
-
-  const groups = useMemo(() => {
-    const map = new Map<string, BriefingItem[]>()
-    for (const item of visibleItems) {
-      const key = item.type
-      if (!map.has(key)) map.set(key, [])
-      map.get(key)!.push(item)
-    }
-    return Array.from(map.entries())
-      .map(([type, groupItems]) => ({
-        type,
-        config: typeConfig[type] || typeConfig.info,
-        items: groupItems,
-      }))
-      .sort((a, b) => a.config.groupOrder - b.config.groupOrder)
-  }, [visibleItems])
-
-  if (visibleItems.length === 0) {
-    return (
-      <div className="flex flex-col items-center justify-center py-20 text-center animate-entrance">
-        <div className="relative mb-5">
-          <div className="absolute inset-0 bg-emerald-400/20 rounded-full blur-2xl scale-150 animate-float-slow" />
-          <div className="relative flex h-18 w-18 items-center justify-center rounded-2xl bg-gradient-to-br from-emerald-400/20 to-emerald-400/5 ring-1 ring-emerald-400/20 shadow-lg shadow-emerald-400/10">
-            <CheckCircle2 className="h-9 w-9 text-emerald-400" />
-          </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3 sm:gap-2.5">
+          <InlineMeetingMetric
+            label="Meetings"
+            value={stats.count}
+            variant="violet"
+          />
+          <InlineMeetingMetric
+            label="Conflicts"
+            value={stats.conflicts}
+            detail={stats.conflicts > 0 ? "Review in calendar" : undefined}
+            variant="rose"
+          />
+          <InlineMeetingMetric
+            label="Next"
+            value={stats.next ? (time || "Soon") : "—"}
+            detail={stats.next ? title : "No meetings left"}
+            variant="indigo"
+          />
         </div>
-        <p className="text-lg font-bold text-foreground">All caught up!</p>
-        <p className="text-sm text-muted-foreground/70 mt-2 max-w-[260px] leading-relaxed">No pending briefing items. Enjoy your day!</p>
       </div>
-    )
-  }
-
-  return (
-    <div className="flex flex-col gap-7">
-      {groups.map((group) => {
-        const GroupIcon = group.config.icon
-        return (
-          <div key={group.type} className="animate-entrance">
-            <div className="flex items-center gap-3 mb-3.5">
-              <div className={cn("flex h-7 w-7 items-center justify-center rounded-lg shadow-sm", group.config.bg)}>
-                <GroupIcon className={cn("h-3.5 w-3.5", group.config.color)} />
-              </div>
-              <h3 className="text-xs font-bold uppercase tracking-[0.08em] text-muted-foreground/80">
-                {group.config.groupLabel}
-              </h3>
-              <div className="flex-1 briefing-section-line" />
-              <Badge variant="secondary" className="text-[10px] px-2.5 py-0.5 bg-muted/60 font-bold rounded-full tabular-nums">
-                {group.items.length}
-              </Badge>
-            </div>
-            <div className="flex flex-col gap-2.5 briefing-stagger">
-              {group.items.map((item) => {
-                const config = typeConfig[item.type] || typeConfig.info
-                return (
-                  <Card
-                    key={item.id}
-                    className={cn(
-                      "glass-card border-border/40 transition-all duration-300 cursor-pointer group overflow-hidden",
-                      "hover:shadow-lg hover:shadow-primary/5 hover:border-border/70 hover:-translate-y-0.5 active:translate-y-0"
-                    )}
-                    onClick={() => onItemClick(item)}
-                  >
-                    <div className="flex">
-                      <div className={cn("w-1 shrink-0 transition-all duration-300 group-hover:w-1.5", config.accent)} />
-                      <CardContent className="flex-1 p-4">
-                        <div className="flex gap-3">
-                          <div className="flex-1 min-w-0">
-                            <div className="flex items-start justify-between gap-2">
-                              <div className="flex items-center gap-2.5 min-w-0">
-                                <h4 className="text-sm font-bold text-foreground truncate">{item.title}</h4>
-                                <Badge
-                                  variant="outline"
-                                  className={cn(
-                                    "text-[10px] px-2 py-0 shrink-0 font-bold rounded-full",
-                                    item.priority === "high"
-                                      ? "border-red-400/30 text-red-400 bg-red-400/5"
-                                      : item.priority === "medium"
-                                        ? "border-amber-400/30 text-amber-400 bg-amber-400/5"
-                                        : "border-border/60 text-muted-foreground/70"
-                                  )}
-                                >
-                                  {item.priority}
-                                </Badge>
-                              </div>
-                              <div className="flex items-center gap-0.5 shrink-0 opacity-0 group-hover:opacity-100 transition-all duration-200 translate-x-1 group-hover:translate-x-0">
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 rounded-lg text-emerald-400 hover:text-emerald-300 hover:bg-emerald-400/10"
-                                  onClick={(e) => { e.stopPropagation(); onMarkDone(item.id) }}
-                                  title="Mark as done"
-                                >
-                                  <Check className="h-3.5 w-3.5" />
-                                </Button>
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-7 w-7 rounded-lg text-muted-foreground hover:text-foreground hover:bg-muted/80"
-                                  onClick={(e) => { e.stopPropagation(); onDismiss(item.id) }}
-                                  title="Dismiss"
-                                >
-                                  <X className="h-3.5 w-3.5" />
-                                </Button>
-                              </div>
-                            </div>
-                            <p className="mt-2 text-xs text-muted-foreground/80 leading-relaxed line-clamp-2">
-                              {item.description}
-                            </p>
-                            <div className="mt-3 flex items-center gap-3">
-                              {item.type === "meeting" ? (
-                                <span className="text-[10px] font-semibold text-muted-foreground/60 flex items-center gap-1.5 bg-muted/30 px-2 py-0.5 rounded-full">
-                                  <CalendarDays className="h-3 w-3" />
-                                  Calendar
-                                </span>
-                              ) : (
-                                <span className="text-[10px] font-semibold text-muted-foreground/60 flex items-center gap-1.5 bg-muted/30 px-2 py-0.5 rounded-full">
-                                  <Mail className="h-3 w-3" />
-                                  {item.emails.length} email{item.emails.length !== 1 ? "s" : ""}
-                                </span>
-                              )}
-                              <ArrowRight className="h-3 w-3 text-primary opacity-0 group-hover:opacity-100 group-hover:translate-x-1 transition-all duration-300" />
-                            </div>
-                          </div>
-                        </div>
-                      </CardContent>
-                    </div>
-                  </Card>
-                )
-              })}
-            </div>
-          </div>
-        )
-      })}
     </div>
   )
 }
@@ -1239,8 +1493,8 @@ function AiProfileWidget({ mailboxScope = "all" }: { mailboxScope?: string }) {
                 <p className="text-[11px] text-foreground font-semibold truncate">{profile.response_preferences.delegation_style}</p>
               </div>
               <div className="rounded-xl bg-muted/20 border border-border/30 p-3">
-                <p className="text-[10px] text-muted-foreground/60 mb-0.5 font-semibold">Follow-up</p>
-                <p className="text-[11px] text-foreground font-semibold truncate">{profile.response_preferences.follow_up_pattern}</p>
+                <p className="text-[10px] text-muted-foreground/60 mb-0.5 font-semibold">Urgency</p>
+                <p className="text-[11px] text-foreground font-semibold truncate">{profile.response_preferences.urgency_handling}</p>
               </div>
             </div>
           </div>
@@ -1286,14 +1540,13 @@ export function DailyBriefing({
   const { user } = useAuth()
   const requestSeqRef = useRef(0)
   const [mailboxes, setMailboxes] = useState<Mailbox[]>([])
-  const [briefingItems, setBriefingItems] = useState<BriefingItem[]>([])
   const [stats, setStats] = useState({ unreadTotal: 0, highPriority: 0 })
   const [emailStats, setEmailStats] = useState({
     grandTotal: 0, totalUnread: 0, totalReplied: 0, totalUnreplied: 0,
     todayTotal: 0, todayUnread: 0, todayReplied: 0, todayUnreplied: 0,
     totalRepliesSent: 0, todayRepliesSent: 0,
   })
-  const [allEmails, setAllEmails] = useState<Email[]>([])
+  const [todayEmails, setTodayEmails] = useState<Email[]>([])
   const [mailboxStats, setMailboxStats] = useState<Record<string, {
     todayTotal: number
     grandTotal: number
@@ -1310,7 +1563,6 @@ export function DailyBriefing({
     next: BriefingApi["stats"]["next_meeting"]
   }>>({})
   const [loading, setLoading] = useState(true)
-  const [dismissedIds, setDismissedIds] = useState<Set<string>>(new Set())
   const [widgetRefreshKey, setWidgetRefreshKey] = useState(0)
   const [meetingsToday, setMeetingsToday] = useState<{
     count: number
@@ -1331,7 +1583,6 @@ export function DailyBriefing({
       .get({ mailbox_id: mailboxScope !== "all" ? mailboxScope : undefined })
       .then((data) => {
         if (seq !== requestSeqRef.current || scopeAtRequest !== mailboxScope) return
-        setBriefingItems(data.items.map(mapBriefingItem))
         setStats({
           unreadTotal: data.stats.unread_total,
           highPriority: data.stats.high_priority,
@@ -1356,7 +1607,6 @@ export function DailyBriefing({
         const parsed = JSON.parse(raw) as {
           ts: number
           mailboxes?: Mailbox[]
-          briefingItems?: BriefingItem[]
           stats?: { unreadTotal: number; highPriority: number }
           emailStats?: {
             grandTotal: number
@@ -1370,7 +1620,7 @@ export function DailyBriefing({
             totalRepliesSent: number
             todayRepliesSent: number
           }
-          allEmails?: Email[]
+          todayEmails?: Email[]
           meetingsToday?: {
             count: number
             conflicts: number
@@ -1397,10 +1647,9 @@ export function DailyBriefing({
           Date.now() - parsed.ts < DASHBOARD_CACHE_TTL_MS
         ) {
           if (Array.isArray(parsed.mailboxes)) setMailboxes(parsed.mailboxes)
-          if (Array.isArray(parsed.briefingItems)) setBriefingItems(parsed.briefingItems)
           if (parsed.stats) setStats(parsed.stats)
           if (parsed.emailStats) setEmailStats(parsed.emailStats)
-          if (Array.isArray(parsed.allEmails)) setAllEmails(parsed.allEmails)
+          if (Array.isArray(parsed.todayEmails)) setTodayEmails(parsed.todayEmails)
           if (parsed.meetingsToday) setMeetingsToday(parsed.meetingsToday)
           if (parsed.mailboxStats && typeof parsed.mailboxStats === "object") {
             setMailboxStats(parsed.mailboxStats)
@@ -1420,7 +1669,6 @@ export function DailyBriefing({
     briefingApi
         .get({ mailbox_id: mailboxScope !== "all" ? mailboxScope : undefined })
       .then((data) => {
-          setBriefingItems(data.items.map(mapBriefingItem))
           setStats({
             unreadTotal: data.stats.unread_total,
             highPriority: data.stats.high_priority,
@@ -1471,10 +1719,14 @@ export function DailyBriefing({
         })
         .catch(() => null),
       emailsApi
-        .list({ limit: 50, ...(mailboxScope !== "all" ? { mailbox_id: mailboxScope } : {}) })
+        .list({
+          limit: 100,
+          inbox_preset: "today",
+          ...(mailboxScope !== "all" ? { mailbox_id: mailboxScope } : {}),
+        })
         .then((res) => {
           const mapped = (res.emails ?? []).map(mapEmailListApi)
-          setAllEmails(mapped)
+          setTodayEmails(mapped)
           return res
         })
         .catch(() => null),
@@ -1521,7 +1773,6 @@ export function DailyBriefing({
               JSON.stringify({
                 ts: Date.now(),
                 mailboxes: mailboxesForCache,
-                briefingItems: briefingData.items.map(mapBriefingItem),
                 stats: {
                   unreadTotal: briefingData.stats.unread_total,
                   highPriority: briefingData.stats.high_priority,
@@ -1543,7 +1794,7 @@ export function DailyBriefing({
                   totalRepliesSent: statsData.total_replies_sent ?? 0,
                   todayRepliesSent: statsData.today_replies_sent ?? 0,
                 },
-                allEmails: (listRes.emails ?? []).map(mapEmailListApi),
+                todayEmails: (listRes.emails ?? []).map(mapEmailListApi),
               }),
             )
           }
@@ -1711,35 +1962,6 @@ export function DailyBriefing({
     }
   }
 
-  const handleItemClick = (item: BriefingItem) => {
-    if (item.type === "meeting") {
-      onViewChange("calendar")
-      if (item.meetingId) {
-        queueMicrotask(() =>
-          window.dispatchEvent(
-            new CustomEvent("calendar:openMeeting", { detail: { id: item.meetingId } })
-          )
-        )
-      }
-      return
-    }
-    if (item.emails.length > 0 && onNavigateToEmail) {
-      onNavigateToEmail(item.emails[0])
-    } else if (onNavigateInbox) {
-      onNavigateInbox("today")
-    } else {
-      onViewChange("inbox")
-    }
-  }
-
-  const handleDismiss = (id: string) => {
-    setDismissedIds((prev) => new Set(prev).add(id))
-  }
-
-  const handleMarkDone = (id: string) => {
-    setDismissedIds((prev) => new Set(prev).add(id))
-  }
-
   const today = new Date()
   const hour = today.getHours()
   const greeting = hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening"
@@ -1882,24 +2104,38 @@ export function DailyBriefing({
             }
           />
 
-          {/* Row 1: Stats in one box */}
-          <Card className="glass-card border-border/40 glow-ring overflow-hidden">
-            <CardHeader className="pb-2 pt-4">
-              <div className="flex items-center justify-between gap-2">
-                <CardTitle className="text-sm font-bold text-foreground">Stats</CardTitle>
+          {/* Row 1: Stats */}
+          <Card className="glass-card border-border/40 glow-ring overflow-hidden animate-entrance">
+            <CardHeader className="space-y-3 border-b border-border/40 bg-gradient-to-r from-primary/[0.04] via-transparent to-blue-500/[0.03] pb-4 pt-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10 ring-1 ring-primary/15">
+                    <BarChart3 className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base font-bold text-foreground">Email stats</CardTitle>
+                    <p className="text-xs text-muted-foreground">
+                      {mailboxScope === "all" ? "Combined across all connected mailboxes" : "For the selected mailbox"}
+                    </p>
+                  </div>
+                </div>
                 {mailboxScope === "all" && (
-                  <span className="rounded-full bg-primary/10 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-wider text-primary">
-                    All Emails (All Mailboxes)
-                  </span>
+                  <Badge variant="secondary" className="w-fit rounded-full border border-primary/15 bg-primary/8 px-3 py-1 text-[11px] font-semibold text-primary">
+                    All mailboxes
+                  </Badge>
                 )}
               </div>
             </CardHeader>
-            <CardContent className="space-y-4 pb-4">
-              <div className="rounded-xl border border-border/40 bg-card/40 p-3">
-                <p className="mb-2 text-[11px] font-semibold uppercase tracking-wider text-primary">
-                  All Mailboxes Stats
-                </p>
-                <div className="grid grid-cols-2 gap-2.5 sm:grid-cols-4 sm:gap-3 briefing-stagger">
+            <CardContent className="space-y-5 p-4 sm:p-5">
+              <div className="relative overflow-hidden rounded-2xl border border-border/40 bg-gradient-to-br from-muted/30 via-card/50 to-primary/[0.02] p-3 sm:p-4">
+                <div className="mb-3 flex items-center gap-2 px-0.5">
+                  <div className="h-px flex-1 bg-gradient-to-r from-primary/30 via-border/50 to-transparent" />
+                  <p className="shrink-0 text-[10px] font-bold uppercase tracking-[0.14em] text-muted-foreground">
+                    Overview
+                  </p>
+                  <div className="h-px flex-1 bg-gradient-to-l from-primary/30 via-border/50 to-transparent" />
+                </div>
+                <div className="grid grid-cols-1 gap-2.5 sm:grid-cols-2 sm:gap-3 lg:grid-cols-4 briefing-stagger">
                   <StatCard
                     label="Emails"
                     value={todayTotal}
@@ -1940,133 +2176,91 @@ export function DailyBriefing({
               </div>
 
               {mailboxScope === "all" && mailboxes.length > 0 && (
-                <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  {mailboxes.map((mb) => {
-                    const s = mailboxStats[mb.id] || {
-                      todayTotal: 0,
-                      grandTotal: 0,
-                      todayUnread: 0,
-                      totalUnread: 0,
-                      todayReplied: 0,
-                      totalReplied: 0,
-                      todayUnreplied: 0,
-                      totalUnreplied: 0,
-                    }
-                    return (
-                      <div
-                        key={mb.id}
-                        className="group/stat relative overflow-hidden rounded-xl border border-border/40 bg-card/60 p-4 transition-all duration-300 hover:border-border/70 hover:shadow-md"
-                      >
-                        <div
-                          className="absolute -top-8 -right-8 h-20 w-20 rounded-full opacity-[0.08] blur-2xl"
-                          style={{ backgroundColor: mb.color || "#64748b" }}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 px-0.5">
+                    <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                    <p className="text-xs font-semibold text-foreground">Per mailbox</p>
+                    <span className="text-[11px] text-muted-foreground">· {mailboxes.length} connected</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 briefing-stagger xl:grid-cols-2">
+                    {mailboxes.map((mb) => {
+                      const s = mailboxStats[mb.id] || {
+                        todayTotal: 0,
+                        grandTotal: 0,
+                        todayUnread: 0,
+                        totalUnread: 0,
+                        todayReplied: 0,
+                        totalReplied: 0,
+                        todayUnreplied: 0,
+                        totalUnreplied: 0,
+                      }
+                      return (
+                        <MailboxStatsPanel
+                          key={mb.id}
+                          mailbox={mb}
+                          stats={s}
+                          onMetricClick={(filter) => onOpenInboxWithMailbox?.(mb.id, filter)}
                         />
-                        <div className="relative">
-                          <div className="mb-3 flex items-center gap-2">
-                            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: mb.color || "#64748b" }} />
-                            <p className="text-sm font-semibold text-foreground">{mb.name}</p>
-                          </div>
-                          <div className="grid grid-cols-2 gap-2.5">
-                            <StatCard
-                              label="Emails"
-                              value={s.todayTotal}
-                              totalValue={s.grandTotal}
-                              icon={Inbox}
-                              gradientFrom="from-blue-500"
-                              gradientTo="to-blue-600"
-                              onClick={() => onOpenInboxWithMailbox?.(mb.id, "today")}
-                            />
-                            <StatCard
-                              label="Unread"
-                              value={s.todayUnread}
-                              totalValue={s.totalUnread}
-                              icon={MailOpen}
-                              gradientFrom="from-amber-500"
-                              gradientTo="to-orange-500"
-                              onClick={() => onOpenInboxWithMailbox?.(mb.id, "today_unread")}
-                            />
-                            <StatCard
-                              label="Replied"
-                              value={s.todayReplied}
-                              totalValue={s.totalReplied}
-                              icon={Reply}
-                              gradientFrom="from-emerald-500"
-                              gradientTo="to-teal-600"
-                              onClick={() => onOpenInboxWithMailbox?.(mb.id, "today_replied")}
-                            />
-                            <StatCard
-                              label="Unreplied"
-                              value={s.todayUnreplied}
-                              totalValue={s.totalUnreplied}
-                              icon={MailX}
-                              gradientFrom="from-rose-500"
-                              gradientTo="to-red-600"
-                              onClick={() => onOpenInboxWithMailbox?.(mb.id, "today_unreplied")}
-                            />
-                          </div>
-                        </div>
-                      </div>
-                    )
-                  })}
+                      )
+                    })}
+                  </div>
                 </div>
               )}
             </CardContent>
           </Card>
 
-          {/* Row 2: Meetings in one box */}
+          {/* Row 2: Meetings */}
           <Card className="glass-card border-border/40 glow-ring overflow-hidden animate-entrance" style={{ animationDelay: "0.08s" }}>
-            <CardHeader className="pb-2 pt-4">
-              <CardTitle className="text-sm font-bold text-foreground">Meetings</CardTitle>
+            <CardHeader className="space-y-3 border-b border-border/40 bg-gradient-to-r from-violet-500/[0.04] via-transparent to-fuchsia-500/[0.03] pb-4 pt-5">
+              <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+                <div className="flex items-center gap-3">
+                  <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-violet-500/10 ring-1 ring-violet-500/15">
+                    <CalendarDays className="h-5 w-5 text-violet-600 dark:text-violet-400" />
+                  </div>
+                  <div>
+                    <CardTitle className="text-base font-bold text-foreground">Meetings</CardTitle>
+                    <p className="text-xs text-muted-foreground">
+                      {mailboxScope === "all"
+                        ? "Today's schedule across all mailboxes"
+                        : "Today's schedule for this mailbox"}
+                    </p>
+                  </div>
+                </div>
+                {mailboxScope === "all" && (
+                  <Badge variant="secondary" className="w-fit rounded-full border border-violet-500/15 bg-violet-500/8 px-3 py-1 text-[11px] font-semibold text-violet-700 dark:text-violet-300">
+                    All mailboxes
+                  </Badge>
+                )}
+              </div>
             </CardHeader>
-            <CardContent className="space-y-4 pb-4">
-              <TodaysMeetingsCard
+            <CardContent className="space-y-5 p-4 sm:p-5">
+              <MeetingsOverview
                 count={meetingsToday.count}
                 conflicts={meetingsToday.conflicts}
                 next={meetingsToday.next}
                 onOpenCalendar={() => onViewChange("calendar")}
               />
+
               {mailboxScope === "all" && mailboxes.length > 0 && (
-                <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
-                  {mailboxes.map((mb) => {
-                    const m = mailboxMeetingStats[mb.id] || { count: 0, conflicts: 0, next: null }
-                    return (
-                      <Card
-                        key={mb.id}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => onOpenCalendarWithMailbox?.(mb.id)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter" || e.key === " ") {
-                            e.preventDefault()
-                            onOpenCalendarWithMailbox?.(mb.id)
-                          }
-                        }}
-                        className={cn(
-                          "group/meet relative overflow-hidden border border-border/50",
-                          "bg-gradient-to-b from-card via-card to-violet-500/[0.03]",
-                          "shadow-sm shadow-black/5 dark:shadow-black/20",
-                          "transition-all duration-300",
-                          "cursor-pointer hover:border-violet-500/25 hover:shadow-md hover:shadow-violet-500/10",
-                          "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-violet-500/40 focus-visible:ring-offset-2 focus-visible:ring-offset-background",
-                        )}
-                      >
-                        <div className="absolute left-0 top-0 bottom-0 w-1 bg-gradient-to-b from-violet-500 via-purple-500 to-fuchsia-600 opacity-90" />
-                        <CardContent className="p-4 pl-3.5">
-                          <div className="mb-2 flex items-center gap-2">
-                            <span className="h-2.5 w-2.5 rounded-full" style={{ backgroundColor: mb.color || "#64748b" }} />
-                            <p className="text-sm font-semibold text-foreground">{mb.name}</p>
-                          </div>
-                          <div className="flex items-center gap-3 text-xs text-muted-foreground">
-                            <span>Meetings: <span className="font-semibold text-foreground">{m.count}</span></span>
-                            <span>Conflicts: <span className="font-semibold text-foreground">{m.conflicts}</span></span>
-                          </div>
-                          <p className="mt-2 text-[11px] text-muted-foreground">
-                            {m.next ? `Next: ${m.next.title}` : "No meetings left today"}
-                          </p>
-                        </CardContent>
-                      </Card>
-                    )
-                  })}
+                <div className="space-y-3">
+                  <div className="flex items-center gap-2 px-0.5">
+                    <Users className="h-3.5 w-3.5 text-muted-foreground" />
+                    <p className="text-xs font-semibold text-foreground">Per mailbox</p>
+                    <span className="text-[11px] text-muted-foreground">· {mailboxes.length} connected</span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-3 briefing-stagger xl:grid-cols-2">
+                    {mailboxes.map((mb) => {
+                      const m = mailboxMeetingStats[mb.id] || { count: 0, conflicts: 0, next: null }
+                      return (
+                        <MailboxMeetingsPanel
+                          key={mb.id}
+                          mailbox={mb}
+                          stats={m}
+                          onOpenCalendar={() => onOpenCalendarWithMailbox?.(mb.id)}
+                        />
+                      )
+                    })}
+                  </div>
                 </div>
               )}
             </CardContent>
@@ -2086,32 +2280,18 @@ export function DailyBriefing({
             </CardContent>
           </Card>
 
-          {/* Row 4: Briefing items + sidebar widgets */}
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12">
-            <div className="lg:col-span-8 flex flex-col gap-5">
-              <div className="flex items-center justify-between">
-                <h2 className="text-base font-extrabold text-foreground flex items-center gap-2.5">
-                  <div className="flex h-7 w-7 items-center justify-center rounded-lg bg-primary/10 shadow-sm">
-                    <Image src={smartMailLogo} alt="Today's Briefing" className="h-4 w-4 object-contain" />
-                  </div>
-                  Today&apos;s Briefing
-                </h2>
-                <Badge variant="outline" className="text-[10px] px-2.5 py-0.5 border-border/50 text-muted-foreground/70 font-semibold rounded-full tabular-nums">
-                  {briefingItems.filter((i) => !dismissedIds.has(i.id)).length} items
-                </Badge>
-              </div>
-              <GroupedBriefingItems
-                items={briefingItems}
-                dismissedIds={dismissedIds}
-                onDismiss={handleDismiss}
-                onMarkDone={handleMarkDone}
-                onItemClick={handleItemClick}
+          {/* Row 4: Today's emails by priority + profile */}
+          <div className="grid grid-cols-1 gap-6 lg:grid-cols-12 briefing-stagger">
+            <div className="lg:col-span-8">
+              <TodayEmailsByPriority
+                emails={todayEmails}
+                mailboxes={scopedMailboxes}
+                onEmailClick={onNavigateToEmail}
+                onViewAllToday={() => handleCardClick("today")}
               />
             </div>
-
-            <div className="lg:col-span-4 flex flex-col gap-5 briefing-stagger">
+            <div className="lg:col-span-4">
               <AiProfileWidget mailboxScope={mailboxScope} />
-              <RecentActivityFeed emails={allEmails} />
             </div>
           </div>
         </div>

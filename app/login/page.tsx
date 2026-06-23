@@ -10,7 +10,6 @@ import {
   Eye,
   EyeOff,
   Sparkles,
-  Mic,
   CalendarCheck,
   Inbox,
   ShieldCheck,
@@ -26,7 +25,7 @@ import smartMailLogo from "@/logo/Smart Mail Logo.png"
 const FEATURES = [
   { icon: Inbox, title: "Unified inbox", description: "Gmail, Outlook, and IMAP in one place." },
   { icon: Sparkles, title: "Daily briefing", description: "AI-summarized priorities every morning." },
-  { icon: Mic, title: "Voice agent", description: "Read, reply, and triage hands-free." },
+  { icon: Sparkles, title: "AI assistant", description: "Ask questions and approve actions across your mail." },
   { icon: CalendarCheck, title: "Meetings from mail", description: "Detect and confirm invites instantly." },
 ]
 
@@ -167,7 +166,7 @@ export default function LoginPage() {
             className="mt-4 text-base leading-relaxed text-muted-foreground"
           >
             Daily briefings, unified sync across every account, AI search,
-            compose, and a voice agent — all in one focused workspace.
+            compose, and an AI assistant — all in one focused workspace.
           </p>
 
           <div
@@ -211,7 +210,7 @@ export default function LoginPage() {
             </span>
             <span className="inline-flex items-center gap-1.5">
               <Sparkles className="h-3.5 w-3.5 text-primary" />
-              Powered by GPT & Whisper
+              Powered by GPT
             </span>
           </div>
 

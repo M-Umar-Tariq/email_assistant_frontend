@@ -1046,11 +1046,6 @@ export function SettingsView({
                                   <span>Delegation</span>
                                   <span className="text-foreground font-medium">{profile.response_preferences.delegation_style}</span>
                                 </div>
-                                <Separator />
-                                <div className="flex justify-between items-center">
-                                  <span>Follow-up</span>
-                                  <span className="text-foreground font-medium">{profile.response_preferences.follow_up_pattern}</span>
-                                </div>
                               </div>
                             </div>
 

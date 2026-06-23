@@ -298,7 +298,6 @@ export type EmailListApi = {
   has_attachment: boolean;
   attachments?: { filename: string; content_type: string; size: number; has_text: boolean }[];
   priority: string;
-  category: string | null;
   ai_summary: string | null;
   sentiment_score: number | null;
   snoozed_until: string | null;
@@ -385,7 +384,6 @@ export const emails = {
   },
   list: (params?: {
     mailbox_id?: string;
-    category?: string;
     unread_only?: boolean;
     from_email?: string;
     label?: string;
@@ -407,7 +405,6 @@ export const emails = {
   }) => {
     const sp = new URLSearchParams();
     if (params?.mailbox_id) sp.set("mailbox_id", params.mailbox_id);
-    if (params?.category) sp.set("category", params.category);
     if (params?.unread_only) sp.set("unread_only", "true");
     if (params?.from_email) sp.set("from_email", params.from_email);
     if (params?.label) sp.set("label", params.label);
@@ -538,39 +535,6 @@ export const emails = {
     request<EmailDetailApi>("POST", `/emails/${encodeURIComponent(emailId)}/dismiss-meeting/`),
 };
 
-// ── Follow-ups ──────────────────────────────────────────────────────────────
-
-export type FollowUpApi = {
-  id: string;
-  user_id: string;
-  email_id: string;
-  due_date: string;
-  status: string;
-  auto_reminder_sent: boolean;
-  days_waiting: number;
-  created_at?: string;
-  email_subject?: string;
-  from_name?: string;
-  from_email?: string;
-};
-
-export const followUps = {
-  list: (params?: { status?: string; mailbox_id?: string }) => {
-    const sp = new URLSearchParams();
-    if (params?.status) sp.set("status", params.status);
-    if (params?.mailbox_id && params.mailbox_id !== "all") sp.set("mailbox_id", params.mailbox_id);
-    const qs = sp.toString();
-    return request<FollowUpApi[]>("GET", `/follow-ups/${qs ? `?${qs}` : ""}`);
-  },
-  create: (data: { email_id: string; due_date: string }) =>
-    request<FollowUpApi>("POST", "/follow-ups/", data),
-  update: (id: string, data: { status?: string; due_date?: string }) =>
-    request<FollowUpApi>("PATCH", `/follow-ups/${id}/`, data),
-  complete: (id: string) => request<FollowUpApi>("POST", `/follow-ups/${id}/complete/`),
-  autoToday: () => request<{ scanned: number; created: number; skipped_existing: number }>("POST", "/follow-ups/auto/today/"),
-  delete: (id: string) => request<void>("DELETE", `/follow-ups/${id}/`),
-};
-
 // ── Briefing ────────────────────────────────────────────────────────────────
 
 export type BriefingMeetingApi = {
@@ -590,8 +554,6 @@ export type BriefingApi = {
   stats: {
     unread_total: number;
     high_priority: number;
-    overdue_follow_ups: number;
-    pending_follow_ups: number;
     meetings_today_count?: number;
     meetings_today_conflicts?: number;
     next_meeting?: BriefingMeetingApi | null;
@@ -604,15 +566,6 @@ export type BriefingApi = {
     unread: number;
     synced: boolean;
     last_sync: string | null;
-  }[];
-  items: {
-    id: string;
-    type: string;
-    title: string;
-    description: string;
-    priority: string;
-    email_ids: string[];
-    meeting_id?: string;
   }[];
 };
 
@@ -873,6 +826,7 @@ export type AgentActionApi = {
   draft?: unknown;
   marked?: number;
   failed?: number;
+  scope?: string;
 };
 
 export type AgentChatResponse = {
@@ -920,7 +874,6 @@ export type AgentProfile = {
   response_preferences: {
     urgency_handling: string;
     delegation_style: string;
-    follow_up_pattern: string;
   };
 };
 
@@ -945,64 +898,6 @@ export const agent = {
     request<AgentActionApi>("POST", "/agent/execute/", actionData),
   reject: (actionId: string) =>
     request<{ id: string; status: string }>("POST", `/agent/reject/${actionId}/`),
-  async *chatStream(
-    message: string,
-    history?: { role: string; content: string }[],
-    mailboxId?: string
-  ): AsyncGenerator<{ type: string; content?: string; actions?: AgentActionApi[]; sources?: { email_id: string; subject: string }[]; message?: string }> {
-    const url = `${API_BASE}/agent/chat/stream/`;
-    const token = getAccessToken();
-    const headers: Record<string, string> = { "Content-Type": "application/json" };
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-
-    const res = await fetch(url, {
-      method: "POST",
-      headers,
-      body: JSON.stringify({
-        message,
-        history,
-        mailbox_id: mailboxId === "all" ? undefined : mailboxId,
-      }),
-      credentials: "include",
-    });
-
-    if (!res.ok || !res.body) throw new Error(`Stream failed: ${res.status}`);
-
-    const reader = res.body.getReader();
-    const decoder = new TextDecoder();
-    let buf = "";
-
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      buf += decoder.decode(value, { stream: true });
-      const lines = buf.split("\n");
-      buf = lines.pop() ?? "";
-      for (const line of lines) {
-        if (!line.startsWith("data: ")) continue;
-        const data = line.slice(6).trim();
-        if (data === "[DONE]") return;
-        try { yield JSON.parse(data); } catch { /* ignore malformed */ }
-      }
-    }
-  },
-  speak: (text: string) =>
-    request<{ audio: string; format: string }>("POST", "/agent/speak/", { text }),
-  transcribe: async (audioBlob: Blob): Promise<{ text: string }> => {
-    const url = `${API_BASE}/agent/transcribe/`;
-    const formData = new FormData();
-    formData.append("audio", audioBlob, "recording.webm");
-    const headers: Record<string, string> = {};
-    const token = getAccessToken();
-    if (token) headers["Authorization"] = `Bearer ${token}`;
-    const res = await fetch(url, { method: "POST", headers, body: formData, credentials: "include" });
-    if (!res.ok) {
-      const err = new Error("Transcription failed");
-      (err as Error & { status?: number }).status = res.status;
-      throw err;
-    }
-    return res.json();
-  },
 };
 
 // ── Settings ────────────────────────────────────────────────────────────────
@@ -1054,7 +949,6 @@ export type AdminStats = {
   users: number;
   mailboxes: number;
   emails_indexed: number;
-  follow_ups: number;
   attachments: number;
   agent_profiles: number;
   /** Total calendar meetings (MongoDB). */
@@ -1081,7 +975,6 @@ export type AdminStats = {
   averages?: { emails_per_user: number; mailboxes_per_user: number; emails_per_mailbox: number };
   users_disabled?: number;
   users_admin_flag?: number;
-  follow_up_statuses?: Record<string, number>;
   feedback_by_category?: Record<string, number>;
   meetings_conflicting?: number;
 };
@@ -1158,8 +1051,6 @@ export type AdminUserDetail = {
   user: AdminUserRow;
   settings: Record<string, unknown> | null;
   mailboxes: AdminMailboxRow[];
-  follow_ups_open: number;
-  follow_ups_total: number;
   attachment_count: number;
   has_agent_profile: boolean;
   email_stats: { total_read: number; total_unread: number; total_starred: number };
